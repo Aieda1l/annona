@@ -1,0 +1,20 @@
+{
+  "autoMemoryEnabled": false,
+  "model": "sonnet",
+  "modelSettings": {
+    "claude-sonnet-5-5": { "effortLevel": "medium" },
+    "claude-opus-5-5":   { "effortLevel": "high" }
+  },
+  "extraKnownMarketplaces": {
+    "ecc": {
+      "source": { "source": "git", "url": "https://github.com/affaan-m/ECC.git" },
+      "autoUpdate": false
+    }
+  },
+  "enabledPlugins": {
+    "ecc@ecc": true
+  },
+  "env": {
+    "ECC_HOOK_PROFILE": "minimal"
+  }
+}
