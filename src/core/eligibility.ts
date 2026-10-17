@@ -59,7 +59,8 @@ export function evaluateEligibility({ facts, donor, policy, now }: EligibilityIn
   }
 
   // G-02 handling mode
-  if (!policy.allowed_handling_modes.includes(facts.handling_mode)) {
+  // An "unknown" value never passes, even if a misconfigured policy list contained it.
+  if (facts.handling_mode === "unknown" || !(policy.allowed_handling_modes as string[]).includes(facts.handling_mode)) {
     if (facts.handling_mode === "unknown") {
       add("HANDLING_UNKNOWN", "Please say how the food is being held (for example refrigerated).", "handling_mode", "unknown");
     } else {
@@ -68,7 +69,7 @@ export function evaluateEligibility({ facts, donor, policy, now }: EligibilityIn
   }
 
   // G-03 preparation type
-  if (!policy.allowed_preparation_types.includes(facts.preparation_type)) {
+  if (facts.preparation_type === "unknown" || !(policy.allowed_preparation_types as string[]).includes(facts.preparation_type)) {
     if (facts.preparation_type === "cooked_then_cooled") {
       add("COOLING_HISTORY_REVIEW", "Cooked-then-cooled food needs a verified cooling history, which this prototype can't check. A partner must review it.", "preparation_type", "needs_review");
     } else if (facts.preparation_type === "other") {

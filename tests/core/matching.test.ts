@@ -3,7 +3,7 @@ import { REASON_CODE_SEVERITY } from "@/contracts";
 import { scene1_eligible_facts } from "@/contracts/fixtures/scenes";
 import { findCandidates } from "@/core";
 import { classifyUnmatched, type MatchInput } from "@/core/matching";
-import { DEMO_POLICY, type CourierProfile, type MessagingIdentityLite, type RecipientOrg } from "@/core/types";
+import { DEMO_POLICY, type CourierProfile, type MatchIdentity, type RecipientOrg } from "@/core/types";
 
 const NOW = new Date("2026-10-17T23:10:00.000Z");
 const iso = (min: number) => new Date(NOW.getTime() + min * 60_000).toISOString();
@@ -34,11 +34,11 @@ const mkCourier = (id: string, recips: string[], over: Partial<CourierProfile> =
   is_synthetic: true,
   ...over,
 });
-const joined = (courierId: string): MessagingIdentityLite => ({
-  id: `i-${courierId}`,
+const joined = (courierId: string): MatchIdentity => ({
   actor_role: "courier",
   actor_id: courierId,
   status: "joined",
+  provider: "fake",
 });
 
 type Facts = typeof scene1_eligible_facts;
@@ -56,6 +56,8 @@ const base = (over: Partial<MatchInput> = {}): MatchInput => ({
   now: NOW,
   excluded_courier_ids: [],
   busy_courier_ids: [],
+  committed_servings: {},
+  active_provider: "fake",
   ...over,
 });
 

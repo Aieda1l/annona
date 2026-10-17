@@ -26,8 +26,10 @@ export type TransitionTrigger =
 /** Everything a guard may read. `now` comes from the injected Clock; there is no client timestamp. */
 export type TransitionContext = {
   now: Date;
-  /** donations.effective_cutoff_at = min(donor_pickup_by, discard_by). */
+  /** donations.effective_cutoff_at = min(donor_pickup_by, discard_by). Null or unparseable: see cutoffMs. */
   effective_cutoff_at: string | null;
+  /** Used only to resolve a missing cutoff (CONTRACTS section 7, D-038); a null or unparseable discard_by is ignored there. */
+  donor_pickup_by?: string | null;
   discard_by?: string | null;
   collected_at: string | null;
   simulated?: boolean;
@@ -56,10 +58,23 @@ export type DonationTransition = {
 const hasNote = (c: TransitionContext) => (c.note ?? "").trim().length > 0;
 const collected = (c: TransitionContext) => c.collected_at !== null;
 const nowMs = (c: TransitionContext) => c.now.getTime();
-const cutoffMs = (c: TransitionContext) => (c.effective_cutoff_at === null ? NaN : parseUtc(c.effective_cutoff_at));
-// Both comparisons are false for an unknown cutoff, an unparseable time or an invalid `now`: fail closed.
-const beforeCutoff = (c: TransitionContext) => nowMs(c) < cutoffMs(c);
-const atOrAfterCutoff = (c: TransitionContext) => nowMs(c) >= cutoffMs(c);
+/**
+ * The cutoff in ms, or NaN when none can be resolved (CONTRACTS section 7, D-038): the stored effective_cutoff_at,
+ * else min(donor_pickup_by, discard_by) from the facts (a null or unparseable discard_by is ignored), else unknown.
+ */
+const cutoffMs = (c: TransitionContext): number => {
+  const stored = c.effective_cutoff_at == null ? NaN : parseUtc(c.effective_cutoff_at);
+  if (Number.isFinite(stored)) return stored;
+  const pickup = c.donor_pickup_by == null ? NaN : parseUtc(c.donor_pickup_by);
+  if (!Number.isFinite(pickup)) return NaN;
+  const discard = c.discard_by == null ? NaN : parseUtc(c.discard_by);
+  return Number.isFinite(discard) ? Math.min(pickup, discard) : pickup;
+};
+const nowValid = (c: TransitionContext) => Number.isFinite(nowMs(c));
+/** An unknown cutoff counts as reached, so a missing cutoff can never keep a donation alive. An invalid clock is neither. */
+const atOrAfterCutoff = (c: TransitionContext) => nowValid(c) && (!Number.isFinite(cutoffMs(c)) || nowMs(c) >= cutoffMs(c));
+/** Strictly before a known cutoff. Unknown cutoff or invalid clock: false, so S-06, S-09, S-14 and S-15 refuse. */
+const beforeCutoff = (c: TransitionContext) => nowValid(c) && Number.isFinite(cutoffMs(c)) && nowMs(c) < cutoffMs(c);
 const ok = null;
 
 export const DONATION_TRANSITIONS: readonly DonationTransition[] = [
