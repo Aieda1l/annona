@@ -89,6 +89,7 @@ export function OperatorDashboard({
       <DonationBoard
         donations={snapshot.donations}
         counts_by_status={snapshot.counts_by_status}
+        detailHref={(c) => `/operator/donations/${c.id}`}
         renderActions={
           onAction || demo
             ? (card) => (

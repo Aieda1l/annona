@@ -45,3 +45,16 @@ EVIDENCE: `pnpm test` 131 tests passed (12 files) after the final edit, typechec
 CONTRACT CHANGES OR REQUESTS: `docs/requests/dashboard-phone-thread-shape.md` (thread element type is undefined in CONTRACTS §10). Fixture photo ids depend on Dev 1's `fixtures/intake/images/` (empty on main).
 
 NEXT SMALLEST ACTION: operator detail page `/operator/donations/[id]`.
+
+## Slice 2c - operator detail page (feat/dashboard-detail)
+
+DELIVERED: `/operator/donations/[id]` (`LiveDonationDetail`, `DonationDetail`, `HandoffControls`, `FactsList`, `FixtureDonationDetail`). Polls `GET /api/donations/:id` every 2 s (pauses while hidden, stale/error panel, never invents a card; "stale since" uses the server `Date` header). Shows reasons verbatim, field states, donor-attested facts (labeled as stated by the donor, not checked), allergen table (expanded), offers, assignment, full audit timeline with AI/messaging mode labels, donor photo or "No image on file", operator actions, and simulated handoff buttons ("Mark collected (simulated)" on `claimed`, "Mark delivered (simulated) - recipient accepted after inspection" on `collected`) that post `{ step }` to the handoff route and show a refused step verbatim (e.g. `INVALID_TRANSITION`). Dashboard card titles link to the page. `?fixture=1` renders a loudly labeled fixture card with all actions disabled.
+
+EVIDENCE: `pnpm test` 986 passed + 1 todo (37 files), lint/typecheck/build exit 0. Dev server run: fixture pages for claimed, eligible and needs_review return 200 and their server-rendered HTML has the expected labels and none of the forbidden safety words. That run found a real bug unit tests could not (a server page passed function props to a client component, 500); fixed by `FixtureDonationDetail`.
+UNVERIFIED: 375 px visual layout (no Chrome on this machine for the devtools tool), and every live call (donation, handoff, operator-actions, images routes) is tested with mocked `fetch` only; the real routes are still 501 stubs on main.
+
+NOTES: `next dev` generates an untracked `AGENTS.md` in the repo root; it must not be committed (CLAUDE.md). A captain follow-up could set `agentRules: false` in next.config or ignore the file.
+
+CONTRACT CHANGES OR REQUESTS: none. Tests derive any missing status card from the 3 baseline fixtures until contracts-2 (#10) lands.
+
+NEXT SMALLEST ACTION: `/v` page mounting Dev 1's `LinkVerification` (needs no session, no-referrer + no-store headers, T-UI-07), then `/donor/new` and the donor status page.
