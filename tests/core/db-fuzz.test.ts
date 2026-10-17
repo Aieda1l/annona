@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEMO_ACTORS, OFFER_STATUSES, type DispatchStore } from "@/contracts";
 import { createDispatchStore } from "@/db";
 import { closeStore, storeInternals } from "@/db/internal";
@@ -8,7 +8,10 @@ import { runMigrations } from "@/db/run-migrations";
 import { seedStore } from "@/db/seed/seed";
 import { donations, offers, verification_links } from "@/db/schema";
 
-// Round 2: model-based test. Random operations are applied to the database and to a tiny JavaScript model of the
+// Each test file starts one or more WASM Postgres instances. Under the parallel full run that can exceed the 5 s default.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
+// Model-based test. Random operations are applied to the database and to a tiny JavaScript model of the
 // rules in ARCHITECTURE section 7; the database must accept exactly what the model accepts.
 
 const NOW = new Date("2026-10-17T23:10:00.000Z");
@@ -103,6 +106,7 @@ describe("model-based: unique indexes accept exactly what the rules allow", () =
                 await sp.insert(offers).values({
                   id: randomUUID(), donation_id: donation, recipient_id: pick(RECIPIENTS), courier_id: courier, short_code: code,
                   status, wave_no: 1, created_at: NOW, close_reason: closeReason, provider_mode: "fake", candidate: {},
+                  sent_at: status === "open" ? NOW : null, expires_at: status === "open" ? NOW : null,
                 });
               }, () => {
                 codes.add(code);
@@ -112,7 +116,7 @@ describe("model-based: unique indexes accept exactly what the rules allow", () =
             } else {
               const donation = pick(donationIds);
               const state = pick(["live", "consumed", "revoked"] as const);
-              const hash = r() < 0.15 && hashes.size > 0 ? pick([...hashes]) : randomUUID();
+              const hash = r() < 0.15 && hashes.size > 0 ? pick([...hashes]) : randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
               const live = state === "live";
               const violation = hashes.has(hash) || (live && liveLink.has(donation));
               await attempt(violation, `link ${state}`, async (sp) => {
@@ -135,19 +139,29 @@ describe("model-based: unique indexes accept exactly what the rules allow", () =
   }
 });
 
-describe("concurrent writers: the index lets exactly one through", () => {
+// NOT a race test: PGlite is a single connection, so these ten writes are queued and run one after another. They show
+// the unique index admits exactly one of ten competing rows; they say nothing about interleaved transactions. Real
+// claim-race safety (T-CO-16 / T-CO-17) needs separate connections to Postgres and is still UNVERIFIED.
+describe("ten competing writes, run serially on one connection: the index lets exactly one through", () => {
+  // Cleanup runs even when an assertion fails, so one failure cannot poison the tests after it.
+  afterEach(async () => {
+    const { db } = storeInternals(store);
+    await db.delete(offers);
+    await db.delete(donations);
+  });
+
   const settle = async <T,>(jobs: Promise<T>[]) => {
     const res = await Promise.allSettled(jobs);
     return { ok: res.filter((x) => x.status === "fulfilled").length, bad: res.filter((x) => x.status === "rejected") as PromiseRejectedResult[] };
   };
 
-  it("10 simultaneous live offers for one courier: exactly one is stored, the rest are unique violations", async () => {
+  it("10 live offers for one courier: exactly one is stored, the rest are unique violations", async () => {
     const { db } = storeInternals(store);
     const ids = Array.from({ length: 10 }, () => randomUUID());
     await db.insert(donations).values(ids.map((id) => ({ id, donor_id: DONOR, status: "eligible", source: "fixture", ai_status: "succeeded", created_at: NOW, updated_at: NOW })));
     const mk = (donation_id: string, i: number) => ({
       id: randomUUID(), donation_id, recipient_id: RECIPIENTS[0]!, courier_id: COURIERS[0]!, short_code: `${ALPHABET[i]}${ALPHABET[i]}KM`,
-      status: i % 2 ? "open" : "pending_send", wave_no: 1, created_at: NOW, provider_mode: "fake" as const, candidate: {},
+      status: i % 2 ? "open" : "pending_send", expires_at: i % 2 ? NOW : null, wave_no: 1, created_at: NOW, provider_mode: "fake" as const, candidate: {},
     });
     const { ok, bad } = await settle(ids.map((id, i) => db.insert(offers).values(mk(id, i))));
     expect(ok).toBe(1);
@@ -155,11 +169,9 @@ describe("concurrent writers: the index lets exactly one through", () => {
     for (const b of bad) expect(sqlState(b.reason)).toBe("23505");
     const live = await db.select().from(offers).where(eq(offers.courier_id, COURIERS[0]!));
     expect(live.filter((o) => o.status === "open" || o.status === "pending_send")).toHaveLength(1);
-    await db.delete(offers).where(inArray(offers.donation_id, ids));
-    await db.delete(donations).where(inArray(donations.id, ids));
   });
 
-  it("10 simultaneous accepted offers for one donation: exactly one active assignment", async () => {
+  it("10 accepted offers for one donation: exactly one active assignment", async () => {
     const { db } = storeInternals(store);
     const donation = randomUUID();
     await db.insert(donations).values({ id: donation, donor_id: DONOR, status: "offered", source: "fixture", ai_status: "succeeded", created_at: NOW, updated_at: NOW });
@@ -171,19 +183,18 @@ describe("concurrent writers: the index lets exactly one through", () => {
     );
     const { ok, bad } = await settle(jobs);
     expect(ok).toBe(1);
+    expect(bad).toHaveLength(9);
     for (const b of bad) expect(sqlState(b.reason)).toBe("23505");
-    await db.delete(offers).where(eq(offers.donation_id, donation));
-    await db.delete(donations).where(eq(donations.id, donation));
   });
 
-  it("10 simultaneous drafts with the same (source, source_ref): exactly one", async () => {
+  it("10 drafts with the same (source, source_ref): exactly one", async () => {
     const { db } = storeInternals(store);
     const jobs = Array.from({ length: 10 }, () =>
       db.insert(donations).values({ id: randomUUID(), donor_id: DONOR, status: "draft", source: "messaging", source_ref: "fake:dup-photo", ai_status: "pending", created_at: NOW, updated_at: NOW }),
     );
     const { ok, bad } = await settle(jobs);
     expect(ok).toBe(1);
+    expect(bad).toHaveLength(9);
     for (const b of bad) expect(sqlState(b.reason)).toBe("23505");
-    await db.delete(donations).where(eq(donations.source_ref, "fake:dup-photo"));
   });
 });

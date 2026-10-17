@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEMO_ACTORS, type DispatchStore } from "@/contracts";
 import { createDispatchStore } from "@/db";
 import { closeStore, storeInternals } from "@/db/internal";
@@ -14,6 +14,7 @@ import {
   couriers,
   donation_images,
   donations,
+  donors,
   messaging_identities,
   offers,
   outbound_messages,
@@ -21,6 +22,9 @@ import {
   system_status,
   verification_links,
 } from "@/db/schema";
+
+// Each test file starts one or more WASM Postgres instances. Under the parallel full run that can exceed the 5 s default.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 // Edge cases beyond T-CO-23: foreign keys, NOT NULL, value CHECKs, round trips, persistence, and refusal paths.
 
@@ -93,6 +97,11 @@ describe("db edge: the injected Clock is the only time source", () => {
     );
     const rows = (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as { table_name: string; column_name: string; column_default: string }[];
     expect(rows).toEqual([]);
+    // Positive control: the same query shape does find timestamp columns when no default filter is applied.
+    const all = await storeInternals(store).db.execute(
+      sql`select column_name from information_schema.columns where table_schema = 'public' and data_type like 'timestamp%'`,
+    );
+    expect((Array.isArray(all) ? all : (all as { rows: unknown[] }).rows).length).toBeGreaterThan(15);
   });
 
   it.each([
@@ -162,7 +171,7 @@ describe("db edge: foreign keys and required columns", () => {
   });
   it("a verification link needs a real donation and donor", async () => {
     const d = donationRow();
-    const link = { id: randomUUID(), donation_id: d.id!, donor_id: DONOR, token_hash: "h1", issued_at: NOW, expires_at: NOW };
+    const link = { id: randomUUID(), donation_id: d.id!, donor_id: DONOR, token_hash: "a".repeat(64), issued_at: NOW, expires_at: NOW };
     expect(sqlState(await inRollback(store, async (tx) => void (await tx.insert(verification_links).values({ ...link, donation_id: randomUUID() }))))).toBe("23503");
     expect(sqlState(await inRollback(store, async (tx) => { await tx.insert(donations).values(d); await tx.insert(verification_links).values({ ...link, donor_id: randomUUID() }); }))).toBe("23503");
   });
@@ -302,34 +311,66 @@ describe("db edge: store lifecycle and refusal paths", () => {
   });
   it("a PGlite directory persists data across close and reopen, and migrations stay a no-op", async () => {
     const dir = mkdtempSync(join(tmpdir(), "annona-pglite-"));
+    const opened: DispatchStore[] = [];
     try {
       const s1 = createDispatchStore({ kind: "pglite", database_url: undefined, pglite_dir: dir });
+      opened.push(s1);
       await runMigrations(s1);
       await seedStore(s1, { now: NOW, messaging_provider: "fake" });
       await storeInternals(s1).db.update(messaging_identities).set({ status: "joined", joined_at: NOW }).where(eq(messaging_identities.id, SEED_IDENTITY_IDS.courier_a));
       await closeStore(s1);
 
       const s2 = createDispatchStore({ kind: "pglite", database_url: undefined, pglite_dir: dir });
+      opened.push(s2);
       await runMigrations(s2);
       await runMigrations(s2);
       const ident = (await storeInternals(s2).db.select().from(messaging_identities).where(eq(messaging_identities.id, SEED_IDENTITY_IDS.courier_a)))[0];
       expect(ident?.status).toBe("joined");
-      await closeStore(s2);
     } finally {
+      // Close first: on Windows an open PGlite directory cannot be deleted, which would hide the real failure.
+      for (const s of opened) await closeStore(s);
       rmSync(dir, { recursive: true, force: true });
     }
   });
-  it("a failed seed leaves nothing half written (one transaction)", async () => {
+  it("duplicate handles are refused before any SQL runs", async () => {
     const s = createDispatchStore({ kind: "pglite", database_url: undefined, pglite_dir: undefined });
     await runMigrations(s);
     try {
-      // Duplicate handles violate UNIQUE (provider, handle) on the last-but-one statement.
+      // resolveHandles rejects this in buildSeed, ahead of the transaction.
       await expect(
         seedStore(s, { now: NOW, messaging_provider: "fake", handles: { donor: "same@example.invalid", courier_a: "same@example.invalid", courier_b: "b@example.invalid" } }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/must differ/);
       const { db } = storeInternals(s);
       expect(await db.select().from(recipients)).toEqual([]);
       expect(await db.select().from(messaging_identities)).toEqual([]);
+    } finally {
+      await closeStore(s);
+    }
+  });
+  it("a seed that fails inside its transaction leaves nothing half written", async () => {
+    const s = createDispatchStore({ kind: "pglite", database_url: undefined, pglite_dir: undefined });
+    await runMigrations(s);
+    try {
+      const { db } = storeInternals(s);
+      // Another identity already holds the donor's (provider, handle). The seed's identity insert (after donors,
+      // recipients and couriers were written) hits UNIQUE (provider, handle), so the whole transaction must roll back.
+      await db.insert(messaging_identities).values({
+        id: randomUUID(),
+        actor_role: "donor",
+        actor_id: randomUUID(),
+        provider: "fake",
+        handle: "donor@example.invalid",
+        status: "awaiting_join",
+        provider_space_id: null,
+        provider_sender_id: null,
+        joined_at: null,
+        opted_out_at: null,
+      });
+      await expect(seedStore(s, { now: NOW, messaging_provider: "fake" })).rejects.toThrow();
+      expect(await db.select().from(donors)).toEqual([]);
+      expect(await db.select().from(recipients)).toEqual([]);
+      expect(await db.select().from(couriers)).toEqual([]);
+      expect(await db.select().from(messaging_identities)).toHaveLength(1);
     } finally {
       await closeStore(s);
     }

@@ -48,11 +48,15 @@ function recipientEligible(r: RecipientOrg, input: MatchInput): boolean {
   if (r.approval_status !== "approved") return false; // M-01
   if (!r.registered_dfdo || r.serves_highly_susceptible_population) return false; // M-01
   if (!r.accepts_handling_modes.includes(facts.handling_mode)) return false; // M-02
+  // Only an explicit "not_in_listed_ingredients" counts as absent; unknown or garbage is treated as present, so this
+  // function stays safe even if it is called without the gate having run first.
   const present = new Set<string>([
-    ...ALLERGENS.filter((a) => facts.allergens[a] === "present"),
+    ...ALLERGENS.filter((a) => facts.allergens[a] !== "not_in_listed_ingredients"),
     ...facts.cross_contact_allergens,
   ]);
   if (r.excluded_allergens.some((a) => present.has(a))) return false; // M-03
+  // Undeclared cross-contact could involve any allergen, so it cannot satisfy a recipient that excludes one.
+  if (facts.cross_contact_status !== "declared" && r.excluded_allergens.length > 0) return false; // M-03
   // Positive form: NaN or undefined capacity or servings must refuse, not pass.
   if (![r.capacity_servings_available, facts.servings].every(Number.isFinite)) return false; // M-04
   if (!(r.capacity_servings_available >= facts.servings)) return false; // M-04
@@ -65,6 +69,8 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
   if (!Number.isFinite(now.getTime()) || !(policy.average_speed_kmh > 0)) return [];
   const policyNumbers = [policy.response_window_seconds, policy.handoff_buffer_minutes, policy.max_transit_minutes];
   if (!policyNumbers.every((n) => Number.isFinite(n) && n >= 0)) return [];
+  // Servings must be a whole number from 1 to the policy maximum (the contract schema says 1..500).
+  if (!Number.isInteger(facts.servings) || facts.servings < 1 || !(facts.servings <= policy.max_servings)) return [];
   // Malformed facts (callers should pass Zod-parsed facts) cannot be matched.
   if (!facts.allergens || !Array.isArray(facts.cross_contact_allergens)) return [];
   // A missing list would silently disable M-09; refuse instead.
