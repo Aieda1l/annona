@@ -11,7 +11,7 @@ const real: VisionSuggestion = { ...scene1_vision_suggestion, provider: "gemini"
 const renderReview = (props: Partial<React.ComponentProps<typeof DraftReview>> = {}) => {
   const onSubmit = vi.fn();
   const utils = render(
-    <DraftReview aiStatus="succeeded" suggestion={scene1_vision_suggestion} onSubmit={onSubmit} {...props} />,
+    <DraftReview donationId="don_1" aiStatus="succeeded" suggestion={scene1_vision_suggestion} onSubmit={onSubmit} {...props} />,
   );
   return { onSubmit, ...utils };
 };
@@ -112,5 +112,18 @@ describe("photo and form wiring", () => {
     renderReview({ submitting: true, error: "Please try again." });
     expect(screen.getByRole("button", { name: /submitting/i })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(/please try again/i);
+  });
+});
+
+describe("switching donations", () => {
+  it("does not carry typed values or the attestation over to a different donation", () => {
+    const onSubmit = vi.fn();
+    const props = { aiStatus: "succeeded" as const, suggestion: scene1_vision_suggestion, onSubmit };
+    const { rerender } = render(<DraftReview donationId="don_1" {...props} />);
+    fireEvent.change(screen.getByLabelText(/^Dish name/i), { target: { value: "Soup" } });
+    fireEvent.click(screen.getByLabelText(/I attest/i));
+    rerender(<DraftReview donationId="don_2" {...props} />);
+    expect(screen.getByLabelText(/^Dish name/i)).toHaveValue("");
+    expect(screen.getByLabelText(/I attest/i)).not.toBeChecked();
   });
 });

@@ -23,6 +23,8 @@ const ALLERGEN_NAMES: Record<Allergen, string> = {
 };
 
 export type DraftReviewProps = {
+  /** Keys the form so nothing the donor typed or attested carries over to another donation. */
+  donationId: string;
   aiStatus: AiStatus;
   suggestion: VisionSuggestion | null;
   imageUrl?: string | null;
@@ -99,7 +101,7 @@ function Notice({ children }: { children: string }) {
   );
 }
 
-export function DraftReview({ aiStatus, suggestion, imageUrl = null, onSubmit, submitting, error }: DraftReviewProps) {
+export function DraftReview({ donationId, aiStatus, suggestion, imageUrl = null, onSubmit, submitting, error }: DraftReviewProps) {
   // Fail closed: use the suggestion only when the AI step actually succeeded.
   const ai = aiStatus === "succeeded" ? suggestion : null;
 
@@ -120,7 +122,7 @@ export function DraftReview({ aiStatus, suggestion, imageUrl = null, onSubmit, s
         {ai?.image_quality === "not_food" && <Notice>The photo does not look like food. Please check it.</Notice>}
         {ai && <AiPanel suggestion={ai} />}
       </div>
-      <VerificationForm suggestion={ai} onSubmit={onSubmit} submitting={submitting} error={error} />
+      <VerificationForm key={donationId} suggestion={ai} onSubmit={onSubmit} submitting={submitting} error={error} />
     </div>
   );
 }

@@ -89,6 +89,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
   const uid = useId();
   const [state, setState] = useState<FormState>(initialFormState);
   const [errors, setErrors] = useState<string[]>([]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const id = (name: string) => `${uid}-${name}`;
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setState((s) => ({ ...s, [key]: value }));
   const text = (key: keyof FormState) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -105,10 +106,16 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
       return;
     }
     setErrors([]);
-    void onSubmit(built.raw);
+    setSubmitError(null);
+    const fail = () => setSubmitError("Your answers could not be submitted. Please try again.");
+    try {
+      Promise.resolve(onSubmit(built.raw)).catch(fail);
+    } catch {
+      fail();
+    }
   }
 
-  const shown = [...errors, ...(error ? [error] : [])];
+  const shown = [...errors, ...(submitError ? [submitError] : []), ...(error ? [error] : [])];
   const declared = state.cross_contact_status === "declared";
 
   const select = (name: keyof FormState, options: readonly string[], labels: Record<string, string>) => (
