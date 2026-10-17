@@ -2,24 +2,16 @@ import {
   notImplementedError,
   type Deps,
   type DeliveryStatusEvent,
-  type DraftReadyView,
   type InboundMessage,
   type InboundResult,
-  type OfferMessageView,
 } from "@/contracts";
 
 // Barrel owned by Dev 3 after the baseline (keep exported names stable). CONTRACTS §9.4.
 
 const OWNER = "Dev 3";
 
-export type TickReport = {
-  at: string;
-  expired_offers: number;
-  expired_donations: number;
-  offers_created: number;
-  offers_sent: number;
-  send_failures: number;
-};
+export type { TickReport } from "./tick";
+import type { TickReport } from "./tick";
 
 /** Same path for real Photon messages and simulated-phone messages, including donor photos. */
 export async function handleInbound(_msg: InboundMessage, _deps?: Deps): Promise<InboundResult> {
@@ -39,10 +31,4 @@ export async function dispatchDonation(_donation_id: string, _deps?: Deps): Prom
   throw notImplementedError(OWNER, "dispatchDonation");
 }
 
-export function formatOfferMessage(_view: OfferMessageView): string {
-  throw notImplementedError(OWNER, "formatOfferMessage");
-}
-
-export function formatDraftReadyMessage(_view: DraftReadyView): string {
-  throw notImplementedError(OWNER, "formatDraftReadyMessage");
-}
+export { formatDraftReadyMessage, formatOfferMessage } from "./templates";

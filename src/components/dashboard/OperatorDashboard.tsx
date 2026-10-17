@@ -63,6 +63,14 @@ export function OperatorDashboard({
           &quot;Eligible&quot; means eligible for dispatch under the prototype operator policy, based on
           donor-attested records.
         </p>
+        {snapshot.modes.messaging.mode === "fake" && (
+          <p className="text-sm">
+            <a href="/operator/phone" className="font-medium underline">
+              Open the simulated phone
+            </a>{" "}
+            (fake messaging only)
+          </p>
+        )}
         {!onAction && (
           <p className="text-sm font-medium text-slate-900">Read-only: operator actions are not wired to the server yet.</p>
         )}
@@ -81,6 +89,7 @@ export function OperatorDashboard({
       <DonationBoard
         donations={snapshot.donations}
         counts_by_status={snapshot.counts_by_status}
+        detailHref={(c) => `/operator/donations/${c.id}`}
         renderActions={
           onAction || demo
             ? (card) => (
