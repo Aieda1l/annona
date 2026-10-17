@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { DEMO_ACTORS, type DispatchStore } from "@/contracts";
 import { DEMO_POLICY } from "@/core/types";
 import { storeInternals } from "../internal";
@@ -19,6 +19,18 @@ export type SeedOptions = {
   messaging_provider: "fake" | "photon";
   handles?: SeedHandles;
 };
+
+/** A seeded identity that is no longer awaiting JOIN and whose stored provider/handle differ from what this seed wanted. */
+export type StaleIdentity = {
+  id: string;
+  actor_role: string;
+  status: string;
+  provider_differs: boolean;
+  handle_differs: boolean;
+};
+
+/** What `seedStore` left alone. Never carries a handle value (they are personal data). */
+export type SeedReport = { stale_identities: StaleIdentity[] };
 
 /** Fixed identity IDs so the seed is deterministic. Personas themselves use DEMO_ACTORS IDs. */
 export const SEED_IDENTITY_IDS = {
@@ -93,7 +105,8 @@ export function buildSeed(opts: SeedOptions) {
     { id: actorId("donor_suspended"), display_name: "Harbor Deli (synthetic, suspended)", org_type: "restaurant", licensed_food_establishment: true, approval_status: "suspended", location: loc(47.6062, -122.3376, "Downtown area", "300 Demo St (synthetic)"), is_synthetic: true },
   ];
 
-  // Capacity is large enough for every demo scene in sequence: M-04 counts delivered donations until resetDemo.
+  // Capacity is large enough for every demo scene in sequence. M-04 (net of committed servings) is not enforced yet
+  // (claim step 8 will), so nothing decrements this until then.
   const shared = { accepts_handling_modes: ["refrigerated"], capacity_servings_available: 200, receiving_closes_at: closes, is_synthetic: true };
   const recipientRows = [
     { id: eastlake, display_name: "Eastlake Community Pantry (synthetic)", approval_status: "approved", registered_dfdo: true, serves_highly_susceptible_population: false, excluded_allergens: [] as string[], location: loc(47.635, -122.325, "Eastlake area", "400 Demo Blvd (synthetic)"), ...shared },
@@ -147,11 +160,13 @@ const fromExcluded = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, 
 /**
  * Writes the seed into a migrated store. Safe to run again: profiles and policy are refreshed (times move with `now`),
  * while a joined phone stays joined (resetDemo keeps identities). Identities awaiting JOIN pick up a changed provider or handle.
+ * An identity that is no longer awaiting JOIN keeps its stored provider and handle even if this seed wanted different
+ * ones; the report names it (no handle values) so the caller can tell the operator instead of failing silently.
  */
-export async function seedStore(store: DispatchStore, opts: SeedOptions): Promise<void> {
+export async function seedStore(store: DispatchStore, opts: SeedOptions): Promise<SeedReport> {
   const { db } = storeInternals(store);
   const { donorRows, recipientRows, courierRows, identityRows, policyRow } = buildSeed(opts);
-  await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     await tx
       .insert(donors)
       .values(donorRows)
@@ -181,5 +196,19 @@ export async function seedStore(store: DispatchStore, opts: SeedOptions): Promis
       .insert(policy_config)
       .values(policyRow)
       .onConflictDoUpdate({ target: [policy_config.policy_id, policy_config.policy_version], set: { config: policyRow.config, active: true } });
+
+    const stored = await tx
+      .select({ id: messaging_identities.id, status: messaging_identities.status, provider: messaging_identities.provider, handle: messaging_identities.handle })
+      .from(messaging_identities)
+      .where(inArray(messaging_identities.id, identityRows.map((r) => r.id)));
+    const stale_identities: StaleIdentity[] = [];
+    for (const want of identityRows) {
+      const have = stored.find((r) => r.id === want.id);
+      if (!have || have.status === "awaiting_join") continue;
+      const provider_differs = have.provider !== want.provider;
+      const handle_differs = have.handle !== want.handle;
+      if (provider_differs || handle_differs) stale_identities.push({ id: want.id, actor_role: want.actor_role, status: have.status, provider_differs, handle_differs });
+    }
+    return { stale_identities };
   });
 }

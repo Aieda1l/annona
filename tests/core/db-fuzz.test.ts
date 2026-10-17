@@ -8,7 +8,7 @@ import { runMigrations } from "@/db/run-migrations";
 import { seedStore } from "@/db/seed/seed";
 import { donations, offers, verification_links } from "@/db/schema";
 
-// Round 2: model-based test. Random operations are applied to the database and to a tiny JavaScript model of the
+// Model-based test. Random operations are applied to the database and to a tiny JavaScript model of the
 // rules in ARCHITECTURE section 7; the database must accept exactly what the model accepts.
 
 const NOW = new Date("2026-10-17T23:10:00.000Z");
@@ -135,13 +135,16 @@ describe("model-based: unique indexes accept exactly what the rules allow", () =
   }
 });
 
-describe("concurrent writers: the index lets exactly one through", () => {
+// NOT a race test: PGlite is a single connection, so these ten writes are queued and run one after another. They show
+// the unique index admits exactly one of ten competing rows; they say nothing about interleaved transactions. Real
+// claim-race safety (T-CO-16 / T-CO-17) needs separate connections to Postgres and is still UNVERIFIED.
+describe("ten competing writes, run serially on one connection: the index lets exactly one through", () => {
   const settle = async <T,>(jobs: Promise<T>[]) => {
     const res = await Promise.allSettled(jobs);
     return { ok: res.filter((x) => x.status === "fulfilled").length, bad: res.filter((x) => x.status === "rejected") as PromiseRejectedResult[] };
   };
 
-  it("10 simultaneous live offers for one courier: exactly one is stored, the rest are unique violations", async () => {
+  it("10 live offers for one courier: exactly one is stored, the rest are unique violations", async () => {
     const { db } = storeInternals(store);
     const ids = Array.from({ length: 10 }, () => randomUUID());
     await db.insert(donations).values(ids.map((id) => ({ id, donor_id: DONOR, status: "eligible", source: "fixture", ai_status: "succeeded", created_at: NOW, updated_at: NOW })));
@@ -159,7 +162,7 @@ describe("concurrent writers: the index lets exactly one through", () => {
     await db.delete(donations).where(inArray(donations.id, ids));
   });
 
-  it("10 simultaneous accepted offers for one donation: exactly one active assignment", async () => {
+  it("10 accepted offers for one donation: exactly one active assignment", async () => {
     const { db } = storeInternals(store);
     const donation = randomUUID();
     await db.insert(donations).values({ id: donation, donor_id: DONOR, status: "offered", source: "fixture", ai_status: "succeeded", created_at: NOW, updated_at: NOW });
@@ -176,7 +179,7 @@ describe("concurrent writers: the index lets exactly one through", () => {
     await db.delete(donations).where(eq(donations.id, donation));
   });
 
-  it("10 simultaneous drafts with the same (source, source_ref): exactly one", async () => {
+  it("10 drafts with the same (source, source_ref): exactly one", async () => {
     const { db } = storeInternals(store);
     const jobs = Array.from({ length: 10 }, () =>
       db.insert(donations).values({ id: randomUUID(), donor_id: DONOR, status: "draft", source: "messaging", source_ref: "fake:dup-photo", ai_status: "pending", created_at: NOW, updated_at: NOW }),
