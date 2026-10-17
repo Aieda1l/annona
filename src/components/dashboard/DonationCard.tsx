@@ -9,7 +9,19 @@ import { ReasonList } from "./ReasonList";
 import { StatusBadge } from "./StatusBadge";
 import { formatPacific } from "./format";
 
-export function DonationCard({ card, actions }: { card: DonationCardData; actions?: ReactNode }) {
+export function DonationCard({
+  card,
+  actions,
+  expanded = false,
+  detailHref,
+}: {
+  card: DonationCardData;
+  actions?: ReactNode;
+  /** Opens the allergen table by default (detail page). */
+  expanded?: boolean;
+  /** When set, the title links to the operator detail page. */
+  detailHref?: string;
+}) {
   const title = card.verified_facts?.dish_name ?? "Untitled draft";
   const fieldStates = Object.entries(card.decision?.field_states ?? {});
   return (
@@ -20,7 +32,15 @@ export function DonationCard({ card, actions }: { card: DonationCardData; action
     >
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-base font-semibold">{title}</h3>
+          <h3 className="text-base font-semibold">
+            {detailHref ? (
+              <a href={detailHref} className="underline">
+                {title}
+              </a>
+            ) : (
+              title
+            )}
+          </h3>
           <p className="text-sm text-slate-700">
             {card.donor_display_name} · {card.donor_area_label}
           </p>
@@ -53,7 +73,7 @@ export function DonationCard({ card, actions }: { card: DonationCardData; action
       )}
 
       {(card.ai_suggestion || card.verified_facts) && (
-        <details className="text-sm">
+        <details className="text-sm" open={expanded}>
           <summary className="cursor-pointer font-medium">Allergens (donor statement vs AI hint)</summary>
           <AllergenGrid suggestion={card.ai_suggestion} allergens={card.verified_facts?.allergens ?? null} />
         </details>
