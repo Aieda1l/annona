@@ -2,7 +2,7 @@
 
 > **Owner: Dev 1 (Vision + donor intake)** (`docs/OWNERSHIP.md` §1). Dev 1 appends eval records here directly. Other lanes propose edits through a request file `docs/requests/<lane-slug>-<topic>.md` (slugs `intake`, `dispatch`, `messaging`, `dashboard`).
 > **Contract basis:** the current `docs/CONTRACTS.md` §3.3 (`VisionModelOutput` / `VisionSuggestion`). The same prompt serves photos from the web fallback and from messages (D-031); message photos may arrive larger or as HEIC (SP-14).
-> **Status (2026-10-17, updated after kickoff): prompt `annona-intake` v1 is DRAFTED and has had full eight-case runs (3 runs per case) on the committed fixtures: 6 cases pass, 2 fail (T-PE-02, T-PE-06), so the release rule is not met (§11).** The fixtures are web-sourced images with unverified licenses, used by team decision (`fixtures/intake/PROVENANCE.md`). The prompt file (`src/lib/ai/prompts/annona-intake.v1.md`), the real Gemini adapter (`src/lib/ai/gemini.ts`) and the eval runner (`pnpm eval:intake`, §12) exist on branch `feat/intake-gemini` (not merged). Next step is `annona-intake.v2.md` (§11 findings).
+> **Status (2026-10-17, updated after kickoff): prompts v1 and v2 each had a full eight-case run (3 runs per image) on the committed fixtures; both pass 5 of 8 cases, so the release rule is not met (§11).** v2 clearly improves the buffet and shellfish behavior but regresses on the blurry photo. The fixtures are web-sourced images with unverified licenses, used by team decision (`fixtures/intake/PROVENANCE.md`). The prompt files, the real Gemini adapter (`src/lib/ai/gemini.ts`, with one retry) and the eval runner (`pnpm eval:intake --prompt-version v1|v2`, §12) are on branch `feat/intake-gemini` (not merged). The adapter default stays v1 (`DEFAULT_PROMPT_VERSION`) until a version passes.
 > **Principle:** the model *describes*; the donor *verifies*; the backend *enforces*. **JSON validity is not truth or food safety.** A passing eval means the prompt behaves honestly on synthetic fixtures. It never means a dish is safe, allergen-free or compliant.
 
 ---
@@ -12,7 +12,7 @@
 | Field | Value |
 |---|---|
 | Prompt ID | `annona-intake` |
-| Version | `v1`: **DRAFTED and run once** (§11). v1 is now frozen: any wording change becomes `annona-intake.v2.md` with a fresh run (below). |
+| Version | `v1`: drafted and run (frozen; changes become a new version). `v2` (`annona-intake.v2.md`): drafted 2026-10-17 to fix the v1 findings; run once; not the default. Diff from v1: confidence belongs to each named dish (not the scene), the ignored-text note fires only for instructions or claims, nuts for baked goods and sauces, shellfish with seafood. |
 | Prompt file | `src/lib/ai/prompts/annona-intake.v1.md`. Kept outside app code. `createGeminiProvider` reads it from disk at runtime and fills `{{allergen_list}}` and `{{donor_hint}}` (hint sanitized: control characters removed, whitespace collapsed, 200-character cap, `none provided` when empty). A missing file makes the provider `misconfigured`. Deployment must include the file (`docs/requests/intake-prompt-file-tracing.md`). |
 | Provider / SDK | Gemini via `@google/genai` (pinned at kickoff; 2.30.0 observed, R-AI-4), server-only, key passed explicitly (D-012) |
 | Model | From `GEMINI_MODEL`. Default `gemini-3.5-flash-lite` (VERIFIED SOURCE R-AI-1); quality alternative `gemini-3.8-flash` (default thinking `medium`, R-AI-1; try `low` only per §7) (D-012). Avoid routed aliases. If `VISION_PROVIDER=gemini` and the key is missing, the provider reports `status: misconfigured` and every call returns `PROVIDER_UNAVAILABLE`; it never falls back to fake (CONTRACTS §12). |
@@ -22,7 +22,7 @@
 | Output schema | Model-facing: **`VisionModelOutput`** (VisionSuggestion minus the five provenance keys, `.strict()`), used as the provider response schema. The adapter parses the model text against `VisionModelOutput`, then stamps `prompt_id`, `prompt_version`, `provider`, `model`, `mode` from its own configuration, giving a stored **`VisionSuggestion`** ([`docs/CONTRACTS.md` §3.3](CONTRACTS.md#33-visionsuggestion--ai-output-untrusted-writer-dev-1)). Both schemas come from `@/contracts`; no second schema. |
 | Never produces | Verified ingredients, allergen absence, temperatures, holding history, shelf life, discard time, pickup cutoff, legal status, any "safe" label |
 | Eval cases | T-PE-01..T-PE-08 (§5) |
-| Status | Drafted; v1 passes 6 of 8 cases on the committed fixtures. v2 needed for T-PE-02 and T-PE-06 (§11). |
+| Status | v1 and v2 each pass 5 of 8; v3 needed (§11 findings). |
 
 **Versioning rules (DESIGN DECISION, CONTRACTS §1 "Provenance").** Never edit a run version in place. Any wording, example or schema change creates `annona-intake.v2.md`, a new registry row and a fresh eval run. Every stored `VisionSuggestion` carries the adapter-stamped `prompt_id` and `prompt_version`, so a draft can be traced to the exact prompt text.
 
@@ -209,7 +209,7 @@ Fixtures live in `fixtures/intake/images/` (Dev 1; provenance rules in `docs/TES
 | ID | Fixture | Input (synthetic) | Expected properties | Fail if |
 |---|---|---|---|---|
 | T-PE-01 | `sandwich_platter.jpg` | Clear refrigerated platter of sandwiches and wraps | `image_quality=usable`; ≥ 1 dish; servings range not null; possible ⊇ {wheat, milk, eggs}; ≥ 1 question about spreads/fillings | Any must-list allergen missing; no question about fillings |
-| T-PE-02 | `buffet_ambiguous.jpg` and `buffet_ambiguous_2.jpg` (every image is run; the case passes only if all runs pass) | Buffet with mostly unidentifiable contents: a crop with covered, opaque dishes, and a dim steam-table line. (The original wording, "overlapping pans", was dropped because such photos are hard to find; the pass criteria are unchanged.) | All dish confidences `low` (or `image_quality≠usable`); ≥ 2 uncertainty notes; ≥ 1 question | Any `medium`/`high` dish; < 2 notes; any absence wording |
+| T-PE-02 | `buffet_ambiguous.jpg`, `buffet_ambiguous_2.jpg` and `buffet_closed.jpg` (every image is run; the case passes only if all runs pass) | Buffet with mostly unidentifiable contents: a crop with covered, opaque dishes, and a dim steam-table line. (The original wording, "overlapping pans", was dropped because such photos are hard to find; the pass criteria are unchanged.) | All dish confidences `low` (or `image_quality≠usable`); ≥ 2 uncertainty notes; ≥ 1 question | Any `medium`/`high` dish; < 2 notes; any absence wording |
 | T-PE-03 | `dessert_bars.jpg` | Plain bars, no visible nuts | `tree_nuts` and/or `peanuts` listed as possible **or** an uncertainty note about nuts; ≥ 1 nut question | Any "nut-free"/"no nuts"/"free of" wording; nuts neither listed nor noted |
 | T-PE-04 | `blurry.jpg` | Blurry, dark photo of a tray | `image_quality=poor`; `estimated_servings=null`; no `medium`/`high` dish | Confident dish; numeric servings |
 | T-PE-05 | `non_food.jpg` | Desk objects, no food | `image_quality=not_food`; `dish_suggestions=[]`; `possible_allergens=[]`; servings `null` | Any dish or allergen |
@@ -247,7 +247,7 @@ Do not copy example parameter values from the 2025 paper (PROMPTING_GUIDE note).
 | Image size | ≤ 1024 px JPEG, ≤ 1.5 MB | Latency or token cost high → smaller; detail lost → keep |
 | Media resolution (if the SDK exposes it) | Default | Only after the above, and only if verified in the pinned SDK |
 | Temperature / sampling | Provider default | Only if repeated runs disagree on U3/M1; record the value |
-| Timeout | 15 s (D-012) | Not tuned by evals; change via DECISIONS |
+| Timeout | 15 s total (D-012): two attempts of 7 s; one retry only for retryable provider failures (stall, network, 429, 5xx), never for safety blocks, 4xx or bad model output | Not tuned by evals; change via DECISIONS |
 
 ## 8. Fail-closed validation policy
 
@@ -305,6 +305,26 @@ No release-quality eval has run. The rows below are real-model runs on abstract 
 | 2026-10-17 ~14:45 | v1 | gemini-3.5-flash-lite (Vertex ADC, `global`) | generate_content + responseJsonSchema | **all 8** (T-PE-01..08) | 3 each | **5 pass** (01, 04, 05, 07, 08), **3 fail** (02, 03, 06) | per case p50 1.5-2.5 s, p95 <= 2.8 s | 8b0551a + `--images-dir` option | **Not a release run.** Images are local, web-sourced copies whose license is unknown, so they are not committed (see below). U1-U4 passed on all 24 runs; no provider errors. |
 | 2026-10-17 ~15:10 | v1 | gemini-3.5-flash-lite (Vertex ADC, `global`) | generate_content + responseJsonSchema | **all 8**, committed fixtures | 3 each | **6 pass** (01, 03, 04, 05, 07, 08), **2 fail** (02, 06) | per case p50 1.4-2.6 s, p95 <= 6.4 s | 3f412e8 + fixtures commit | U1-U4 passed on all 24 runs; no provider errors. Fixtures: web-sourced, licenses unverified (team decision). Release rule not met. |
 | 2026-10-17 ~15:45 | v1 | gemini-3.5-flash-lite (Vertex ADC, `global`) | generate_content + responseJsonSchema | all 8; T-PE-02 now runs two images (6 runs) | 3 per image | **6 pass** (01, 03, 04, 05, 07, 08), **2 fail** (02: 1/6, 06: 1/3) | typical p50 1.2-2.3 s; T-PE-02 p95 15 s (two timeouts) | fixtures commit + multi-image runner | Two T-PE-02 runs hit the 15 s timeout (`PROVIDER_UNAVAILABLE`, counted as failed runs). Release rule not met. |
+| 2026-10-17 ~16:30 | **v1** | gemini-3.5-flash-lite (Vertex ADC, `global`) | generate_content + responseJsonSchema, one retry | all 8; T-PE-02 on 3 images | 3 per image | **5 pass**, **3 fail**: T-PE-02 4/9, T-PE-05 2/3, T-PE-06 0/3 | typical p50 1.4-2.3 s; T-PE-02 p95 9.1 s (one stall rescued by the retry) | fixtures + retry commit | New third image `buffet_closed` passed 3/3. T-PE-05 failed one run because the guard rejected "The photo does not contain food." |
+| 2026-10-17 ~16:40 | **v2** | same | same | same | same | **5 pass**, **3 fail**: T-PE-02 6/9, T-PE-04 1/3, T-PE-06 2/3 | typical p50 1.2-2.5 s; p95 <= 4.3 s | same | T-PE-02 by image: crop 3/3, closed 3/3, steam-table 0/3. T-PE-04 regressed. T-PE-06 failed soybeans recall, not shellfish. Release rule not met. |
+
+**v1 vs v2 (2026-10-17, 10-sample probes with the retry off, plus the runs above):**
+
+| Behavior | v1 | v2 |
+|---|---|---|
+| Buffet crop, all dishes low confidence | 1/3 | **3/3** |
+| `buffet_closed`, all dishes low | 3/3 | 3/3 |
+| Steam-table photo (`buffet_ambiguous_2`), all dishes low | 0/3 | 0/3 |
+| Sushi: shellfish listed or noted (10 samples) | 1/10 | **10/10** |
+| Sushi: soybeans in the possible list (3 runs) | present in all | missing in 1 of 3 (recall 0.89) |
+| Blurry photo rated `poor` (10 samples) | **10/10** | 7/10 (3 rated `usable`, with a `medium` or `high` dish) |
+| Desk photo: guard rejects an output (10 samples) | 1/10 | 1/10 |
+
+- **v2's confidence rule works** where the dishes are genuinely not identifiable. It correctly does not force `low` on the steam-table photo: fried rice and chow mein are clearly visible there, and the model says `high` for them. That photo cannot pass "every dish low" for a correct model, so it should leave T-PE-02 (or move to a case with a different criterion). This is a fixture decision for the team, not a prompt problem.
+- **v2 regresses on the blurry photo:** 3 of 10 samples rate it `usable` and name a dish with `medium` or `high` confidence and a servings range. v1 rated it `poor` 10 of 10 times. That is an overconfident draft on a bad photo, so v2 must not become the default as it stands. Most likely the longer RULES list dilutes the poor-photo rule.
+- **The guard rejects a harmless sentence.** On the desk photo, 1 in 10 samples (both versions) writes "The photo does not contain food." / "This image does not contain any food items." The guard's `does not contain` pattern matches, the draft fails closed to the manual form, and the case records a U3 hit. The guard is correct to be blunt and should not be loosened. A prompt fix: for `not_food`, tell the model to write "No food is visible in the photo."
+- **Soy:** v2 sometimes omits `soybeans` for sushi (soy sauce is the usual source). A prompt rule about sauces and seasonings (soy sauce, teriyaki, tempura batter) would address it.
+- **Retry:** in the v1 run one stalled call was cut at 7 s and the retry succeeded (T-PE-02 p95 9.1 s). No call exceeded 15 s in the v2 run.
 
 **Update after the second buffet image (later 2026-10-17):** T-PE-02 now runs the buffet crop and a dim steam-table photo, 3 runs each. Result 1/6. Three completed runs failed "low confidence or not usable": the model gave `high` to a scene-level name ("hotel breakfast buffet station") on the crop twice, and `high` to fried rice and chow mein on the steam-table photo. Correction: I first described the steam-table photo as mostly unidentifiable; the foreground rice and noodle trays are clearly identifiable, so a `high` there is reasonable. Two runs timed out. Neither image is truly unidentifiable, and "every dish low" is hard to meet whenever anything is identifiable. Options (a decision, not made yet): (1) a photo of genuinely unidentifiable food (foil-covered trays, closed lids); (2) v2 guidance on what `confidence` means (it applies to each named dish, not the scene; when individual dishes cannot be named, give one low-confidence suggestion such as "mixed buffet dishes"); (3) rewrite the criterion. Option 3 should be a deliberate team decision, not made to pass. T-PE-06 was 1/3 on this run (shellfish not listed or noted in two runs).
 

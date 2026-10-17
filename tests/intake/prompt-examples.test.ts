@@ -6,13 +6,14 @@ import { parseVisionOutput } from "@/lib/ai/parse";
 
 // annona-intake v1 prompt file (PROMPT_EVAL §3-§4): the examples are model-facing, so they must pass the same
 // strict parse and claim-word guard as real model output, and the schema block must not drift from the contract.
-const prompt = readFileSync(join(process.cwd(), "src/lib/ai/prompts/annona-intake.v1.md"), "utf8");
 const META = { provider: "gemini", model: "test", mode: "real" } as const;
 
+describe.each(["v1", "v2"] as const)("annona-intake.%s.md", (version) => {
+const prompt = readFileSync(join(process.cwd(), `src/lib/ai/prompts/annona-intake.${version}.md`), "utf8");
 const fences = [...prompt.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => m[1]!);
 const exampleBlocks = fences.slice(1); // fences[0] is the schema skeleton in OUTPUT
 
-describe("annona-intake.v1.md structure", () => {
+describe("structure", () => {
   it("has the sections in order", () => {
     const order = ["# ROLE", "# CONTEXT", "# TASK", "# RULES", "# OUTPUT", "# EXAMPLES", "# INPUT"].map((h) => prompt.indexOf(h));
     expect(order.every((i) => i >= 0)).toBe(true);
@@ -39,7 +40,7 @@ describe("annona-intake.v1.md structure", () => {
   });
 });
 
-describe("annona-intake.v1.md few-shot examples", () => {
+describe("few-shot examples", () => {
   it("has the three examples", () => {
     expect(exampleBlocks).toHaveLength(3);
   });
@@ -69,5 +70,24 @@ describe("annona-intake.v1.md few-shot examples", () => {
     for (const b of exampleBlocks) {
       for (const a of (JSON.parse(b) as VisionModelOutput).possible_allergens) expect(ALLERGENS).toContain(a.allergen);
     }
+  });
+});
+
+});
+
+describe("v2 changes", () => {
+  const v2 = readFileSync(join(process.cwd(), "src/lib/ai/prompts/annona-intake.v2.md"), "utf8");
+  it("ties confidence to each named dish, not the scene", () => {
+    expect(v2).toContain("Confidence belongs to each dish name");
+    expect(v2).toMatch(/mixed buffet dishes/);
+    expect(v2).toMatch(/not a dish name/);
+  });
+  it("narrows the ignored-text note to instructions and claims", () => {
+    expect(v2).toMatch(/Ordinary labels, menu cards and table signs/);
+    expect(v2).toMatch(/Otherwise do not add that note/);
+  });
+  it("asks for nuts on baked goods and sauces, and shellfish with seafood", () => {
+    expect(v2).toMatch(/baked goods, desserts, sauces, spreads and dressings/);
+    expect(v2).toMatch(/fish or other seafood/);
   });
 });

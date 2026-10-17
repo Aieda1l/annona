@@ -6,7 +6,13 @@ import { VisionModelOutput, VisionSuggestion, err, ok, type ProviderMode, type R
 export const PROMPT_ID = "annona-intake";
 export const PROMPT_VERSION = "v1";
 
-export type VisionMeta = { provider: "gemini" | "fake"; model: string | null; mode: ProviderMode };
+export type VisionMeta = {
+  provider: "gemini" | "fake";
+  model: string | null;
+  mode: ProviderMode;
+  /** Prompt version to stamp; defaults to v1 (the fake provider and older callers). */
+  prompt_version?: string;
+};
 
 /** PROMPT_EVAL §6 U3 word list. Matched case-insensitively after NFKC and hyphen normalization. */
 const CLAIM_PATTERNS: readonly RegExp[] = [
@@ -79,7 +85,7 @@ export function parseVisionOutput(rawText: string, meta: VisionMeta): Result<Vis
 
   const stamped = VisionSuggestion.safeParse({
     prompt_id: PROMPT_ID,
-    prompt_version: PROMPT_VERSION,
+    prompt_version: meta.prompt_version ?? PROMPT_VERSION,
     provider: meta.provider,
     model: meta.model,
     mode: meta.mode,

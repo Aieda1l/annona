@@ -15,7 +15,7 @@ describe("catalog", () => {
     expect(EVAL_CASES.map((c) => c.id)).toEqual(["T-PE-01", "T-PE-02", "T-PE-03", "T-PE-04", "T-PE-05", "T-PE-06", "T-PE-07", "T-PE-08"]);
     expect(EVAL_CASES.map((c) => c.fixtures)).toEqual([
       ["sandwich_platter"],
-      ["buffet_ambiguous", "buffet_ambiguous_2"],
+      ["buffet_ambiguous", "buffet_ambiguous_2", "buffet_closed"],
       ["dessert_bars"],
       ["blurry"],
       ["non_food"],

@@ -18,7 +18,10 @@ const ok = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function setup(impl: GeminiClientLike["models"]["generateContent"], extra: { timeout_ms?: number } = {}) {
+function setup(
+  impl: GeminiClientLike["models"]["generateContent"],
+  extra: Partial<Pick<Parameters<typeof createGeminiProvider>[0], "timeout_ms" | "max_attempts" | "onAttempt" | "promptVersion">> = {},
+) {
   const generateContent = vi.fn(impl);
   const provider = createGeminiProvider({ client: { models: { generateContent } }, model: MODEL, ...extra });
   return { provider, generateContent };
@@ -175,7 +178,7 @@ describe("provider failures -> PROVIDER_UNAVAILABLE, never fake output", () => {
       const { provider } = setup((req) => {
         signal = (req as { config: { abortSignal: AbortSignal } }).config.abortSignal;
         return new Promise(() => {});
-      }, { timeout_ms: 1000 });
+      }, { timeout_ms: 1000, max_attempts: 1 });
       const pending = analyze(provider);
       await vi.advanceTimersByTimeAsync(1000);
       const r = await pending;
@@ -190,6 +193,135 @@ describe("provider failures -> PROVIDER_UNAVAILABLE, never fake output", () => {
       await analyze(provider);
       expect(vi.getTimerCount()).toBe(0);
     });
+  });
+});
+
+describe("retry: one retry on retryable provider failures", () => {
+  const httpErr = (status: number) => Object.assign(new Error("x"), { status });
+
+  it.each([429, 500, 503])("retries once after HTTP %i and returns the second answer", async (status) => {
+    const { provider, generateContent } = setup(async () => ok());
+    generateContent.mockRejectedValueOnce(httpErr(status));
+    const r = await analyze(provider);
+    expect(r.ok).toBe(true);
+    expect(generateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a network error without a status", async () => {
+    const { provider, generateContent } = setup(async () => ok());
+    generateContent.mockRejectedValueOnce(new TypeError("fetch failed"));
+    expect((await analyze(provider)).ok).toBe(true);
+    expect(generateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([400, 403, 404])("does not retry HTTP %i", async (status) => {
+    const { provider, generateContent } = setup(async () => Promise.reject(httpErr(status)));
+    const r = await analyze(provider);
+    expect(r.ok).toBe(false);
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a safety block", async () => {
+    const { provider, generateContent } = setup(async () => ok({ candidates: [{ finishReason: "SAFETY" }] }));
+    expect((await analyze(provider)).ok).toBe(false);
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["non-JSON text", { text: "not json" }],
+    ["a safety claim", { text: JSON.stringify({ ...modelOutput(), uncertainty_notes: ["These look nut-free."] }) }],
+  ])("does not retry bad model output (%s): no re-rolling until it passes", async (_label, over) => {
+    const { provider, generateContent } = setup(async () => ok(over));
+    const r = await analyze(provider);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe("AI_OUTPUT_INVALID");
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after the second failure, reporting PROVIDER_UNAVAILABLE", async () => {
+    const { provider, generateContent } = setup(async () => Promise.reject(httpErr(503)));
+    const r = await analyze(provider);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatchObject({ code: "PROVIDER_UNAVAILABLE", retryable: true });
+    expect(generateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it("max_attempts: 1 disables the retry", async () => {
+    const { provider, generateContent } = setup(async () => Promise.reject(httpErr(503)), { max_attempts: 1 });
+    await analyze(provider);
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports every attempt through onAttempt", async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const { provider, generateContent } = setup(async () => ok(), { onAttempt: (e) => events.push(e as unknown as Record<string, unknown>) });
+    generateContent.mockRejectedValueOnce(httpErr(503));
+    await analyze(provider);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ attempt: 1, ok: false, error_code: "PROVIDER_UNAVAILABLE", retryable: true });
+    expect(events[1]).toMatchObject({ attempt: 2, ok: true });
+    expect(typeof events[0]!.ms).toBe("number");
+  });
+
+  describe("with timeouts", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("a stalled first attempt is cut at the attempt timeout and the retry succeeds", async () => {
+      const signals: AbortSignal[] = [];
+      const { provider, generateContent } = setup(async () => ok(), { timeout_ms: 7000 });
+      generateContent.mockImplementationOnce((req) => {
+        signals.push((req as { config: { abortSignal: AbortSignal } }).config.abortSignal);
+        return new Promise(() => {});
+      });
+      const pending = analyze(provider);
+      await vi.advanceTimersByTimeAsync(6999);
+      expect(generateContent).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      const r = await pending;
+      expect(r.ok).toBe(true);
+      expect(generateContent).toHaveBeenCalledTimes(2);
+      expect(signals[0]!.aborted).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("two stalled attempts finish within the 15 s total budget, with fresh abort signals", async () => {
+      const signals: AbortSignal[] = [];
+      const { provider } = setup((req) => {
+        signals.push((req as { config: { abortSignal: AbortSignal } }).config.abortSignal);
+        return new Promise(() => {});
+      });
+      let done = false;
+      const pending = analyze(provider).then((r) => ((done = true), r));
+      await vi.advanceTimersByTimeAsync(13_999);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const r = await pending;
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatchObject({ code: "PROVIDER_UNAVAILABLE", retryable: true });
+      expect(signals).toHaveLength(2);
+      expect(signals[0]).not.toBe(signals[1]);
+      expect(signals.every((s) => s.aborted)).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+});
+
+describe("prompt version", () => {
+  const textOf = (generateContent: ReturnType<typeof setup>["generateContent"]) =>
+    (generateContent.mock.calls[0]![0] as { contents: { parts: { text?: string }[] }[] }).contents[0]!.parts[1]!.text!;
+
+  it("defaults to v1 and stamps it", async () => {
+    const { provider } = setup(async () => ok());
+    const r = await analyze(provider);
+    expect(r.ok && r.data.prompt_version).toBe("v1");
+  });
+
+  it("v2 loads the v2 file and stamps v2", async () => {
+    const { provider, generateContent } = setup(async () => ok(), { promptVersion: "v2" });
+    const r = await analyze(provider);
+    expect(r.ok && r.data.prompt_version).toBe("v2");
+    expect(textOf(generateContent)).toContain("Confidence belongs to each dish name");
   });
 });
 

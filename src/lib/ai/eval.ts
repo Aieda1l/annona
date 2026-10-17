@@ -6,17 +6,16 @@ import type { VisionProvider } from "@/contracts";
 import { EVAL_CASES, scoreRun, summarizeCase, type RunScore } from "./eval-cases";
 import { buildYamlRecord, formatTable, type CaseResult, type RunContext } from "./eval-report";
 import { createFakeVisionProvider } from "./fake";
-import { createGeminiProvider } from "./gemini";
+import { createGeminiProvider, DEFAULT_PROMPT_VERSION, PROMPT_VERSIONS, type PromptVersion } from "./gemini";
 
 // Prompt eval runner (PROMPT_EVAL §5-§6, T-PE-01..08).
 //   pnpm eval:intake                         fake provider: a HARNESS CHECK only, never a model result
 //   VISION_PROVIDER=gemini GEMINI_API_KEY=… pnpm eval:intake          real model, API key
 //   VISION_PROVIDER=gemini GOOGLE_CLOUD_PROJECT=<id> pnpm eval:intake real model, Vertex AI with ADC (no key)
-// Options: --runs N (default 3)  --cases T-PE-01,T-PE-03  --out <file> (YAML records; otherwise printed)
+// Options: --prompt-version v1|v2 (default: the adapter default)  --runs N (default 3)  --cases T-PE-01,T-PE-03  --out <file> (YAML records; otherwise printed)
 //          Cases with several fixtures run --runs times per image. --images-dir <dir>  read <fixture>.jpg from another directory (for images that must not be committed)
 // Use synthetic photos only. Credentials are never printed or written; failures are reported by error code.
 
-const PROMPT_VERSION = "v1";
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_IMAGES = "fixtures/intake/images";
 
@@ -59,14 +58,14 @@ function commitSha(): string {
 
 type Built = { provider: VisionProvider; mode: "real" | "fake"; configuredModel: string | null; auth: string; location: string | null };
 
-function buildProvider(): Built {
+function buildProvider(promptVersion: PromptVersion, onAttempt: () => void): Built {
   if (process.env.VISION_PROVIDER !== "gemini") {
     return { provider: createFakeVisionProvider(), mode: "fake", configuredModel: null, auth: "none (fake)", location: null };
   }
   const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (apiKey) {
-    return { provider: createGeminiProvider({ client: new GoogleGenAI({ apiKey }), model }), mode: "real", configuredModel: model, auth: "api_key", location: null };
+    return { provider: createGeminiProvider({ client: new GoogleGenAI({ apiKey }), model, promptVersion, onAttempt }), mode: "real", configuredModel: model, auth: "api_key", location: null };
   }
   const project = process.env.GOOGLE_CLOUD_PROJECT?.trim();
   if (!project) {
@@ -75,7 +74,7 @@ function buildProvider(): Built {
   }
   const location = process.env.GOOGLE_CLOUD_LOCATION?.trim() || "global";
   const client = new GoogleGenAI({ vertexai: true, project, location });
-  return { provider: createGeminiProvider({ client, model }), mode: "real", configuredModel: model, auth: "vertex_adc", location };
+  return { provider: createGeminiProvider({ client, model, promptVersion, onAttempt }), mode: "real", configuredModel: model, auth: "vertex_adc", location };
 }
 
 async function main() {
@@ -86,7 +85,11 @@ async function main() {
   if (cases.length === 0) fail(`No matching cases. Known: ${EVAL_CASES.map((c) => c.id).join(", ")}`);
 
   const imagesDir = join(process.cwd(), arg("images-dir") ?? DEFAULT_IMAGES);
-  const built = buildProvider();
+  const requested = arg("prompt-version") ?? DEFAULT_PROMPT_VERSION;
+  if (!(PROMPT_VERSIONS as readonly string[]).includes(requested)) fail(`--prompt-version must be one of ${PROMPT_VERSIONS.join(", ")}.`);
+  const promptVersion = requested as PromptVersion;
+  let attemptsInRun = 0;
+  const built = buildProvider(promptVersion, () => attemptsInRun++);
   const results: CaseResult[] = [];
   const modelsSeen = new Set<string>();
 
@@ -101,9 +104,11 @@ async function main() {
     for (const fixture of c.fixtures) {
       const bytes_base64 = readFileSync(join(imagesDir, `${fixture}.jpg`)).toString("base64");
       for (let i = 0; i < runs; i++) {
+        attemptsInRun = 0;
         const started = performance.now();
         const outcome = await built.provider.analyzeFoodImage({ image: { mime: "image/jpeg", bytes_base64 } });
         const score = scoreRun(c, outcome, Math.round(performance.now() - started), fixture);
+        if (attemptsInRun > 0) score.attempts = attemptsInRun;
         if (score.suggestion?.model) modelsSeen.add(score.suggestion.model);
         scores.push(score);
       }
@@ -112,7 +117,7 @@ async function main() {
   }
 
   const ctx: RunContext = {
-    prompt_version: PROMPT_VERSION,
+    prompt_version: promptVersion,
     // The model ID the API reported, not the one we asked for.
     model: built.mode === "fake" ? null : modelsSeen.size > 0 ? [...modelsSeen].join(", ") : built.configuredModel,
     mode: built.mode,

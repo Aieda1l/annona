@@ -27,8 +27,16 @@ export type GeminiClientLike = {
   };
 };
 
-export const DEFAULT_PROMPT_PATH = "src/lib/ai/prompts/annona-intake.v1.md";
-export const GEMINI_TIMEOUT_MS = 15_000;
+export const PROMPT_VERSIONS = ["v1", "v2"] as const;
+export type PromptVersion = (typeof PROMPT_VERSIONS)[number];
+/** Stays v1 until a version passes the release rule (docs/PROMPT_EVAL.md §6); flip this one constant then. */
+export const DEFAULT_PROMPT_VERSION: PromptVersion = "v1";
+export const promptPathFor = (version: PromptVersion) => `src/lib/ai/prompts/annona-intake.${version}.md`;
+
+// Total budget stays 15 s (D-012): two attempts of 7 s. A typical call takes about 2 s; the retry exists for the
+// occasional stall. Vision has no side effects, so retrying a retryable provider failure is safe.
+export const GEMINI_ATTEMPT_TIMEOUT_MS = 7_000;
+export const GEMINI_MAX_ATTEMPTS = 2;
 const MAX_HINT_CHARS = 200;
 
 /** Finish reasons that mean the provider declined to answer: a blocked photo, not bad model output. */
@@ -73,20 +81,86 @@ function classify(error: unknown): Result<VisionSuggestion> {
   return unavailable(`Gemini request failed (HTTP ${status})`, status === 429 || status >= 500, { status });
 }
 
+export type GeminiAttemptEvent = { attempt: number; ok: boolean; error_code?: string; retryable?: boolean; ms: number };
+
 export function createGeminiProvider(config: {
   client: GeminiClientLike;
   model: string;
+  /** Per-attempt timeout. */
   timeout_ms?: number;
-  /** Test seam; defaults to the v1 prompt file under the process working directory. */
+  /** Total attempts, including the first. 1 disables the retry. */
+  max_attempts?: number;
+  promptVersion?: PromptVersion;
+  /** Called after every attempt (for evals and logs). Receives no request or response content. */
+  onAttempt?: (event: GeminiAttemptEvent) => void;
+  /** Test seam; overrides the prompt file for the version. */
   promptPath?: string;
 }): VisionProvider {
-  const { client, model, timeout_ms = GEMINI_TIMEOUT_MS } = config;
+  const { client, model, timeout_ms = GEMINI_ATTEMPT_TIMEOUT_MS, max_attempts = GEMINI_MAX_ATTEMPTS } = config;
+  const promptVersion = config.promptVersion ?? DEFAULT_PROMPT_VERSION;
 
   let template: string | null = null;
   try {
-    template = readFileSync(config.promptPath ?? join(process.cwd(), DEFAULT_PROMPT_PATH), "utf8");
+    template = readFileSync(config.promptPath ?? join(process.cwd(), promptPathFor(promptVersion)), "utf8");
   } catch {
     template = null; // reported as status "misconfigured"; every call fails closed
+  }
+
+  async function attemptOnce(
+    prompt: string,
+    image: { mime: string; bytes_base64: string },
+  ): Promise<Result<VisionSuggestion>> {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<Result<VisionSuggestion>>((resolve) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        resolve(unavailable("Gemini request timed out", true));
+      }, timeout_ms);
+    });
+
+    const call = (async (): Promise<Result<VisionSuggestion>> => {
+      try {
+        const response = await client.models.generateContent({
+          model,
+          contents: [
+            {
+              role: "user",
+              parts: [{ inlineData: { mimeType: image.mime, data: image.bytes_base64 } }, { text: prompt }],
+            },
+          ],
+          config: {
+            responseMimeType: "application/json",
+            responseJsonSchema: RESPONSE_JSON_SCHEMA,
+            abortSignal: controller.signal,
+          },
+        });
+
+        const blockReason = response.promptFeedback?.blockReason;
+        const finishReason = response.candidates?.[0]?.finishReason;
+        if (
+          (blockReason && blockReason !== "BLOCKED_REASON_UNSPECIFIED") ||
+          (finishReason && BLOCKED_FINISH_REASONS.has(finishReason))
+        ) {
+          return unavailable("Gemini declined to process this photo", false, { reason: blockReason ?? finishReason });
+        }
+
+        return parseVisionOutput(response.text ?? "", {
+          provider: "gemini",
+          model: response.modelVersion || model,
+          mode: "real",
+          prompt_version: promptVersion,
+        });
+      } catch (error) {
+        return classify(error);
+      }
+    })();
+
+    try {
+      return await Promise.race([call, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   return {
@@ -95,62 +169,25 @@ export function createGeminiProvider(config: {
     status: template === null ? "misconfigured" : "ok",
     async analyzeFoodImage({ image, donor_hint }) {
       if (template === null) return unavailable("Vision prompt is not available", false);
+      const prompt = renderPrompt(template, donor_hint);
 
-      const controller = new AbortController();
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timeout = new Promise<Result<VisionSuggestion>>((resolve) => {
-        timer = setTimeout(() => {
-          controller.abort();
-          resolve(unavailable("Gemini request timed out", true));
-        }, timeout_ms);
-      });
-
-      const call = (async (): Promise<Result<VisionSuggestion>> => {
-        try {
-          const response = await client.models.generateContent({
-            model,
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  { inlineData: { mimeType: image.mime, data: image.bytes_base64 } },
-                  { text: renderPrompt(template, donor_hint) },
-                ],
-              },
-            ],
-            config: {
-              responseMimeType: "application/json",
-              responseJsonSchema: RESPONSE_JSON_SCHEMA,
-              abortSignal: controller.signal,
-            },
-          });
-
-          const blockReason = response.promptFeedback?.blockReason;
-          const finishReason = response.candidates?.[0]?.finishReason;
-          if (
-            (blockReason && blockReason !== "BLOCKED_REASON_UNSPECIFIED") ||
-            (finishReason && BLOCKED_FINISH_REASONS.has(finishReason))
-          ) {
-            return unavailable("Gemini declined to process this photo", false, {
-              reason: blockReason ?? finishReason,
-            });
-          }
-
-          return parseVisionOutput(response.text ?? "", {
-            provider: "gemini",
-            model: response.modelVersion || model,
-            mode: "real",
-          });
-        } catch (error) {
-          return classify(error);
-        }
-      })();
-
-      try {
-        return await Promise.race([call, timeout]);
-      } finally {
-        clearTimeout(timer);
+      let result: Result<VisionSuggestion> = unavailable("Gemini request failed", true);
+      for (let attempt = 1; attempt <= Math.max(1, max_attempts); attempt++) {
+        const started = Date.now();
+        result = await attemptOnce(prompt, image);
+        const failure = result.ok ? null : result.error;
+        config.onAttempt?.({
+          attempt,
+          ok: result.ok,
+          ...(failure ? { error_code: failure.code, retryable: failure.retryable } : {}),
+          ms: Date.now() - started,
+        });
+        // Retry only retryable provider failures (stalls, network, 429, 5xx). Never retry a safety block, a 4xx,
+        // or bad model output: re-rolling until the output passes would defeat the fail-closed guard.
+        const retryable = failure !== null && failure.code === "PROVIDER_UNAVAILABLE" && failure.retryable;
+        if (!retryable) return result;
       }
+      return result;
     },
   };
 }

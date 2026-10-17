@@ -79,3 +79,11 @@ Full eval on the committed fixtures (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs
 **Decisions needed:** (1) T-PE-02: neither image is truly unidentifiable, and "every dish low confidence" fails whenever anything is identifiable. Pick: a genuinely unidentifiable photo, v2 guidance on what `confidence` means, or (deliberately) a different criterion. (2) Latency: occasional stalls (24 s, one no response in 60 s; about 5 of 100 calls over 15 s) cost drafts via the 15 s timeout. Consider a shorter timeout with one retry; the contract and D-012 would need to agree.
 
 **Next smallest action:** draft `annona-intake.v2.md` (narrow the injection-note rule; add nuts, shellfish and confidence-meaning guidance) and rerun.
+
+## 2026-10-17 — v2 prompt, adapter retry, third buffet image
+
+**Delivered (local):** `annona-intake.v2.md` (confidence per named dish, narrowed ignored-text note, nuts and shellfish rules); the adapter now retries once on retryable provider failures (two 7 s attempts keep the 15 s total from D-012; never for safety blocks, 4xx or bad output) and reports each attempt through `onAttempt`; prompt versions selectable (`promptVersion`, `--prompt-version`; default stays v1); `buffet_closed.jpg` added to T-PE-02 (it carries a stock watermark, noted in PROVENANCE).
+
+**Result:** v1 and v2 each pass 5 of 8 on identical fixtures. v2 fixes the buffet crop (3/3 vs 1/3) and shellfish (10/10 vs 1/10) but regresses on the blurry photo (rated `usable` 3 of 10 times; v1 was 10 of 10 `poor`). Details and a comparison table in `docs/PROMPT_EVAL.md` §11.
+
+**Decisions needed:** (1) remove `buffet_ambiguous_2` from T-PE-02: the model is right to call the visible fried rice `high`, so the case cannot pass for a correct model. (2) Approve a v3 draft: restore the blurry-photo behavior (move or strengthen the poor-photo rule), have `not_food` photos use "No food is visible in the photo.", and add a sauces-and-seasonings rule for soy and wheat. v3 is a new file and a new full run.

@@ -37,6 +37,8 @@ export type RunScore = {
   suggestion: VisionSuggestion | null;
   /** The fixture image this run used. */
   fixture: string;
+  /** Provider attempts for this run (2 means the retry was used). Set by the runner; absent for the fake. */
+  attempts?: number;
 };
 
 const text = (s: VisionSuggestion) => freeTextFields(s).map(([, v]) => v);
@@ -61,7 +63,7 @@ export const EVAL_CASES: EvalCase[] = [
   },
   {
     id: "T-PE-02",
-    fixtures: ["buffet_ambiguous", "buffet_ambiguous_2"],
+    fixtures: ["buffet_ambiguous", "buffet_ambiguous_2", "buffet_closed"],
     expected: ["all dishes low confidence (or image not usable)", ">= 2 uncertainty notes", ">= 1 question"],
     mustList: [],
     recallRunFraction: 1,

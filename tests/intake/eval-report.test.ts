@@ -70,12 +70,21 @@ describe("multi-fixture cases", () => {
 
   it("lists every fixture path and tags each observed run with its fixture", () => {
     const rec = buildYamlRecord(real, two);
-    expect(rec).toContain('fixture: ["fixtures/intake/images/buffet_ambiguous.jpg","fixtures/intake/images/buffet_ambiguous_2.jpg"]');
+    expect(rec).toContain('fixture: ["fixtures/intake/images/buffet_ambiguous.jpg","fixtures/intake/images/buffet_ambiguous_2.jpg","fixtures/intake/images/buffet_closed.jpg"]');
     expect(rec).toContain('"fixture":"buffet_ambiguous_2"');
   });
 
-  it("shows both fixtures in the table", () => {
-    expect(formatTable(real, [two])).toMatch(/buffet_ambiguous\+buffet_ambiguous_2/);
+  it("shows both fixtures in the table, with a pass count per image", () => {
+    const t = formatTable(real, [two]);
+    expect(t).toMatch(/buffet_ambiguous\+buffet_ambiguous_2/);
+    expect(t).toMatch(/per image: buffet_ambiguous 1\/1, buffet_ambiguous_2 1\/1/);
+  });
+
+  it("reports retried runs in the table and in each observed run", () => {
+    const scores = two.status === "ran" ? two.scores.map((s, i) => ({ ...s, attempts: i === 0 ? 2 : 1 })) : [];
+    const withRetry: CaseResult = { status: "ran", case: c2, scores, summary: summarizeCase(c2, scores) };
+    expect(formatTable(real, [withRetry])).toMatch(/1 run\(s\) retried/);
+    expect(buildYamlRecord(real, withRetry)).toContain('"attempts":2');
   });
 });
 
