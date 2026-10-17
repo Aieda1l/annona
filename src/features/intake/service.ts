@@ -6,6 +6,7 @@ import {
   type DonationCard,
   type Result,
   type VisionProvider,
+  type VerificationLinkView,
   type VisionSuggestion,
 } from "@/contracts";
 import { validateImage, type ImageSource } from "./image-validation";
@@ -17,7 +18,13 @@ import { computeEditedFromAi, parseVerifiedFacts } from "./verified-facts";
 
 export type IntakeCore = Pick<
   typeof import("@/core"),
-  "storeDonationImage" | "createDraft" | "attachAiResult" | "submitVerification" | "getDonationCard"
+  | "storeDonationImage"
+  | "createDraft"
+  | "attachAiResult"
+  | "submitVerification"
+  | "getDonationCard"
+  | "getVerificationLinkView"
+  | "getVerificationLinkImage"
 >;
 
 export const VISION_TIMEOUT_MS = 15_000;
@@ -105,7 +112,70 @@ export function createIntakeService(config: { core: IntakeCore; vision: VisionPr
     return submitted.ok ? ok(submitted.data.card) : submitted;
   }
 
-  return { createDraftFromImage, submitDonorVerification };
+  /** Link path (CONTRACTS section 8.4). Opening a link never consumes it. */
+  async function getLinkVerification(input: { token: string }, deps?: Deps): Promise<Result<VerificationLinkView>> {
+    return core.getVerificationLinkView(input, deps);
+  }
+
+  async function getLinkVerificationImage(
+    input: { token: string },
+    deps?: Deps,
+  ): Promise<Result<{ mime: string; bytes: Uint8Array }>> {
+    return core.getVerificationLinkImage(input, deps);
+  }
+
+  /**
+   * Same parsing and edited_from_ai code as the web path. Facts are parsed first, so a schema-invalid body makes no
+   * core call and the link stays live; core consumes the link only on a successful submit (one transaction).
+   */
+  async function submitDonorVerificationByLink(
+    input: { token: string; raw: unknown },
+    deps?: Deps,
+  ): Promise<Result<VerificationLinkView>> {
+    const facts = parseVerifiedFacts(input.raw);
+    if (!facts.ok) return facts;
+
+    const view = await core.getVerificationLinkView({ token: input.token }, deps);
+    if (!view.ok) return view;
+
+    const submitted = await core.submitVerification(
+      {
+        auth: { link_token: input.token },
+        donation_id: view.data.donation_id,
+        facts: facts.data,
+        edited_from_ai: computeEditedFromAi(view.data.ai_suggestion, facts.data),
+      },
+      deps,
+    );
+    if (!submitted.ok) return submitted;
+
+    const { card, resubmit_token } = submitted.data;
+    // The submit already succeeded and consumed the link, so nothing below may turn it into an error. The old
+    // link's expiry is the fallback if the fresh link's view cannot be read.
+    let link_expires_at = view.data.link_expires_at;
+    if (resubmit_token) {
+      try {
+        const fresh = await core.getVerificationLinkView({ token: resubmit_token }, deps);
+        if (fresh.ok) link_expires_at = fresh.data.link_expires_at;
+      } catch {
+        /* keep the fallback */
+      }
+    }
+    return ok({
+      donation_id: card.id,
+      donor_display_name: card.donor_display_name,
+      status: card.status,
+      ai_status: card.ai_status,
+      ai_suggestion: card.ai_suggestion,
+      verified_facts: card.verified_facts,
+      decision: card.decision,
+      link_expires_at,
+      resubmit_token,
+      is_synthetic: true,
+    });
+  }
+
+  return { createDraftFromImage, submitDonorVerification, getLinkVerification, getLinkVerificationImage, submitDonorVerificationByLink };
 }
 
 export type IntakeService = ReturnType<typeof createIntakeService>;

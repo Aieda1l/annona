@@ -55,12 +55,13 @@ D-022: the VEYZL evidence PR is the **first intake/AI PR opened after CP2**, nor
 
 ## Remaining work (priority order)
 
-1. **T-IN-13: `LinkVerification` component + `src/features/intake/http/verify.ts`** (`VIEW`, `IMAGE`, `SUBMIT`) against a core double (both are still stubs on `main`; Dev 4's `/v` page mounts the component). Spec: `docs/TEST_PLAN.md` T-IN-13, `docs/CONTRACTS.md` section 8.4 and 10, `prompts/dev-01-vision-intake.md` section 6 step 6.
-2. **Real-gate verification:** re-run T-IN-08 and replace the `it.todo` in `tests/intake/verification-form.test.tsx` (T-IN-12: unchanged submit evaluates to `needs_review`) against the real `evaluateEligibility` (now on `main`).
-3. Review follow-ups from PR #5 (`gh pr view 5`): widen the claim-word list together with PROMPT_EVAL U3 (`best before`, `vegan`, `hypoallergenic`, unhyphenated `gluten free`, `no nuts`, `without dairy`, `kept chilled`, `fahrenheit`...); `service.ts` should re-parse provider results with `VisionSuggestion` and check `mode`; `Number("0x10")` accepted as servings (use `/^\\d+$/`); content-length check before buffering; a11y (fieldset/legend, focus the alert); transparent PNG to JPEG goes black; `ImageBitmap` never closed.
-4. Wire handlers to real core once 2(a) merges (T-IN-08 against real core with PGlite store).
-5. Prompt work only if time allows (v4 idea: merge the allergen rules into one checklist; or try `gemini-3.8-flash` as base). Do not tune endlessly: 10-sample probes beat 3-run evals.
-6. Coordinate HEIC with Ronnie; open the adapter PR after CP2 once Cyrus confirms.
+Done since this file was first written (2026-10-17 evening): T-IN-08 and T-IN-12 verified against the real gate (`tests/intake/real-gate.test.ts`), and T-IN-13 (`LinkVerification`, `src/features/intake/http/verify.ts`, service link functions) against a core double. Details in `docs/handoffs/dev-1.md`.
+
+1. **Wire to real core when Rui merges 2(a) and 2(d)** (`storeDonationImage`, `createDraft`, `attachAiResult`, `getDonationCard`, `getVerificationLinkView`): add integration tests against the real store (PGlite) and re-run T-IN-08 there; fix anything the double hid.
+2. Review follow-ups from PR #5 (`gh pr view 5`): widen the claim-word list together with PROMPT_EVAL U3 (`best before`, `vegan`, `hypoallergenic`, unhyphenated `gluten free`, `no nuts`, `without dairy`, `kept chilled`, `fahrenheit`...); `service.ts` should re-parse provider results with `VisionSuggestion` and check `mode`; `Number("0x10")` accepted as servings (use `/^\d+$/`); content-length check before buffering; a11y (fieldset/legend, focus the alert); transparent PNG to JPEG goes black; `ImageBitmap` never closed.
+3. Coordinate HEIC with Ronnie (`HEIC_ACCEPTED`, PR #19); ask Cyrus about CP2/VEYZL; open the adapter PR after CP2.
+4. Prompt work only if time allows (v4 idea: merge the allergen rules into one checklist; or try `gemini-3.8-flash` as base). Do not tune endlessly: 10-sample probes beat 3-run evals.
+5. Someone with a key runs the API-key smoke test.
 
 ## How to verify a change
 
