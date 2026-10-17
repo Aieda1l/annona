@@ -79,6 +79,20 @@ describe("DonorDonationView", () => {
     expect(text).not.toContain(offer.provider_message_id ?? "no-id");
   });
 
+  it("renders several offers when the donor projection has dropped offer ids, without key warnings", () => {
+    const base = cardFor("offered").active_offers[0]!;
+    const projected = [0, 1].map((n) => ({
+      status: "open" as const,
+      sent_at: `2026-10-17T23:0${n}:00.000Z`,
+      expires_at: `2026-10-17T23:3${n}:00.000Z`,
+    })) as unknown as typeof base[];
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<DonorDonationView card={{ ...cardFor("offered"), active_offers: projected, offer_history: [] }} />);
+    expect(screen.getByRole("list", { name: /offers/i }).querySelectorAll("li")).toHaveLength(2);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
   it("after a claim, shows the assignment exactly as the server returned it, and the handoff as simulated", () => {
     render(<DonorDonationView card={claimedCard} />);
     expect(screen.getByTestId("donor-assignment")).toHaveTextContent(claimedCard.assignment!.courier_display_name);
@@ -178,6 +192,21 @@ describe("LiveDonorDonation", () => {
     expect(screen.getByTestId("status-badge")).toBeInTheDocument();
     await flush(2000);
     expect(screen.queryByText(/stale/i)).toBeNull();
+  });
+
+  it("applies a response that is slower than the poll interval instead of starving", async () => {
+    let calls = 0;
+    const fetchMock = vi.fn(() => {
+      calls += 1;
+      return new Promise<Response>((resolve) =>
+        setTimeout(() => resolve(new Response(JSON.stringify({ ok: true, data: eligibleCard }), { status: 200 })), 5000),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LiveDonorDonation id={eligibleCard.id} />);
+    await flush(5100);
+    expect(calls).toBe(1); // no second request piled on while the first is in flight
+    expect(screen.getByTestId("status-badge")).toHaveAttribute("data-status", "eligible");
   });
 
   it("does not poll while the tab is hidden", async () => {

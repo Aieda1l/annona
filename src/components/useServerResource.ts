@@ -11,18 +11,23 @@ export type ResourceFailure = { code: string; message: string };
  * - On failure the last good data is kept with its failure code (the caller labels it stale); nothing is invented.
  * - `lastGoodAt` is the server `Date` header of the last good response; the browser clock is never used.
  */
+const REQUEST_TIMEOUT_MS = 10_000;
+
 export function useServerResource<T>(url: string, pollMs = 2000) {
   const [data, setData] = useState<T | null>(null);
   const [failure, setFailure] = useState<ResourceFailure | null>(null);
   const [lastGoodAt, setLastGoodAt] = useState<string | null>(null);
   const seq = useRef(0);
+  const inFlight = useRef(false);
 
   const reload = useCallback(async () => {
-    if (document.hidden) return;
+    // One request at a time: a response slower than pollMs must still be applied, not superseded forever.
+    if (document.hidden || inFlight.current) return;
+    inFlight.current = true;
     const mine = ++seq.current;
     const latest = () => mine === seq.current;
     try {
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
       const body = await res.json().catch(() => null);
       if (!latest()) return;
       if (res.ok && body?.ok) {
@@ -37,6 +42,8 @@ export function useServerResource<T>(url: string, pollMs = 2000) {
       }
     } catch {
       if (latest()) setFailure({ code: "UNREACHABLE", message: "The server could not be reached." });
+    } finally {
+      inFlight.current = false;
     }
   }, [url]);
 

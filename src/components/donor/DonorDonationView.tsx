@@ -80,8 +80,9 @@ export function DonorDonationView({ card }: { card: DonationCard }) {
         <section className="space-y-1">
           <h2 className="text-base font-semibold text-slate-900">Offers</h2>
           <ul aria-label="Offers" className="space-y-1 text-sm">
-            {offers.map((o) => (
-              <li key={o.id} className="rounded border border-slate-300 bg-white px-2 py-1">
+            {offers.map((o, i) => (
+              // The donor projection drops `id` (CONTRACTS section 3.13), so key on what survives it.
+              <li key={`${o.sent_at}-${i}`}className="rounded border border-slate-300 bg-white px-2 py-1">
                 <span className="font-medium capitalize">{o.status.replace(/_/g, " ")}</span> · sent {formatPacific(o.sent_at)} ·
                 expires {formatPacific(o.expires_at)}
               </li>
