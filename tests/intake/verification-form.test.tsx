@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ALLERGENS, scene1_vision_suggestion } from "@/contracts";
 import { VerificationForm } from "@/features/intake/components";
+import { evaluateEligibility } from "@/core/eligibility";
+import { DEMO_POLICY, type DonorProfile } from "@/core/types";
 import { parseVerifiedFacts } from "@/features/intake/verified-facts";
 
 // T-IN-12: the form never pre-fills a fact from the AI suggestion; unknown is the default everywhere.
@@ -122,7 +124,32 @@ describe("submitting", () => {
     expect(parseVerifiedFacts(raw).ok).toBe(true);
   });
 
-  it.todo("submitted unchanged facts evaluate to needs_review against the real evaluateEligibility (needs Dev 2 sub-PR)");
+  it("T-IN-12: facts submitted with only the required fields evaluate to needs_review on the real gate", () => {
+    const { onSubmit } = renderForm();
+    fireEvent.change(screen.getByLabelText(/^Dish name/i), { target: { value: "Sandwich tray" } });
+    fireEvent.change(screen.getByLabelText(/^Servings/i), { target: { value: "24" } });
+    fireEvent.change(screen.getByLabelText(/Latest time you can hand/i), { target: { value: "2026-10-18T10:00" } });
+    fireEvent.click(screen.getByLabelText(/no discard-by time/i));
+    fireEvent.change(screen.getByLabelText(/Your name or role/i), { target: { value: "Catering lead" } });
+    fireEvent.click(screen.getByLabelText(/I attest/i));
+    fireEvent.click(screen.getByRole("button", { name: /submit for review/i }));
+    const parsed = parseVerifiedFacts(onSubmit.mock.calls[0]![0]);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const donor: DonorProfile = {
+      id: "00000000-0000-4000-8000-000000000011",
+      display_name: "Rainier Catering (synthetic)",
+      org_type: "caterer",
+      licensed_food_establishment: true,
+      approval_status: "approved",
+      location: { lat: 47.6, lng: -122.3, area_label: "Capitol Hill", address_line: "1 Synthetic Way" },
+      is_synthetic: true,
+    };
+    const decision = evaluateEligibility({ facts: parsed.data, donor, policy: DEMO_POLICY, now: new Date("2026-10-17T23:10:00.000Z") });
+    expect(decision.outcome).toBe("needs_review");
+    expect(decision.reasons.filter((r) => r.code === "ALLERGEN_UNKNOWN")).toHaveLength(ALLERGENS.length);
+    expect(decision.reasons.some((r) => r.code === "HANDLING_UNKNOWN")).toBe(true);
+  });
 
   it("the AI suggestion does not change what is submitted", () => {
     const strip = (r: unknown) => ({ ...(r as object), attestation: undefined });

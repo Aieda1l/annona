@@ -102,4 +102,8 @@ Full eval on the committed fixtures (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs
 
 **Measured (T-PE-02, 20 runs per configuration):** v2 off 20/20, on 18/20; v3 off 19/20, on 13/20. Latency p50 about 2 s off, 6-7 s on, p95 up to about 14 s. 3.8-flash at the default thinking level took 8-37 s; at LOW 2.6-4.6 s (MINIMAL is rejected). Escalation fires almost only on the deliberately ambiguous buffet photos and does not improve the outcome there.
 
-**Decision needed:** keep it on (as requested) or set `GEMINI_ESCALATION_MODEL=off` for the demo. I recommend off unless a fixture shows a case where the first model fails for lack of capability. Details: `docs/PROMPT_EVAL.md` section 13.
+**Decision (Colin): keep it on for the demo.** `GEMINI_ESCALATION_MODEL=off` is the switch if it causes trouble. Details: `docs/PROMPT_EVAL.md` section 13.
+
+## 2026-10-17 — T-IN-08 and T-IN-12 verified against the real gate
+
+`evaluateEligibility` is real on `main`, so the two items marked UNVERIFIED are now verified: `tests/intake/real-gate.test.ts` runs the facts the intake service sends to core through the real gate (all-unknown allergens give `needs_review` with `ALLERGEN_UNKNOWN` for all nine; AI-listed allergens never fill donor statuses; an unknown sesame the AI omitted stays unknown; `edited_from_ai` is provenance only and the gate has no parameter for it). The T-IN-12 `it.todo` is now a real test in `verification-form.test.tsx`: a form submitted with only the required fields evaluates to `needs_review`. A mutation (AI-listed allergens leaking into donor facts) makes the test fail. Still UNVERIFIED: T-IN-08 against real core persistence (needs Rui's 2(a)).
