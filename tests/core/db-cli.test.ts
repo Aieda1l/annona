@@ -10,6 +10,9 @@ import { runMigrations } from "@/db/run-migrations";
 import { SEED_IDENTITY_IDS, seedStore } from "@/db/seed/seed";
 import { messaging_identities } from "@/db/schema";
 
+// Each test file starts one or more WASM Postgres instances. Under the parallel full run that can exceed the 5 s default.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 // The `pnpm db:*` plumbing: errors never print query params (they can hold phone handles), a Postgres URL is never
 // silently ignored, a close failure never hides the real error, and a re-seed reports identities it could not update.
 

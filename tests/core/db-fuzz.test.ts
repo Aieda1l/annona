@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEMO_ACTORS, OFFER_STATUSES, type DispatchStore } from "@/contracts";
 import { createDispatchStore } from "@/db";
 import { closeStore, storeInternals } from "@/db/internal";
 import { runMigrations } from "@/db/run-migrations";
 import { seedStore } from "@/db/seed/seed";
 import { donations, offers, verification_links } from "@/db/schema";
+
+// Each test file starts one or more WASM Postgres instances. Under the parallel full run that can exceed the 5 s default.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 // Model-based test. Random operations are applied to the database and to a tiny JavaScript model of the
 // rules in ARCHITECTURE section 7; the database must accept exactly what the model accepts.

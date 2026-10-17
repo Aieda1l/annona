@@ -23,14 +23,20 @@ export type EligibilityInput = {
 export function evaluateEligibility({ facts, donor, policy, now }: EligibilityInput): EligibilityDecision {
   // A broken clock is a programmer error (CONTRACTS §1), not a donor-fixable input; never evaluate against it.
   if (!Number.isFinite(now.getTime())) throw new Error("evaluateEligibility: `now` is not a valid Date");
+  // A broken policy number would make a comparison false and silently pass the rule that uses it.
+  if (!Number.isFinite(policy.min_pickup_lead_minutes) || policy.min_pickup_lead_minutes < 0) {
+    throw new Error("evaluateEligibility: policy.min_pickup_lead_minutes must be a finite number >= 0");
+  }
   const reasons: EligibilityReason[] = [];
   const field_states: Record<string, FieldState> = {};
 
   // Fields without a rule are donor-attested values; mark them verified first, rules override below.
+  // An explicit unknown (or null) is never shown as verified, even when the policy raises no reason for it.
+  const verifiedUnlessUnknown = (value: unknown): FieldState => (value === "unknown" || value === null ? "unknown" : "donor_verified");
   for (const key of Object.keys(facts)) {
-    if (key !== "allergens") field_states[key] = "donor_verified";
+    if (key !== "allergens") field_states[key] = verifiedUnlessUnknown((facts as Record<string, unknown>)[key]);
   }
-  for (const a of ALLERGENS) field_states[`allergens.${a}`] = "donor_verified";
+  for (const a of ALLERGENS) field_states[`allergens.${a}`] = verifiedUnlessUnknown(facts.allergens?.[a]);
 
   const add = (code: ReasonCode, message: string, field?: string, state?: FieldState, allergen?: (typeof ALLERGENS)[number]) => {
     reasons.push({
