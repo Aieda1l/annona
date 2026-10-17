@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 const audits = async (type: string) => (await w.db.select().from(audit_events).where(eq(audit_events.type, type as never)));
-const inboundRow = async (id: string, provider: "photon" | "fake" = "fake") =>
+const inboundRow = async (id: string) =>
   (await w.db.select().from(inbound_messages).where(eq(inbound_messages.provider_message_id, id)))[0]!;
 const pmid = () => `m-${randomUUID()}`;
 const result = (over: Partial<InboundResult> = {}): InboundResult => ({ outcome: "processed", command: "help", reply: null, ...over });
