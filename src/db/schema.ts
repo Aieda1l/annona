@@ -262,6 +262,8 @@ export const offers = pgTable(
     index("offers_status_expires_idx").on(t.status, t.expires_at),
     index("offers_courier_status_idx").on(t.courier_id, t.status),
     index("offers_donation_status_idx").on(t.donation_id, t.status),
+    // recordDeliveryStatus finds the offer by Photon's message id.
+    index("offers_provider_message_idx").on(t.provider_message_id).where(sql`${t.provider_message_id} is not null`),
   ],
 ).enableRLS();
 

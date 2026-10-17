@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import {
   INBOUND_REPROCESS_AFTER_SECONDS,
   OutboundMessage,

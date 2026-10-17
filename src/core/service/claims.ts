@@ -10,7 +10,7 @@ import {
   type Deps,
   type DonationStatus,
 } from "@/contracts";
-import { couriers, donations, donors, offers, recipients } from "@/db/schema";
+import { couriers, donations, donors, messaging_identities, offers, recipients } from "@/db/schema";
 import { evaluateEligibility } from "../eligibility";
 import { findCandidates } from "../matching";
 import { writeAudit } from "./audit";
@@ -20,7 +20,6 @@ import {
   checkTransition,
   committedServings,
   LIVE_OFFER_STATUSES,
-  loadMatchWorld,
   releaseIfIdle,
 } from "./lifecycle";
 import { courierFromRow, donorFromRow, isUuid, recipientFromRow, type DonationRow, type OfferRow } from "./map";
@@ -233,13 +232,15 @@ async function recheck(tx: Q, donation: DonationRow, offer: OfferRow, recipient:
   }
   if (decision.outcome !== "eligible") return decision.reasons.map((r) => r.code);
 
-  const world = await loadMatchWorld(tx);
+  // Only this courier's identities matter for the pair check; no need to read every table while holding the recipient lock.
+  const identityRows = await tx.select().from(messaging_identities).where(and(eq(messaging_identities.actor_role, "courier"), eq(messaging_identities.actor_id, offer.courier_id)));
+  const identities = identityRows.map((i) => ({ actor_role: i.actor_role as "courier", actor_id: i.actor_id, status: i.status as "awaiting_join" | "joined" | "opted_out", provider: i.provider as "photon" | "fake" }));
   const pair = findCandidates({
     donation: { id: donation.id, donor_location: { lat: donor.location.lat, lng: donor.location.lng } },
     facts: facts.data,
     recipients: [recipientFromRow(recipient)],
     couriers: [courierFromRow(courierRow)],
-    identities: world.identities,
+    identities,
     policy: { ...policy, response_window_seconds: 0 },
     now,
     excluded_courier_ids: [],

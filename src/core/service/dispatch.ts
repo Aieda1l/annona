@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import {
   ALLERGENS,
   SHORT_CODE_ALPHABET,
@@ -336,10 +336,17 @@ export async function expireDue(deps?: Deps): Promise<{ expired_offer_ids: strin
   const dispatchable = new Set<string>();
 
   // A. Donations past their cutoff: S-08 (not yet claimed) and S-16 (claimed, never collected).
+  // Only donations whose stored cutoff has passed, or that have none stored (the guard then resolves it from the facts), can be due.
+  const sweepAt = clock.now();
   const candidates = await db
     .select({ id: donations.id })
     .from(donations)
-    .where(inArray(donations.status, ["eligible", "unmatched", "offered", "needs_review", "claimed"]));
+    .where(
+      and(
+        inArray(donations.status, ["eligible", "unmatched", "offered", "needs_review", "claimed"]),
+        or(isNull(donations.effective_cutoff_at), lte(donations.effective_cutoff_at, sweepAt)),
+      ),
+    );
   for (const { id } of candidates) {
     await db.transaction(async (tx) => {
       const [row] = await tx.select().from(donations).where(eq(donations.id, id)).for("no key update", { skipLocked: true });
@@ -412,7 +419,10 @@ export async function expireDue(deps?: Deps): Promise<{ expired_offer_ids: strin
   }
 
   // C. Offered donations with no live offer left (a lazy expiry inside claim/decline, a STOP): back to eligible (S-06).
-  const idle = await db.select({ id: donations.id }).from(donations).where(eq(donations.status, "offered"));
+  const idle = await db
+    .select({ id: donations.id })
+    .from(donations)
+    .where(and(eq(donations.status, "offered"), sql`not exists (select 1 from offers o where o.donation_id = ${donations.id} and o.status in ('pending_send', 'open'))`));
   for (const { id } of idle) {
     await db.transaction(async (tx) => {
       const [row] = await tx.select().from(donations).where(eq(donations.id, id)).for("no key update", { skipLocked: true });

@@ -132,7 +132,7 @@ describe("verification link tokens are stored only as a hash", () => {
 describe("indexes for the queries the claim, sibling-supersede and dashboard paths run", () => {
   it("exist", async () => {
     const names = (rowsOf(await storeInternals(store).db.execute(sql`select indexname from pg_indexes where schemaname = 'public'`)) as { indexname: string }[]).map((r) => r.indexname);
-    expect(names).toEqual(expect.arrayContaining(["offers_donation_status_idx", "donations_donor_idx"]));
+    expect(names).toEqual(expect.arrayContaining(["offers_donation_status_idx", "donations_donor_idx", "offers_provider_message_idx"]));
   });
 });
 
