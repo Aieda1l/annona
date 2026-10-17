@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { DonationCard as DonationCardData, DonationStatus } from "@/contracts";
 import { DonationCard } from "./DonationCard";
 import { statusLabel } from "./StatusBadge";
@@ -25,9 +26,11 @@ const HEADING: Partial<Record<DonationStatus, string>> = {
 export function DonationBoard({
   donations,
   counts_by_status,
+  renderActions,
 }: {
   donations: readonly DonationCardData[];
   counts_by_status: Partial<Record<DonationStatus, number>>;
+  renderActions?: (card: DonationCardData) => ReactNode;
 }) {
   return (
     <div className="space-y-6">
@@ -47,7 +50,7 @@ export function DonationBoard({
             </h2>
             <div className="grid gap-3 md:grid-cols-2">
               {cards.map((c) => (
-                <DonationCard key={c.id} card={c} />
+                <DonationCard key={c.id} card={c} actions={renderActions?.(c)} />
               ))}
             </div>
           </section>
