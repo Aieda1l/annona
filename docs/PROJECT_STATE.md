@@ -1,7 +1,7 @@
 # PROJECT_STATE.md — captain's checkpoint
 
 > **Owner:** integration captain (Dev 4) only. Lanes report through `docs/handoffs/dev-N.md` and PR descriptions, never by editing this file (OWNERSHIP §9).
-> **As of:** 2026-10-17 15:55 PDT (updated by the captain after the CP0a/CP0b work and the first integration round; earlier history: written 2026-10-15 pre-event, revised 2026-10-16 for D-029, D-031..D-035). Observed facts are labeled with how they were observed; anything not run is UNVERIFIED.
+> **As of:** 2026-10-17 16:25 PDT (updated by the captain after the CP0a/CP0b work and the first integration round; earlier history: written 2026-10-15 pre-event, revised 2026-10-16 for D-029, D-031..D-035). Observed facts are labeled with how they were observed; anything not run is UNVERIFIED.
 > **Status:** Code exists and is merged on `main` (lanes 1 to 4 slice PRs, contracts, UI kit, env schema). **Nothing has been verified end to end:** the read models behind `/api/dashboard`, the donor checklist component, real Gemini and real Photon are not wired or proven. Every claim below is labeled.
 
 ## 1. Checkpoint summary
@@ -9,9 +9,9 @@
 | Item | Value |
 |---|---|
 | Phase | Event: build window (code allowed since Sat Oct 17, 12:00 PM PDT per the organizers' early start; CLAUDE.md note). |
-| Last known passing build | `main` at **3c43862** (before #9 and #10 merged; re-measure after the next merge), run 2026-10-17 ~15:50 PDT in the captain worktree: `pnpm lint`, `pnpm typecheck`, `pnpm build` exit 0; `pnpm test` exit 0 with **1283 passed, 26 skipped (gated real-Postgres tests), 1 todo** (53 files). PGlite and fakes only; nothing real. |
+| Last known passing build | `main` at **48969b4**, measured 2026-10-17 16:22 PDT in the captain worktree (code identical to f50a0ce; later merges were docs only): `pnpm lint`, `pnpm typecheck`, `pnpm build` exit 0; `pnpm test` exit 0 with **1327 passed, 26 skipped (gated real-Postgres tests), 1 todo** (55 files). PGlite and fakes only; nothing real. |
 | Baseline | **Done.** Annotated tag `baseline` (object 2d7215e) points to **BASELINE_SHA `f750162953dbe37b89111071976c8fd247e96f57`** (commit 2026-10-17 12:12 PDT, contracts v0.4). Repo https://github.com/Aieda1l/annona is **public** (verified with `gh repo view`). |
-| Contracts version | See the `docs/CONTRACTS.md` header (the only place the number is stated, D-034). v0.5 (spec, PR #9) and its types (PR #10) are merged on `main`. |
+| Contracts version | See the `docs/CONTRACTS.md` header (the only place the number is stated, D-034). v0.5 (spec, PR #9, fd2ffe7) and its types (PR #10, f50a0ce) are merged on `main`. |
 | Decisions | D-036, D-038 and D-039 ACCEPTED by the captain 2026-10-17. PR #9 (contracts v0.5) is merged with Dev 3's approval; D-039 was narrowed the same day and its earlier-word blocklist dropped (spec PR #26; code change requested on #16). D-037 PROPOSED. Earlier decisions as in `docs/DECISIONS.md`. |
 | Entry doc | `docs/KICKOFF.md` (D-034) |
 | Next checkpoint | **CP1 Lane slices, Sat 4:00 PM** (partly reached, see below) |
@@ -32,7 +32,7 @@
 
 **Current (observed 2026-10-17 with `git`, `gh`):**
 - Default branch `main`; remote `origin` = https://github.com/Aieda1l/annona, **public**. Tag `baseline` (annotated) at `f750162`.
-- Squash-merged PRs so far are listed in section 9. Open PRs at the time of writing: #9, #10 (captain), #16, #19 (Dev 3), #21 (Dev 2), #22, #23, #24 (Dev 4 docs).
+- Squash-merged PRs so far are listed in section 9. Open PRs at the time of writing: #16, #19 (Dev 3), #21 (Dev 2), #25, #26 (captain). Open issue: #27 (Dev 1: open the Gemini adapter PR).
 - `next dev` writes an untracked `AGENTS.md` at the repo root; it must not be committed (CLAUDE.md).
 
 **Historical (observed 2026-10-15, before kickoff):**
@@ -121,7 +121,7 @@
 | Supabase Postgres | `STORE=postgres`, transaction pooler 6543, `prepare: false` (R-INF-7) | `STORE=pglite` | **PGlite STORE MERGED; Postgres half UNVERIFIED.** Schema, migrations, seed and the PGlite store are merged (#11); the 26 gated Postgres tests (T-CO-23 half, T-CO-17) are skipped for lack of `TEST_DATABASE_URL`. No Supabase project is recorded here. | T-CO-23 migrations + **T-CO-17 (required, D-033)** independent-connection race through the pooler on `TEST_DATABASE_URL`. Until it passes, no race-safety claim anywhere. | Dev 2 (migrations); Dev 4 (project) |
 | Photo intake by message (D-031) | Donor iPhone → Photon attachment → Gemini → `draft_ready` link | Simulated phone with `fixture_id` (fake mode); web upload fallback | **NOT VERIFIED.** Dev 3's photo path is PR #19 (open); the SP-14 result is in the lane handoffs. | SP-14 (MIME, size, retries, HEIC accepted?) then T-MS-19 with `provider_message_id`s | Dev 3 + Dev 1 |
 | Vercel Hobby | Deployed `main` (D-017 step 1) | `next start` locally (step 2), fully local fake (step 3) | **NOT STARTED.** Needs a human for interactive `vercel login` / `vercel link` and a billing check. | T-E2E-05: deployed `/api/health` shows modes; dashboard loads; reset works | Dev 4 |
-| VEYZL | GitHub App on the public repo; evidence PR = first intake/AI PR after CP2 (D-022) | None. Track dropped, not swapped. | **NOT INSTALLED.** Needs an explicit organizer OK (D-022); the evidence PR would be Dev 1's first Gemini-adapter PR after CP2. | Check visible on that PR + a follow-up commit on it fixing a cited finding (R-SP-3) | Dev 4 + Dev 1 (the finding's lane) |
+| VEYZL | GitHub App on the public repo; evidence PR = first intake/AI PR after CP2 (D-022) | None. Track dropped, not swapped. | **BLOCKED.** Creating the VEYZL project for `Aieda1l/annona` was attempted 2026-10-17 and VEYZL refused ("We don't see strong signals for dataset, API, or hybrid AI"): `main` has no real model call (the real provider is a stub; nothing imports `@google/genai`). It detected only false positives ("Food / Nutrition Tracker", low confidence). Unblocks when Dev 1's Gemini adapter is on `main` (issue #27). Updated plan: the evidence PR is the first AI-touching PR after the VEYZL project exists. Unknown: what the audit needs to reach (our AI endpoint requires a donor session) and whether only the default branch is scanned; ask VEYZL support. The organizer-OK condition in D-022 is still unanswered. | Check visible on that PR + a follow-up commit on it fixing a cited finding (R-SP-3) | Dev 4 + Dev 1 (the finding's lane) |
 
 ## 5. Integration blockers (current)
 
@@ -138,6 +138,7 @@
 | IB-8 | Dev 3's review of Dev 2's follow-up PR #21 (including the gate rules it changes, OWNERSHIP section 6) is outstanding, and #16 must drop its earlier-word blocklist to match D-039 (spec PR #26) before it merges. | Dev 3 reviews #21 and updates #16 | Dev 3 |
 | IB-9 | Deployment (Vercel) and the Devpost project shell need a human: interactive logins, billing check, the Devpost form. | A human does them; the Devpost text is drafted in PR #24 | captain + team |
 | IB-10 | The real Photon gateway and the real Gemini adapter have no verified evidence, so the Photon and Gemini tracks cannot be claimed yet. | T-MS-13 / T-E2E-04 and T-IN-10 recorded | Dev 3, Dev 1 |
+| IB-11 | VEYZL project cannot be created until a real Gemini call is on `main`. | Dev 1 opens and merges the adapter PR (issue #27); then the captain creates the project | Dev 1 + captain |
 
 ## 6. Human decisions and questions (open)
 
@@ -199,6 +200,11 @@
 | 13 | #17 /v donor page (Dev 4) | Dev 1 | c9ea7fa | captain: 952 passed | placeholder component | Dev 1 approved (pushed a comment fix) |
 | 14 | #20 donor web upload + status (Dev 4) | Dev 1 | 0225ac8 | captain trial-merge: 1280 passed, lint/typecheck/build 0 | mocked fetch | Dev 1 approved (pushed fixes) |
 | 15 | #18 /v response headers (Dev 4) | captain | 3c43862 | captain: 1283 passed on merged result; production `next start` shows `/v` dynamic with `Referrer-Policy: no-referrer` and `Cache-Control: no-store` | real local server | Dev 2 review comment "approve-ready after one production check" (check done) |
+| 16 | #9 contracts v0.5 spec + D-036..D-039 (captain) | captain | fd2ffe7 | contract tests 47 passed before merge (docs only) | n/a | Dev 2 approved f2cc4c7; Dev 3 approved 64ac044 (bare approval, after saying earlier rechecks were not the sign-off) |
+| 17 | #10 contracts-2: typed profiles, Offer, routes, function types, 11 card fixtures (captain) | captain | f50a0ce | captain, merged result: lint/typecheck/build 0, 1327 passed, 26 skipped, 1 todo (55 files); net diff = the 12 reviewed files | types and fixtures | Dev 3 approved 3037d13; Dev 2 comment "approval stands" (no formal approval). Merge of main pushed after retarget (docs conflicts resolved with main's versions) |
+| 18 | #24 Devpost draft (Dev 4) | Dev 1 | 04b7196 | docs only | n/a | Dev 1 approved |
+| 19 | #23 handoff for slice 2d (Dev 4) | Dev 1 | 7838540 | docs only | n/a | Dev 1 approved |
+| 20 | #22 demo script, draft (Dev 4) | Dev 1 | 48969b4 | docs only | n/a | Dev 1 approved |
 
 ## 10. Environment and accounts
 
