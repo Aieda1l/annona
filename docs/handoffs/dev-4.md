@@ -26,7 +26,7 @@ INTEGRATION STEPS: merge PR #1 (ui-kit) first if desired, then rebase this branc
 
 NEXT SMALLEST ACTION: Slice 2 item 2: poll `GET /api/dashboard` every 2 s on `/operator` with a stale-data error panel.
 
-## Slice 2a — polling + demo controls (feat/dashboard, PR after #2)
+## Slice 2a — polling + demo controls (feat/dashboard, PR #4)
 
 DELIVERED: PR #1 (ui-kit) and #2 (slice 1 + polling) merged. `/operator` polls `GET /api/dashboard` every 2 s (pauses while hidden, stale/error panel, never fabricates). Demo controls (Run tick now, Reset demo with confirm, per-card Dispatch now on `eligible` cards only) appear only when `modes.demo_accelerated` is true. `/operator?fixture=1` renders labeled fixtures.
 
