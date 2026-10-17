@@ -27,14 +27,13 @@ function tokens(text: string | null): string[] {
     .filter((token) => token.length > 0);
 }
 
-// D-039 (CONTRACTS §3.10, narrowed): in a message of 8 words or fewer, STOP, STOPALL and UNSUBSCRIBE opt the sender out
-// wherever they appear. A missed opt-out is the worse failure; an accidental one is undone by texting JOIN (stop_ack
-// says so). An earlier YES/ACCEPT/NO/DECLINE/JOIN blocks the rule (a leading HELP does not), and a STOP that is part of
+// D-039 (CONTRACTS §3.10, narrowed; the earlier-word blocklist was dropped): in a message of 8 words or fewer, STOP,
+// STOPALL and UNSUBSCRIBE opt the sender out wherever they appear, whatever comes before them. A missed opt-out is the
+// worse failure; an accidental one is undone by texting JOIN (stop_ack says so). A STOP that is part of
 // "stop by / at / in / off / over" is ordinary phrasing. END, QUIT and CANCEL are common words, so they count only as the
 // whole message. Longer messages keep the first-token rule.
 const OPT_OUT_WORDS = new Set(["stop", "stopall", "unsubscribe"]);
 const WHOLE_MESSAGE_OPT_OUT_WORDS = new Set(["cancel", "end", "quit"]);
-const BLOCKING_WORDS = new Set(["yes", "accept", "no", "decline", "join"]);
 const STOP_PHRASE_FOLLOWERS = new Set(["by", "at", "in", "off", "over"]);
 const SHORT_MESSAGE_WORDS = 8;
 
@@ -43,7 +42,6 @@ function isOptOut(words: string[]): boolean {
   const lowered = words.map((word) => word.toLowerCase());
   if (lowered.length === 1 && WHOLE_MESSAGE_OPT_OUT_WORDS.has(lowered[0]!)) return true;
   for (const [index, word] of lowered.entries()) {
-    if (BLOCKING_WORDS.has(word)) return false;
     if (!OPT_OUT_WORDS.has(word)) continue;
     if (word === "stop" && STOP_PHRASE_FOLLOWERS.has(lowered[index + 1] ?? "")) continue;
     return true;

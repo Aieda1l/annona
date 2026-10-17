@@ -142,14 +142,36 @@ describe("T-MS-01 opt-out words anywhere in a short message (D-039)", () => {
     expect(parseCommand(text("HELP, stop")).command).toBe("stop");
   });
 
+  // The captain dropped the earlier-word blocklist (D-039, PR #26): a missed opt-out is the worse failure, so an earlier
+  // YES / NO / ACCEPT / DECLINE / JOIN no longer stops "stop" from counting. The `stop by/at/in/off/over` exemption stays.
   it.each([
-    ["yes stop", "accept"],
-    ["ACCEPT K7M3 and stop later", "accept"],
-    ["no stop", "decline"],
-    ["DECLINE then stop", "decline"],
-    ["join and then stop", "join"],
-  ])("%j keeps its first command, because an earlier word blocks the opt-out rule", (input, command) => {
+    "No, stop texting me",
+    "Decline. Stop.",
+    "yes please stop",
+    "I said no. STOP",
+    "join and then stop",
+    "accept stop",
+    "yes stop",
+    "ACCEPT K7M3 and stop later",
+    "no stop",
+    "DECLINE then stop",
+  ])("%j is an opt-out: no earlier command word blocks it", (input) => {
+    expect(parseCommand(text(input))).toEqual({ command: "stop", short_code: null });
+  });
+
+  it.each([
+    ["yes will stop by at 5", "accept"],
+    ["Accepted, will stop by at 5", "unknown"],
+    ["Running late, will stop by at 5", "unknown"],
+    ["ACCEPT K7M3", "accept"],
+    ["YES K7M3", "accept"],
+    ["NO K7M3", "decline"],
+  ])("%j is not an opt-out and is %s", (input, command) => {
     expect(parseCommand(text(input)).command).toBe(command);
+  });
+
+  it("accepts the known trade-off: 'yes, don't stop sending offers' opts the sender out (JOIN undoes it)", () => {
+    expect(parseCommand(text("yes, don't stop sending offers")).command).toBe("stop");
   });
 
   it("honors an opt-out in a message of exactly 8 words but not 9", () => {
