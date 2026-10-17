@@ -73,6 +73,20 @@ describe("body validation", () => {
   });
 });
 
+describe("content-length is checked before the body is read", () => {
+  it("rejects a declared oversize body without reading it", async () => {
+    const { POST, createDraftFromImage } = setup();
+    const req = jsonRequest(URL_, { image }, await cookieFor("donor_rainier"));
+    const text = vi.spyOn(req, "text");
+    req.headers.set("content-length", "3100000");
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect((await body(res)).error?.code).toBe("VALIDATION_FAILED");
+    expect(text).not.toHaveBeenCalled();
+    expect(createDraftFromImage).not.toHaveBeenCalled();
+  });
+});
+
 describe("success paths", () => {
   it("web upload: calls the service with the session actor and source web_upload", async () => {
     const { POST, createDraftFromImage } = setup();

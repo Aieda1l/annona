@@ -115,3 +115,10 @@ Full eval on the committed fixtures (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs
 **Evidence:** 50 new tests (`link-service`, `http-verify`, `link-verification`), core double extended with link functions. Full suite 1512 passed, 28 skipped; typecheck clean; lint 0 errors; `pnpm build` ok.
 
 **UNVERIFIED:** nothing here has run against real core: `getVerificationLinkView` is still a stub on `main` (Rui's 2(d), due about 7:00 PM). Wire and re-run when it lands. The `/v` page (Dev 4) mounts `LinkVerification` with no props, which now works.
+
+## 2026-10-17 evening: PR #5 review follow-ups (worktree-intake-followups)
+
+- Claim guard widened (parse.ts + PROMPT_EVAL U3): unhyphenated `<allergen> free`, `no/without/zero <allergen>`, `best before/by`, `expire(s)`, `vegan`, `hypoallergenic`, `kept chilled/...`, `fahrenheit/celsius`. Ordinary uncertainty wording still passes (tests).
+- `service.ts` re-parses provider results with `VisionSuggestion` and requires `mode` to equal the provider's mode (else `AI_OUTPUT_INVALID`).
+- Servings must match `/^\d+$/` (`1e2`, `0x10` rejected); `readJson` checks `content-length` before buffering.
+- Evidence: typecheck clean; lint 0 errors (1 existing warning in Dev 4's test); vitest 1591 passed, 28 skipped. Not done: a11y, PNG alpha, ImageBitmap close, magic-byte sniff, real-core integration (Rui's 2(a)/2(d) still stubs on origin/main at 16:20).

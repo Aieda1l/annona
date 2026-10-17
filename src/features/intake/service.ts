@@ -9,6 +9,7 @@ import {
   type VerificationLinkView,
   type VisionSuggestion,
 } from "@/contracts";
+import { VisionSuggestion as VisionSuggestionSchema } from "@/contracts";
 import { validateImage, type ImageSource } from "./image-validation";
 import { computeEditedFromAi, parseVerifiedFacts } from "./verified-facts";
 
@@ -36,6 +37,15 @@ export type CreateDraftInput = {
   source_ref?: string;
 };
 
+/** A custom provider could skip parseVisionOutput: re-check the contract (literal flags) and that its mode is honest. */
+function revalidate(suggestion: VisionSuggestion, providerMode: VisionProvider["mode"]): Result<VisionSuggestion> {
+  const parsed = VisionSuggestionSchema.safeParse(suggestion);
+  if (!parsed.success || parsed.data.mode !== providerMode) {
+    return err("AI_OUTPUT_INVALID", "Provider result failed the VisionSuggestion contract");
+  }
+  return ok(parsed.data);
+}
+
 /** Race vision against the timeout. Throws, timeouts and late answers all become PROVIDER_UNAVAILABLE. */
 async function analyze(
   vision: VisionProvider,
@@ -53,7 +63,8 @@ async function analyze(
     err<VisionSuggestion>("PROVIDER_UNAVAILABLE", "Vision provider failed", { retryable: true }),
   );
   try {
-    return await Promise.race([call, timeout]);
+    const result = await Promise.race([call, timeout]);
+    return result.ok ? revalidate(result.data, vision.mode) : result;
   } finally {
     clearTimeout(timer);
   }

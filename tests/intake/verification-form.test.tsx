@@ -207,7 +207,7 @@ describe("required fields and states", () => {
     }
   });
 
-  it.each(["2.5", "0", "501", "-3"])("rejects servings %s", (value) => {
+  it.each(["2.5", "0", "501", "-3", "1e2", "0x10"])("rejects servings %s", (value) => {
     const { onSubmit } = renderForm();
     fillRequired();
     fireEvent.change(screen.getByLabelText(/^Servings/i), { target: { value } });

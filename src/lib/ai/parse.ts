@@ -30,6 +30,15 @@ const CLAIM_PATTERNS: readonly RegExp[] = [
   /\buse by\b/,
   /°\s*[fc]\b/,
   /\bdegrees\b/,
+  // Widened with PROMPT_EVAL U3 (PR #5 review). Defence in depth: a human verifies every fact anyway.
+  /\b(?:allergen|gluten|nut|peanut|dairy|egg|soy|wheat|sesame|fish|shellfish|lactose|sugar) free\b/,
+  /\b(?:no|without|zero) (?:allergens?|nuts?|peanuts?|tree nuts?|dairy|gluten|eggs?|soy|wheat|sesame|fish|shellfish|milk)\b/,
+  /\bbest (?:before|by)\b/,
+  /\bexpires?\b/,
+  /\bvegan\b/,
+  /\bhypoallergenic\b/,
+  /\bkept (?:chilled|cold|refrigerated|frozen|hot|warm)\b/,
+  /\b(?:fahrenheit|celsius)\b/,
 ];
 
 // Cyrillic and Greek letters that render like Latin ones, so "ѕafe" cannot dodge /\bsafe\b/.
