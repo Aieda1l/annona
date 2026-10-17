@@ -63,3 +63,11 @@ Eight images were supplied (`~/Downloads/annona-images`). They look like web-sou
 Result (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs per case): 5 pass, 3 fail (T-PE-02, 03, 06). Details and the candidate v2 changes are in `docs/PROMPT_EVAL.md` §11. Not a release run.
 
 **Needs a decision:** (1) get committable images (team-taken or CC0 with source URLs) for all eight cases, including a genuinely cluttered buffet and a desk-objects non-food photo with no people; (2) approve the v2 prompt edits.
+
+## 2026-10-17 — Fixtures committed; v1 at 6 of 8
+
+Dev 1 chose to use web-sourced images despite the provenance rule. All eight eval images are now in `fixtures/intake/images/` (resized, never upscaled), with `PROVENANCE.md` stating their real status and `docs/requests/intake-fixture-provenance.md` asking the captain to align `TEST_PLAN.md` §7. `non_food.jpg` is now a desk photo (no people); `dessert_bars.jpg` is blondies.
+
+Full eval on the committed fixtures (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs per case): **6 pass, 2 fail**. T-PE-02 fails on a fixture mismatch (the buffet photo is tidy) plus a prompt false positive (the "text instructions were ignored" note fires on benign table signs). T-PE-06 fails on one run with no shellfish listed or noted for sushi. Details in `docs/PROMPT_EVAL.md` §11. One of nine T-PE-03 runs timed out at 15 s; it did not recur.
+
+**Next smallest action:** draft `annona-intake.v2.md` (narrow the injection-note rule; add nuts and shellfish rules), rerun all eight, then open the adapter PR after CP2.
