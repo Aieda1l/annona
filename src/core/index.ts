@@ -19,8 +19,6 @@ import {
   type Result,
   type StoreKind,
   type VerificationLinkView,
-  type VerifiedFacts,
-  type VisionSuggestion,
 } from "@/contracts";
 
 // Barrel owned by Dev 2 after the baseline (keep exported names stable). CONTRACTS §9.3.
@@ -35,36 +33,12 @@ export { evaluateEligibility } from "./eligibility";
 export { findCandidates } from "./matching";
 export { createTestClock } from "./clock";
 
-// ----- intake (called by Dev 1) -----
-export async function storeDonationImage(_input: { mime: string; bytes: Uint8Array }, _deps?: Deps): Promise<Result<{ image_id: string }>> {
-  return notImplementedResult(OWNER, "storeDonationImage");
-}
+// ----- intake (called by Dev 1), slice 2(a) -----
+export { storeDonationImage, createDraft, attachAiResult, submitVerification } from "./service/intake";
+export { getDonationCard } from "./service/cards";
 
-export async function createDraft(
-  _input: { actor: Actor; image_id: string; source: "web_upload" | "messaging" | "fixture"; source_ref: string | null },
-  _deps?: Deps,
-): Promise<Result<DonationCard>> {
-  return notImplementedResult(OWNER, "createDraft");
-}
 
-export async function attachAiResult(
-  _input: { donation_id: string; result: { ok: true; suggestion: VisionSuggestion } | { ok: false; error_code: string } },
-  _deps?: Deps,
-): Promise<Result<DonationCard>> {
-  return notImplementedResult(OWNER, "attachAiResult");
-}
 
-export async function submitVerification(
-  _input: {
-    auth: { actor: Actor } | { link_token: string };
-    donation_id: string;
-    facts: VerifiedFacts;
-    edited_from_ai: string[];
-  },
-  _deps?: Deps,
-): Promise<Result<{ card: DonationCard; resubmit_token: string | null }>> {
-  return notImplementedResult(OWNER, "submitVerification");
-}
 
 // ----- verification links -----
 export async function issueVerificationLink(
@@ -208,9 +182,6 @@ export async function operatorAction(
   return notImplementedResult(OWNER, "operatorAction");
 }
 
-export async function getDonationCard(_actor: Actor, _id: string, _deps?: Deps): Promise<Result<DonationCard>> {
-  return notImplementedResult(OWNER, "getDonationCard");
-}
 
 export async function getDashboardSnapshot(_actor: Actor, _deps?: Deps): Promise<Result<DashboardSnapshot>> {
   return notImplementedResult(OWNER, "getDashboardSnapshot");
