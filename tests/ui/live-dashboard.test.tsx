@@ -1,0 +1,92 @@
+// Slice 2 polling: GET /api/dashboard every 2 s, pause while hidden, never fabricate data on failure.
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LiveOperatorDashboard } from "@/components/dashboard/LiveOperatorDashboard";
+import { fixtureSnapshot } from "@/components/dashboard/fixture-snapshot";
+
+const json = (body: unknown, status = 200) =>
+  Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
+const okBody = () => ({ ok: true, data: fixtureSnapshot() });
+const errBody = (code: string, message: string) => ({ ok: false, error: { code, message, retryable: false } });
+
+const flush = async (ms = 0) => {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+};
+
+let hidden = false;
+beforeEach(() => {
+  vi.useFakeTimers();
+  hidden = false;
+  Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("LiveOperatorDashboard", () => {
+  it("renders the server snapshot and polls every 2 s", async () => {
+    const fetchMock = vi.fn((..._args: unknown[]) => json(okBody()));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LiveOperatorDashboard />);
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]![0]).toBe("/api/dashboard");
+    expect(screen.getByText(/Live server state/)).toBeInTheDocument();
+    expect(screen.getAllByTestId("donation-card").length).toBeGreaterThan(0);
+    await flush(2000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the ErrorCode and fabricates nothing when the first load fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => json(errBody("NOT_IMPLEMENTED", "getDashboardSnapshot is not implemented yet"), 501)));
+    render(<LiveOperatorDashboard />);
+    await flush();
+    expect(screen.getByRole("alert")).toHaveTextContent("NOT_IMPLEMENTED");
+    expect(screen.queryAllByTestId("donation-card")).toHaveLength(0);
+  });
+
+  it("keeps the last snapshot labeled stale after a later failure, then recovers", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => json(okBody()))
+      .mockImplementationOnce(() => json(errBody("PROVIDER_UNAVAILABLE", "store down"), 502))
+      .mockImplementation(() => json(okBody()));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LiveOperatorDashboard />);
+    await flush();
+    await flush(2000);
+    expect(screen.getByRole("alert")).toHaveTextContent("PROVIDER_UNAVAILABLE");
+    expect(screen.getByText(/stale since/i)).toBeInTheDocument();
+    expect(screen.getAllByTestId("donation-card").length).toBeGreaterThan(0);
+    await flush(2000);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(/stale since/i)).toBeNull();
+  });
+
+  it("treats a network failure as UNREACHABLE", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new TypeError("offline"))));
+    render(<LiveOperatorDashboard />);
+    await flush();
+    expect(screen.getByRole("alert")).toHaveTextContent("UNREACHABLE");
+  });
+
+  it("does not poll while the tab is hidden, and resumes when visible", async () => {
+    const fetchMock = vi.fn((..._args: unknown[]) => json(okBody()));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LiveOperatorDashboard />);
+    await flush();
+    hidden = true;
+    await flush(6000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    hidden = false;
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
