@@ -14,6 +14,7 @@ import {
   couriers,
   donation_images,
   donations,
+  donors,
   messaging_identities,
   offers,
   outbound_messages,
@@ -319,17 +320,45 @@ describe("db edge: store lifecycle and refusal paths", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-  it("a failed seed leaves nothing half written (one transaction)", async () => {
+  it("duplicate handles are refused before any SQL runs", async () => {
     const s = createDispatchStore({ kind: "pglite", database_url: undefined, pglite_dir: undefined });
     await runMigrations(s);
     try {
-      // Duplicate handles violate UNIQUE (provider, handle) on the last-but-one statement.
+      // resolveHandles rejects this in buildSeed, ahead of the transaction.
       await expect(
         seedStore(s, { now: NOW, messaging_provider: "fake", handles: { donor: "same@example.invalid", courier_a: "same@example.invalid", courier_b: "b@example.invalid" } }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/must differ/);
       const { db } = storeInternals(s);
       expect(await db.select().from(recipients)).toEqual([]);
       expect(await db.select().from(messaging_identities)).toEqual([]);
+    } finally {
+      await closeStore(s);
+    }
+  });
+  it("a seed that fails inside its transaction leaves nothing half written", async () => {
+    const s = createDispatchStore({ kind: "pglite", database_url: undefined, pglite_dir: undefined });
+    await runMigrations(s);
+    try {
+      const { db } = storeInternals(s);
+      // Another identity already holds the donor's (provider, handle). The seed's identity insert (after donors,
+      // recipients and couriers were written) hits UNIQUE (provider, handle), so the whole transaction must roll back.
+      await db.insert(messaging_identities).values({
+        id: randomUUID(),
+        actor_role: "donor",
+        actor_id: randomUUID(),
+        provider: "fake",
+        handle: "donor@example.invalid",
+        status: "awaiting_join",
+        provider_space_id: null,
+        provider_sender_id: null,
+        joined_at: null,
+        opted_out_at: null,
+      });
+      await expect(seedStore(s, { now: NOW, messaging_provider: "fake" })).rejects.toThrow();
+      expect(await db.select().from(donors)).toEqual([]);
+      expect(await db.select().from(recipients)).toEqual([]);
+      expect(await db.select().from(couriers)).toEqual([]);
+      expect(await db.select().from(messaging_identities)).toHaveLength(1);
     } finally {
       await closeStore(s);
     }

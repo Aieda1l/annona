@@ -23,7 +23,8 @@ import {
 
 // T-CO-23: empty DB -> migrate -> seed applies cleanly; seed is deterministic and uses DEMO_ACTORS ids;
 // the partial unique indexes and CHECKs from ARCHITECTURE §7 hold. PGlite always; Postgres only if TEST_DATABASE_URL
-// is set (a disposable database; every write below runs in a transaction that is rolled back).
+// is set. The schema checks below roll back, but the Postgres setup (migrate + seed) COMMITS and overwrites demo rows
+// and the active policy, so TEST_DATABASE_URL must be an empty, disposable database (the name must say so; see the guard).
 
 const NOW = new Date("2026-10-17T23:10:00.000Z");
 const actor = (key: string) => DEMO_ACTORS.find((a) => a.key === key)!.actor_id;
@@ -450,9 +451,40 @@ describe("T-CO-23 seed behavior", () => {
 });
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+
+/** The database name in a Postgres URL, or undefined if it cannot be read. */
+function databaseName(url: string): string | undefined {
+  try {
+    return decodeURIComponent(new URL(url).pathname.replace(/^\//, "")) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Setup commits and overwrites demo rows, so only a database whose name says it is disposable is accepted. */
+function assertDisposableDatabase(url: string): void {
+  const name = databaseName(url);
+  if (!name || !/(^|[_-])(test|tests|disposable)([_-]|$)/i.test(name)) {
+    throw new Error("TEST_DATABASE_URL must point at a disposable database whose name contains 'test' or 'disposable' (e.g. annona_test). Refusing to migrate and seed it.");
+  }
+}
+
+describe("assertDisposableDatabase", () => {
+  it("accepts names that say they are disposable and refuses everything else", () => {
+    expect(() => assertDisposableDatabase("postgres://u:p@localhost:5432/annona_test")).not.toThrow();
+    expect(() => assertDisposableDatabase("postgres://u:p@localhost:5432/disposable-1")).not.toThrow();
+    expect(() => assertDisposableDatabase("postgres://u:p@db.example.invalid/postgres")).toThrow(/disposable/);
+    expect(() => assertDisposableDatabase("postgres://u:p@db.example.invalid/annona")).toThrow(/disposable/);
+    expect(() => assertDisposableDatabase("postgres://u:p@db.example.invalid/contest")).toThrow(/disposable/);
+    expect(() => assertDisposableDatabase("postgres://u:p@db.example.invalid")).toThrow(/disposable/);
+    expect(() => assertDisposableDatabase("not a url")).toThrow(/disposable/);
+  });
+});
+
 describe.skipIf(!TEST_DATABASE_URL)("T-CO-23 migrate + seed on Postgres (TEST_DATABASE_URL; disposable DB)", () => {
   let store: DispatchStore;
   beforeAll(async () => {
+    assertDisposableDatabase(TEST_DATABASE_URL!);
     store = createDispatchStore({ kind: "postgres", database_url: TEST_DATABASE_URL, pglite_dir: undefined });
     await runMigrations(store);
     await seedStore(store, { now: NOW, messaging_provider: "fake" });
