@@ -1,0 +1,50 @@
+{
+  "name": "annona",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file-if-exists=.env.local src/db/migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=.env.local src/db/seed/index.ts",
+    "worker": "tsx --env-file-if-exists=.env.local src/workflows/worker.ts",
+    "eval:intake": "tsx --env-file-if-exists=.env.local src/lib/ai/eval.ts"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.10",
+    "@google/genai": "2.30.0",
+    "drizzle-orm": "0.45.4",
+    "lucide-react": "1.59.0",
+    "next": "16.4.2",
+    "postgres": "3.4.9",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "socket.io-client": "4.8.4",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "drizzle-kit": "0.31.11",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.2",
+    "jsdom": "30.1.3",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite-tsconfig-paths": "6.1.1",
+    "vitest": "5.0.5"
+  },
+  "packageManager": "pnpm@10.33.3"
+}

@@ -139,3 +139,7 @@ These planning documents were created **before** the event as ideation: research
 - A drafting and cross-document review workflow.
 
 AI-assisted development is used throughout and will be disclosed in the Devpost "How we built it" section. Official references are listed in `docs/RESEARCH.md`.
+
+## Kickoff baseline
+
+The planning documents and prompts in this repository were written **before the event as ideation** (Rule 10, R-DH-3) and committed at kickoff. **All code was written during the event, after hacking began** (Saturday, October 17, 2026; see `CLAUDE.md` for the start-time note). The scaffold came from `create-next-app@16.4.2`; shadcn/ui is added after the baseline. AI-assisted development (Claude Code) is disclosed. The repository is public from kickoff, and every profile and donation in it is synthetic.

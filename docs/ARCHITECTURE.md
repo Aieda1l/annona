@@ -47,6 +47,27 @@
 | Scripts runner | tsx | resolve at kickoff | Worker, migrate, seed, eval |
 | Hosting | Vercel Hobby (web) + worker on the demo laptop | — | Fallback ladder in D-017 |
 
+**Resolved at the kickoff baseline (2026-10-17, from `pnpm list --depth 0`; every dependency is pinned exactly, no `^`/`~`).**
+
+| Package | Version | | Package | Version |
+|---|---|---|---|---|
+| next | 16.4.2 | | drizzle-orm | 0.45.4 |
+| react / react-dom | 19.3.0 | | drizzle-kit | 0.31.11 |
+| typescript | 5.9.3 | | postgres | 3.4.9 |
+| zod | 4.6.7 | | @electric-sql/pglite | 0.5.10 |
+| @google/genai | 2.30.0 | | socket.io-client | 4.8.4 |
+| lucide-react | 1.59.0 | | tailwindcss / @tailwindcss/turbopack | 4.3.3 |
+| vitest | 5.0.5 | | @vitejs/plugin-react | 6.1.2 |
+| vite-tsconfig-paths | 6.1.1 | | jsdom | 30.1.3 |
+| @testing-library/react | 16.3.3 | | @testing-library/dom | 10.4.2 |
+| @testing-library/jest-dom | 7.0.1 | | tsx | 4.23.15 |
+| eslint | 9.39.5 | | @types/node | 22.20.5 |
+
+- **Test filter (verified):** `pnpm test tests/<lane>` filters correctly (`pnpm test tests/contracts` ran only the 2 contract files). A lane directory with no test files makes Vitest exit 1 (`passWithNoTests` is deliberately off); this clears when the lane adds its first test.
+- **Vitest environments:** two `projects` in `vitest.config.mts` (`node` default; `jsdom` for `tests/ui/**` and `tests/intake/**/*.test.tsx`, setup file `tests/setup-jsdom.ts`). The config is `.mts` so Vite loads it as ESM. No per-file docblock needed.
+- **Scaffold deviations (rulings):** the `create-next-app` defaults enabled `cacheComponents` and `partialPrefetching` in `next.config.ts`. They were removed: Annona pages and route handlers read per-request data (cookies, clock, store), and Cache Components would force a Suspense/`use cache` model on all four lanes. `@types/node` is pinned to 22.x to match the Node 22 runtime (the scaffold shipped 20.x, which triggered an unmet-peer warning). `LayoutProps` in `src/app/layout.tsx` was replaced by an explicit type because that global exists only after `next typegen`, and `pnpm typecheck` runs without it. ESLint ignores `_`-prefixed unused arguments so lane stubs lint clean.
+- **pnpm build scripts:** pnpm 10 skipped dependency build scripts (`sharp`, `unrs-resolver`; see `pnpm-workspace.yaml`); `pnpm build` and the tests do not need them.
+
 **Planned package scripts.** These are created at kickoff. **Verify they exist in `package.json` before running them; do not assume.**
 
 `pnpm dev`, `pnpm build`, `pnpm start`, `pnpm lint`, `pnpm typecheck` (`tsc --noEmit`), `pnpm test` (`vitest run`), `pnpm test tests/<lane>` (exact filter form verified and recorded here at kickoff), `pnpm db:generate`, `pnpm db:migrate`, `pnpm db:seed`, `pnpm worker`, `pnpm eval:intake`.
