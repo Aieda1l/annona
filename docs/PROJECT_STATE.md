@@ -114,7 +114,7 @@
 | IB-0 | **RESOLVED 2026-10-16:** the package has been shared with teammates (N-0). | — | organizer / Dev 4 |
 | IB-1 | No baseline. All lanes are blocked from branching. | Tag `baseline` pushed and `BASELINE_SHA` posted (CP0a) | Dev 4 |
 | IB-2 | **Partly resolved (D-035):** pre-event docs may be in the repo and committed now. Still unanswered: sponsor accounts before 12:30 PM (default: at or after 12:30). | `#ask-dh` reply recorded in §6. If unanswered at 12:30, apply the kickoff-baseline §0 defaults and proceed; the baseline never waits on a reply. VEYZL waits for an explicit organizer OK. | Dev 4 |
-| IB-3 | Dev 1–3 not assigned (Dev 4 = organizer); holders of the three iMessage handles (donor + couriers A/B) unknown | Team decision recorded in §6 | team |
+| IB-3 | Lanes assigned 2026-10-17 (Colin, Rui, Ronnie, Cyrus). Still open: holders of the three iMessage handles (donor + couriers A/B) | Team decision recorded in §6 | team |
 | IB-4 | Photon Beta access and behavior unverified: unprompted offer after JOIN, how long send permission lasts, webhook signature scheme, inbound photo attachments (format, readiness) | Dev 3 kickoff spikes SP-1..SP-3 and SP-14 | Dev 3 |
 | IB-5 | PGlite inside `next dev` untested (ARCHITECTURE §16) | Dev 2 spike SP-6; fallback is a personal Supabase project | Dev 2 |
 
@@ -123,7 +123,7 @@
 | # | Question | Default until answered | Asked of | Answer |
 |---|---|---|---|---|
 | Q-1 | May pre-event planning docs be committed to the submission repo? May sponsor accounts be created before 12:30 PM Sat? | Docs committed **at or after 12:30**, labeled pre-event ideation. **All accounts at or after 12:30.** If docs are forbidden in the repo, use kickoff-baseline Step 2-ALT. | Organizers, `#ask-dh` | **Docs: yes.** They may be in the repo and committed now (organizer answer relayed by Dev 4, 2026-10-16; D-035). **Accounts before 12:30: no answer**, so the default stands. |
-| Q-2 | Who is Dev 1, Dev 2, Dev 3 and Dev 4 (captain)? Which teammates hold the three iMessage handles (donor phone, couriers A and B)? | No real phone without an iMessage handle. Use the labeled simulated phone; with only two handles, keep couriers real and run intake by web upload. Anyone below about 50% weekly Claude usage does not take the captain or Dev 2 lane. | Team | Dev 1 `<TBD>`, Dev 2 `<TBD>`, Dev 3 `<TBD>`, Dev 4 = organizer (2026-10-16); iPhones `<TBD>` |
+| Q-2 | Who is Dev 1, Dev 2, Dev 3 and Dev 4 (captain)? Which teammates hold the three iMessage handles (donor phone, couriers A and B)? | No real phone without an iMessage handle. Use the labeled simulated phone; with only two handles, keep couriers real and run intake by web upload. Anyone below about 50% weekly Claude usage does not take the captain or Dev 2 lane. | Team | **Assigned 2026-10-17:** Dev 1 Colin, Dev 2 Rui, Dev 3 Ronnie, Dev 4 Cyrus (organizer). Phone holders (donor, courier A, courier B) still to name; handles by DM only |
 | Q-3 | Spend approval for any paid fallback (Gemini billing, Photon paid plan, Railway, usage credits) | **None. No spending.** Fall back to labeled fakes. | Team (all four) | `<pending>` |
 
 ## 7. Next actions

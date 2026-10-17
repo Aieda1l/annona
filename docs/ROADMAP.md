@@ -1,7 +1,7 @@
 # ROADMAP.md — Annona timeline, owners and checkpoints
 
 > **Status:** PROPOSED, 2026-10-15 (pre-event ideation), revised 2026-10-16 for D-031..D-034 (current contracts: see the `docs/CONTRACTS.md` header). **Nothing is built.** No code, scaffold, build, test run, deployment or provider call exists.
-> **Times** are Pacific (PDT). **Owners** are lanes. Human names stay `<TBD>` until the team assigns Dev 1–4 (`docs/PROJECT_STATE.md` §6).
+> **Times** are Pacific (PDT). **Owners** are lanes. Humans (assigned 2026-10-17): Dev 1 Colin, Dev 2 Rui, Dev 3 Ronnie, Dev 4 Cyrus (`docs/PROJECT_STATE.md` §6).
 > **Checkpoints** CP0a/CP0b–CP6 are copied from `docs/OWNERSHIP.md` §8. If the two files ever differ, OWNERSHIP wins and the captain fixes this file.
 > **Labels:** VERIFIED SOURCE (R-*), DESIGN DECISION (D-*), ASSUMPTION, OPEN RISK. "Eligible" means eligible for dispatch under the prototype operator policy, based on donor-attested records. It never means safe or compliant.
 
@@ -21,10 +21,10 @@
 
 | Lane | Human | Roadmap duties beyond lane code |
 |---|---|---|
-| Dev 1 — Vision + donor intake (`feat/intake`) | `<TBD>` | **Video script author** (≤ 3:00): writes the text and hands it over in `docs/handoffs/dev-1.md`. Author of the VEYZL evidence PR (Gemini adapter, D-022). Shows AI intake to judges. |
-| Dev 2 — Gate + matching + state + DB (`feat/dispatch`) | `<TBD>` | **Backup final submitter.** Checks the Sun 9:00 AM full-history secret scan. Answers judges' safety and concurrency questions. |
-| Dev 3 — Photon messaging + timed workflows (`feat/messaging`) | `<TBD>` | Runs the courier iPhones and **stays at the table for all three judging rounds**. Contract-change reviewer 4:00–6:30 PM Sat (D-027). Owns the **MLH Commit form, only if entering** (D-001). |
-| Dev 4 — UI + deployment + integration captain (`feat/dashboard`, `chore/integration-*`) | organizer | Runs the kickoff baseline and the checkpoints. Creates the **public** repo at kickoff (D-023). **Owns the Devpost draft and final submission.** Commits the video script to `docs/demo/` and **records the video.** Drives the dashboard for judges. |
+| Dev 1 — Vision + donor intake (`feat/intake`) | Colin | **Video script author** (≤ 3:00): writes the text and hands it over in `docs/handoffs/dev-1.md`. Author of the VEYZL evidence PR (Gemini adapter, D-022). Shows AI intake to judges. |
+| Dev 2 — Gate + matching + state + DB (`feat/dispatch`) | Rui | **Backup final submitter.** Checks the Sun 9:00 AM full-history secret scan. Answers judges' safety and concurrency questions. |
+| Dev 3 — Photon messaging + timed workflows (`feat/messaging`) | Ronnie | Runs the courier iPhones and **stays at the table for all three judging rounds**. Contract-change reviewer 4:00–6:30 PM Sat (D-027). Owns the **MLH Commit form, only if entering** (D-001). |
+| Dev 4 — UI + deployment + integration captain (`feat/dashboard`, `chore/integration-*`) | Cyrus (organizer) | Runs the kickoff baseline and the checkpoints. Creates the **public** repo at kickoff (D-023). **Owns the Devpost draft and final submission.** Commits the video script to `docs/demo/` and **records the video.** Drives the dashboard for judges. |
 
 Contract-change requests from any lane: `docs/requests/<lane-slug>-<topic>.md`, with slugs `intake`, `dispatch`, `messaging`, `dashboard` (e.g. `docs/requests/dashboard-simulated-phone.md`; OWNERSHIP §4).
 
