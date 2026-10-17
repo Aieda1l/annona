@@ -1,3 +1,5 @@
+STATUS: merged (captain added the names in #14, 846b2b3; the seed CLI reads them through getEnv() since #21)
+
 # Request: parse DEMO_*_HANDLE and TEST_DATABASE_URL in `getEnv()` (CONTRACTS §12)
 
 Lane: Dev 2. For: captain (`src/server/env.ts` is captain-controlled).

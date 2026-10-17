@@ -80,3 +80,11 @@ DEFERRED ON PURPOSE (needs slice 2 or a captain decision; none blocks this PR):
 INTEGRATION STEPS: none for other lanes yet; no core function uses the store until slice 2(a). Supabase: migrations enable row-level security with no policies; connect as the owner role (the default `postgres` user).
 
 NEXT SMALLEST ACTION: slice 2(a): `storeDonationImage`, `createDraft` (source_ref idempotency), `attachAiResult`, `submitVerification` (session path), `getDonationCard`.
+
+ROUND 2 (Dev 3's review of #21, MEDIUM 1-2 and LOW 3-4 fixed):
+- MEDIUM 1: `openDb` creates the PGlite folder (recursive), so a fresh clone with no `.data/` can run `db:migrate`, `db:seed` and `next dev`. Test: `tests/core/review-round2.test.ts`.
+- MEDIUM 2: in `photon` mode every seeded handle must be an E.164 phone or an email (emails lowercased). Anything else stops the seed with a message that names the variable and never echoes the value.
+- LOW 3: the stale-identity warning now says what an operator can do (delete the row, or remove the PGLITE_DIR folder). LOW 4: the seed CLI reads the handles through `getEnv()`; `docs/requests/dev2-demo-handle-env.md` marked merged.
+- Supabase: the runtime connection must use the same role that ran the migrations (the table owner, or BYPASSRLS), because RLS is on with no policies; otherwise every query returns nothing.
+- Gate input: `evaluateEligibility` trusts parsed facts, so `submitVerification` must always parse `VerifiedFacts` first.
+- History scan: merge #21 with a squash, because commits `bbc612c` and `5d455ce` contain scan hits that later commits remove. Deferred: unique index on `offers(provider_message_id)` for delivery lookups (slice 2(b)).

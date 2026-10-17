@@ -60,6 +60,21 @@ const clean = (v: string | undefined): string | undefined => {
   return t ? t : undefined;
 };
 
+// photon inbound senders arrive as E.164 phones or lowercased emails (the messaging normalizer), so a seeded handle in any
+// other shape would never match and its owner would be silently ignored as an unknown sender.
+const E164 = /^\+[1-9][0-9]{7,14}$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const HANDLE_VARS = { donor: "DEMO_DONOR_HANDLE", courier_a: "DEMO_COURIER_A_HANDLE", courier_b: "DEMO_COURIER_B_HANDLE" } as const;
+
+/** Returns the handle in the form Photon will present it, or throws naming the variable (never the value). */
+function photonHandle(persona: keyof typeof HANDLE_VARS, value: string): string {
+  if (E164.test(value)) return value;
+  if (EMAIL.test(value)) return value.toLowerCase();
+  throw new Error(
+    `Seed: ${HANDLE_VARS[persona]} must be an E.164 phone number (+, country code, then digits only) or an email address when messaging is 'photon'. Any other form would never match an inbound sender.`,
+  );
+}
+
 export function resolveHandles(opts: Pick<SeedOptions, "messaging_provider" | "handles">) {
   if (opts.messaging_provider !== "fake" && opts.messaging_provider !== "photon") {
     throw new Error(`Seed: unknown messaging_provider '${String(opts.messaging_provider)}' (expected 'fake' or 'photon').`);
@@ -74,7 +89,12 @@ export function resolveHandles(opts: Pick<SeedOptions, "messaging_provider" | "h
         `Seed: messaging is 'photon' but handles are missing for ${missing.join(", ")}. Set DEMO_DONOR_HANDLE, DEMO_COURIER_A_HANDLE and DEMO_COURIER_B_HANDLE.`,
       );
     }
-    out = { provider: "photon", donor: given.donor!, courier_a: given.courier_a!, courier_b: given.courier_b! };
+    out = {
+      provider: "photon",
+      donor: photonHandle("donor", given.donor!),
+      courier_a: photonHandle("courier_a", given.courier_a!),
+      courier_b: photonHandle("courier_b", given.courier_b!),
+    };
   } else {
     out = {
       provider: "fake",
