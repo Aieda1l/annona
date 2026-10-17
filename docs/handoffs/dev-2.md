@@ -49,11 +49,12 @@ DELIVERED:
 - `src/db/seed/`: deterministic synthetic seed relative to `now`, every persona ID from `DEMO_ACTORS`, donor + courier A/B identities (awaiting JOIN), one active policy row. Re-running refreshes times and keeps joined phones joined. `photon` without all three handles stops with a clear error. No phone literal anywhere; fallback handles are `@example.invalid`.
 - `pnpm db:migrate` and `pnpm db:seed` work from the repo root.
 - Tests: `db.test.ts` = T-CO-23 PGlite half (migrate, seed, determinism, DEMO_ACTORS ids, every index and CHECK above). `db-edge.test.ts` = foreign keys, NOT NULL, value CHECKs, round trips, persistence across reopen, refusal paths, seed input validation. `db-fuzz.test.ts` = model-based test (30 seeds x 70 random operations; the database must accept exactly what a JS model of the index rules accepts) plus ten competing writes per index, run serially on one PGlite connection (exactly one wins; this is NOT a race test). `db-cli.test.ts` = the `pnpm db:*` plumbing (errors never print query params, `DATABASE_URL` without `STORE=postgres` is refused, a close failure never hides the real error) and the seed's stale-identity report. `seed-integration.test.ts` = seeded rows read back and run through the real gate and `findCandidates`.
+- Review rounds on PR #11: Dev 3's review and fixes (error sanitizer so a failed seed never prints handles, `DATABASE_URL` without `STORE=postgres` refused, stale-identity report, honest test names; taken as commit `ffe2580`, PR #13 was closed unmerged), then four ECC reviewers on this lane (schema, privacy, core logic, tests). Fixed from them: donor cancel of collected food (S-11), `unknown` shown as `donor_verified`, gate throws on a broken lead-time policy, `parseUtc` now matches `z.iso.datetime()`, M-03 treats anything but `not_in_listed_ingredients` as present and undeclared cross-contact blocks exclusion recipients, servings must be an integer 1..max, RLS enabled on all 14 tables (no policies, so Supabase's public anon key sees nothing; the backend connects as the owner), CHECKs for an open offer's deadline, claimed/collected donation linkage and hex-64 token hashes, two indexes, URL password/user masking in CLI errors, secret-scan-clean fixtures, DB test timeouts (parallel WASM start-up exceeded 5 s), and stronger tests (hand-computed matching numbers, +-1 ms boundaries, outcome and field_state per gate rule, offer-table forbidden moves).
 - Found and fixed by the extra test rounds: timestamps no longer default to the database clock (every time comes from the injected Clock); `excluded_allergens` and `accepts_handling_modes` are CHECKed against the contract enums (a misspelled allergen would have silently never matched); an unknown store `kind` throws instead of picking pglite; closing a PGlite store before it finished starting hung; seed handles are trimmed, blank counts as unset, duplicate handles and an invalid `now` are refused with clear errors; the migration runner explains a wrong working directory. `drizzle-kit generate` reports no drift between schema and migration.
 
 EVIDENCE (commands run locally; PGlite only, nothing real):
 - `pnpm typecheck`: exit 0; `pnpm lint`: exit 0; `pnpm build`: succeeded
-- `pnpm test`: 18 files, 487 passed, 26 skipped (the Postgres half of T-CO-23, gated on `TEST_DATABASE_URL`)
+- `pnpm test`: 22 files, 620 passed, 26 skipped (the Postgres half of T-CO-23, gated on `TEST_DATABASE_URL`), identical on three consecutive full runs. `drizzle-kit generate` reports no drift.
 - `pnpm db:migrate` and `pnpm db:seed` on a PGlite directory (twice, plus the photon missing-handle error and photon with handles): ran as described.
 - NOT RUN / UNVERIFIED: real concurrent connections (the 10-way race above is PGlite, one connection), Postgres half of T-CO-23 (needs a disposable `TEST_DATABASE_URL`), T-CO-16, T-CO-17 (claim race on real Postgres), everything in slice 2.
 
@@ -63,9 +64,19 @@ CONTRACT CHANGES OR REQUESTS (captain):
 - Added column choices not spelled out in the docs: `policy_config` unique `(policy_id, policy_version)` plus one-active partial unique; `audit_events` has no FKs so history survives `resetDemo`; `donations.claimed_offer_id` has no FK (circular with offers; only the claim transaction writes it).
 
 BLOCKERS + SAFETY RISKS:
-- No review yet by a non-Dev-2 person. Claim race safety is still UNVERIFIED (D-033).
+- Dev 3 approved PR #11 (diff review). Dev 3's OK on the gate rules in `src/core/eligibility.ts` (OWNERSHIP section 6) is still outstanding. Claim race safety is still UNVERIFIED (D-033).
+- History note: commit `ffe2580` (Dev 3) contains a synthetic phone-like string and `user:pw@` URLs as test fixtures; the next commits remove them and HEAD scans clean. Running the section 9 scan over `git log -p` will still match those two lines (they are fake, and already public on the closed PR #13).
 - A disposable Postgres (`TEST_DATABASE_URL`) is needed to run the gated half and T-CO-17.
 
-INTEGRATION STEPS: none for other lanes yet; no core function uses the store until slice 2(a).
+DEFERRED ON PURPOSE (needs slice 2 or a captain decision; none blocks this PR):
+- Disclosure: `address_line` (inside `location` jsonb), `ai_suggestion`, `outbound_messages.text` and `inbound_messages.payload` have no DB-level disclosure rule. The read functions and projections in slice 2 must enforce CONTRACTS section 11 and the section 3.11 audit-content rule. Ignored senders keep `sender_handle` per section 11 and need a retention or reset path.
+- jsonb columns (`verified_facts`, `latest_decision`, `policy_config.config`) are typed but not validated on read; the repository layer must parse them with the contract Zod schemas before the gate sees them.
+- Re-issuing a verification link: the live-link partial index cannot use `now()`, so an expired but unrevoked link still blocks a new one; `issueVerificationLink` must revoke first. `verification_links.donor_id` is not tied to `donations.donor_id` in SQL.
+- `resetDemo` order: delete `verification_links`, then `offers`, then reset or keep `donations` (null `claimed_offer_id` and reset the status if kept); `audit_events` has no foreign keys on purpose.
+- No CHECK that a `offered`/`claimed`/`collected` donation has `effective_cutoff_at`: waiting for the captain's S-08 missing-cutoff decision (contracts v0.5, D-038).
+- Handle case: the `(provider, handle)` unique index is case-sensitive; the messaging normalizer lowercases emails. Several identity rows per actor are allowed.
+- Demo reset HTTP handler (slice 2) must accept a request with no body (CONTRACTS section 10; see PR #8).
+
+INTEGRATION STEPS: none for other lanes yet; no core function uses the store until slice 2(a). Supabase: migrations enable row-level security with no policies; connect as the owner role (the default `postgres` user).
 
 NEXT SMALLEST ACTION: slice 2(a): `storeDonationImage`, `createDraft` (source_ref idempotency), `attachAiResult`, `submitVerification` (session path), `getDonationCard`.
