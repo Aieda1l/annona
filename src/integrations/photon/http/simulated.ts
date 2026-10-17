@@ -9,13 +9,11 @@ import { getActor } from "@/server/session";
 import { handleInbound } from "@/workflows";
 import { identityFromCore } from "@/workflows/core-adapter";
 import type { IdentityView } from "@/workflows/core-port";
+import { isFixtureId } from "@/workflows/fixtures";
 import { failureResponse, forbidden, isOperator } from "@/workflows/http/auth";
 
 // The labeled simulated phone (CONTRACTS §10): POST sends a message as a fake-provider identity through the SAME
 // handleInbound as real Photon messages; GET returns that identity's thread. Operator + demo mode + fake provider only.
-
-/** Mirrors Dev 1's fixture ids (fixtures/intake/images/*.jpg). An unknown id is a 400, so a path can never get through. */
-const FIXTURE_IDS = ["sandwich_platter", "buffet_ambiguous", "pasta_tray", "blurry", "malformed_output"] as const;
 
 export function createSimulatedHandlers(deps: {
   getActor: (request: Request) => Promise<Actor | null>;
@@ -47,7 +45,8 @@ export function createSimulatedHandlers(deps: {
       const body = SimulatedInboundRequestBody.safeParse(raw);
       if (!body.success) return toResponse(err("VALIDATION_FAILED", "Body must be { identity_id, text, fixture_id? }."));
       const fixture = body.data.fixture_id;
-      if (fixture !== undefined && !(FIXTURE_IDS as readonly string[]).includes(fixture)) {
+      // An unknown id is a 400, so a path can never get through (the allowlist is shared with the fixture reader).
+      if (fixture !== undefined && !isFixtureId(fixture)) {
         return toResponse(err("VALIDATION_FAILED", "Unknown fixture_id."));
       }
 

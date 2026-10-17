@@ -9,6 +9,7 @@ import type {
 import type { IdentityView, MessagingCore } from "./core-port";
 import { parseCommand, type ParsedCommand } from "./grammar";
 import { createOutboundSender } from "./outbound";
+import type { PhotoReply } from "./photo";
 import {
   askForCodeText,
   declineAckText,
@@ -25,7 +26,12 @@ import {
 /** Handles in logs show only their last 4 characters (CONTRACTS §3.11). */
 const maskHandle = (handle: string): string => `…${handle.trim().slice(-4)}`;
 
-export function createInboundHandler(deps: { core: MessagingCore; gateway: MessagingGateway }) {
+export function createInboundHandler(deps: {
+  core: MessagingCore;
+  gateway: MessagingGateway;
+  /** Donor photo intake (T-MS-18). Without it a joined donor's photo is acknowledged but not acted on. */
+  photo?: (identity: IdentityView, msg: InboundMessage) => Promise<PhotoReply>;
+}) {
   const { core, gateway } = deps;
   const send = createOutboundSender({ core, gateway });
 
@@ -35,13 +41,14 @@ export function createInboundHandler(deps: { core: MessagingCore; gateway: Messa
     msg: InboundMessage,
     purpose: MessagePurpose,
     text: string,
+    idempotency_key = `reply:${msg.provider_message_id}:v1`,
   ): Promise<OutboundMessage> {
     const message: OutboundMessage = {
       to_identity_id: identity.id,
       text,
       purpose,
       correlation: { inbound_message_id: msg.provider_message_id },
-      idempotency_key: `reply:${msg.provider_message_id}:v1`,
+      idempotency_key,
     };
     if (!(await core.hasOutboundMessage(message.idempotency_key))) await send(message);
     return message;
@@ -129,9 +136,18 @@ export function createInboundHandler(deps: { core: MessagingCore; gateway: Messa
           reply: await reply(identity, msg, "decline_ack", text),
         };
       }
-      case "photo":
-        // Donor photo intake (download, Dev 1 draft, checklist link) lands in slice 2 (T-MS-18).
-        return { outcome: "ignored", command, reply: null };
+      case "photo": {
+        if (!deps.photo) return { outcome: "ignored", command, reply: null }; // intake not wired in this process
+        // Only a joined donor gets here (unknown and non-joined senders returned above, and a courier's image is
+        // `unknown`), so nothing is downloaded or sent to a model for anyone else.
+        const planned = await deps.photo(identity, msg);
+        if (planned === null) return { outcome: "processed", command, reply: null }; // already announced
+        return {
+          outcome: "processed",
+          command,
+          reply: await reply(identity, msg, planned.purpose, planned.text, planned.idempotency_key),
+        };
+      }
       default:
         return { outcome: "processed", command, reply: await reply(identity, msg, "help", helpText()) };
     }
