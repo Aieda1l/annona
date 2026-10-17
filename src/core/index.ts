@@ -33,6 +33,19 @@ export { evaluateEligibility } from "./eligibility";
 export { findCandidates } from "./matching";
 export { createTestClock } from "./clock";
 
+// ----- messaging identities and logs, slice 2(b) -----
+export { resolveIdentityByHandle, getIdentity, joinIdentity, findOpenOffersForCourier } from "./service/identities";
+export {
+  recordInboundMessage,
+  saveInboundResult,
+  recordIgnoredInbound,
+  recordOutboundMessage,
+  hasOutboundMessage,
+  listMessages,
+  recordStatusEvent,
+  recordDeliveryStatus,
+} from "./service/messages";
+
 // ----- intake (called by Dev 1), slice 2(a) -----
 export { storeDonationImage, createDraft, attachAiResult, submitVerification } from "./service/intake";
 export { getDonationCard } from "./service/cards";
@@ -82,13 +95,7 @@ export async function recordOfferProviderMessage(
   return notImplementedResult(OWNER, "recordOfferProviderMessage");
 }
 
-export async function recordStatusEvent(_evt: DeliveryStatusEvent, _deps?: Deps): Promise<"first" | "duplicate"> {
-  throw notImplementedError(OWNER, "recordStatusEvent");
-}
 
-export async function recordDeliveryStatus(_evt: DeliveryStatusEvent, _deps?: Deps): Promise<Result<Pending>> {
-  return notImplementedResult(OWNER, "recordDeliveryStatus");
-}
 
 export async function claimOffer(_command: ClaimCommand, _deps?: Deps): Promise<ClaimResult> {
   throw notImplementedError(OWNER, "claimOffer");
@@ -113,59 +120,18 @@ export async function listDispatchableDonations(_deps?: Deps): Promise<Pending[]
 }
 
 // ----- messaging identities and logs -----
-export async function resolveIdentityByHandle(_provider: "photon" | "fake", _handle: string, _deps?: Deps): Promise<Pending | null> {
-  throw notImplementedError(OWNER, "resolveIdentityByHandle");
-}
 
-export async function getIdentity(_identity_id: string, _deps?: Deps): Promise<Pending | null> {
-  throw notImplementedError(OWNER, "getIdentity");
-}
 
-export async function joinIdentity(
-  _input: { identity_id: string; provider_space_id: string | null; provider_sender_id: string | null },
-  _deps?: Deps,
-): Promise<Result<Pending>> {
-  return notImplementedResult(OWNER, "joinIdentity");
-}
 
 export async function optOutIdentity(_input: { identity_id: string }, _deps?: Deps): Promise<Result<Pending>> {
   return notImplementedResult(OWNER, "optOutIdentity");
 }
 
-export async function findOpenOffersForCourier(_courier_id: string, _deps?: Deps): Promise<Pending[]> {
-  throw notImplementedError(OWNER, "findOpenOffersForCourier");
-}
 
-export async function recordInboundMessage(
-  _provider: "photon" | "fake",
-  _provider_message_id: string,
-  _payload: unknown,
-  _deps?: Deps,
-): Promise<{ status: "first" | "duplicate"; stored_result: InboundResult | null }> {
-  throw notImplementedError(OWNER, "recordInboundMessage");
-}
 
-export async function saveInboundResult(
-  _input: { provider: "photon" | "fake"; provider_message_id: string; result: InboundResult },
-  _deps?: Deps,
-): Promise<void> {
-  throw notImplementedError(OWNER, "saveInboundResult");
-}
 
-export async function recordOutboundMessage(_input: { message: OutboundMessage; provider_message_id: string | null }, _deps?: Deps): Promise<void> {
-  throw notImplementedError(OWNER, "recordOutboundMessage");
-}
 
-export async function listMessages(_input: { identity_id?: string }, _deps?: Deps): Promise<Pending[]> {
-  throw notImplementedError(OWNER, "listMessages");
-}
 
-export async function recordIgnoredInbound(
-  _input: { provider: "photon" | "fake"; provider_message_id: string; reason: InboundIgnoreReason; handle_masked: string },
-  _deps?: Deps,
-): Promise<void> {
-  throw notImplementedError(OWNER, "recordIgnoredInbound");
-}
 
 // ----- handoff, operator, read models -----
 export async function recordHandoff(

@@ -58,3 +58,37 @@ export function factsAt(from: Date = T0, over: Record<string, unknown> = {}): Ve
     ...over,
   } as VerifiedFacts;
 }
+
+// ---- direct row helpers for tests that need a state the public functions would only reach in several steps ----
+import { randomUUID } from "node:crypto";
+import { donations, offers } from "@/db/schema";
+
+const CODE_ALPHABET = "ACDEFHJKMNPRTUVWXY3479";
+let codeCounter = 0;
+/** A unique, valid short code for fixture offers. */
+export const nextCode = () => {
+  const n = codeCounter++;
+  return `${CODE_ALPHABET[n % 22]}${CODE_ALPHABET[Math.floor(n / 22) % 22]}${CODE_ALPHABET[Math.floor(n / 484) % 22]}K`;
+};
+
+export async function insertDonation(db: World["db"], over: Partial<typeof donations.$inferInsert> = {}) {
+  const [row] = await db
+    .insert(donations)
+    .values({ id: randomUUID(), donor_id: DONOR, status: "eligible", source: "fixture", ai_status: "succeeded", created_at: T0, updated_at: T0, ...over })
+    .returning();
+  return row!;
+}
+
+export async function insertOffer(db: World["db"], donation_id: string, over: Partial<typeof offers.$inferInsert> = {}) {
+  const status = over.status ?? "open";
+  const [row] = await db
+    .insert(offers)
+    .values({
+      id: randomUUID(), donation_id, recipient_id: EASTLAKE, courier_id: COURIER_A, short_code: nextCode(), status, wave_no: 1,
+      created_at: T0, provider_mode: "fake", candidate: { recipient_id: EASTLAKE, courier_id: COURIER_A, eta_to_pickup_minutes: 5, transit_minutes: 5, estimated_pickup_at: iso(10), estimated_dropoff_at: iso(25), slack_minutes: 60, rank: 1 },
+      ...(status === "open" ? { sent_at: T0, expires_at: at(1) } : {}),
+      ...over,
+    })
+    .returning();
+  return row!;
+}
