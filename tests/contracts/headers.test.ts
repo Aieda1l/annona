@@ -27,3 +27,17 @@ describe("next.config headers", () => {
     expect(sources).toEqual(["/v"]);
   });
 });
+
+// Deployment: files read at runtime with process.cwd() are invisible to Next's file tracing, so a serverless build
+// can omit them. Every route that can run vision needs the fixture images (the fake provider hashes them) and the
+// prompt file (the real adapter reads it; if it is missing the provider reports misconfigured and every draft fails).
+describe("next.config outputFileTracingIncludes", () => {
+  const includes = (nextConfig.outputFileTracingIncludes ?? {}) as Record<string, string[]>;
+  const VISION_ROUTES = ["/api/intake/drafts", "/api/messaging/simulated/inbound", "/api/messaging/photon/inbound"];
+
+  it.each(VISION_ROUTES)("%s traces the fixture images and the prompt files", (route) => {
+    expect(includes[route], route).toBeDefined();
+    expect(includes[route]).toContain("./fixtures/intake/images/**");
+    expect(includes[route]).toContain("./src/lib/ai/prompts/**");
+  });
+});

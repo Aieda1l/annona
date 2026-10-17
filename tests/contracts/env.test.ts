@@ -93,3 +93,18 @@ describe("getEnv: seed and test names (Dev 2)", () => {
     expect(env.vision_provider).toBe("fake");
   });
 });
+
+describe("getEnv: Gemini escalation model (Dev 1, docs/requests/intake-escalation-env.md)", () => {
+  it("is undefined by default and when empty", () => {
+    expect(parse({}).gemini_escalation_model).toBeUndefined();
+    expect(parse({ GEMINI_ESCALATION_MODEL: "" }).gemini_escalation_model).toBeUndefined();
+  });
+  it("passes a model name or the literal 'off' through unchanged", () => {
+    expect(parse({ GEMINI_ESCALATION_MODEL: "gemini-3.8-flash" }).gemini_escalation_model).toBe("gemini-3.8-flash");
+    expect(parse({ GEMINI_ESCALATION_MODEL: "off" }).gemini_escalation_model).toBe("off");
+  });
+  it("is listed in .env.example (names only)", async () => {
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync(".env.example", "utf8")).toMatch(/^GEMINI_ESCALATION_MODEL=$/m);
+  });
+});
