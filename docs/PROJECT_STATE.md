@@ -1,7 +1,7 @@
 # PROJECT_STATE.md — captain's checkpoint
 
 > **Owner:** integration captain (Dev 4) only. Lanes report through `docs/handoffs/dev-N.md` and PR descriptions, never by editing this file (OWNERSHIP §9).
-> **As of:** 2026-10-17 16:25 PDT (updated by the captain after the CP0a/CP0b work and the first integration round; earlier history: written 2026-10-15 pre-event, revised 2026-10-16 for D-029, D-031..D-035). Observed facts are labeled with how they were observed; anything not run is UNVERIFIED.
+> **As of:** 2026-10-17 16:40 PDT (updated by the captain after the CP0a/CP0b work and the first integration round; earlier history: written 2026-10-15 pre-event, revised 2026-10-16 for D-029, D-031..D-035). Observed facts are labeled with how they were observed; anything not run is UNVERIFIED.
 > **Status:** Code exists and is merged on `main` (lanes 1 to 4 slice PRs, contracts, UI kit, env schema). **Nothing has been verified end to end:** the read models behind `/api/dashboard`, the donor checklist component, real Gemini and real Photon are not wired or proven. Every claim below is labeled.
 
 ## 1. Checkpoint summary
@@ -9,7 +9,7 @@
 | Item | Value |
 |---|---|
 | Phase | Event: build window (code allowed since Sat Oct 17, 12:00 PM PDT per the organizers' early start; CLAUDE.md note). |
-| Last known passing build | `main` at **48969b4**, measured 2026-10-17 16:22 PDT in the captain worktree (code identical to f50a0ce; later merges were docs only): `pnpm lint`, `pnpm typecheck`, `pnpm build` exit 0; `pnpm test` exit 0 with **1327 passed, 26 skipped (gated real-Postgres tests), 1 todo** (55 files). PGlite and fakes only; nothing real. |
+| Last known passing build | `main` at **00369d8**, measured 2026-10-17 16:30 PDT in the captain worktree: `pnpm lint`, `pnpm typecheck`, `pnpm build` exit 0; `pnpm test` exit 0 with **1451 passed, 26 skipped (gated real-Postgres tests), 1 todo** (58 files). PGlite and fakes only; nothing real. |
 | Baseline | **Done.** Annotated tag `baseline` (object 2d7215e) points to **BASELINE_SHA `f750162953dbe37b89111071976c8fd247e96f57`** (commit 2026-10-17 12:12 PDT, contracts v0.4). Repo https://github.com/Aieda1l/annona is **public** (verified with `gh repo view`). |
 | Contracts version | See the `docs/CONTRACTS.md` header (the only place the number is stated, D-034). v0.5 (spec, PR #9, fd2ffe7) and its types (PR #10, f50a0ce) are merged on `main`. |
 | Decisions | D-036, D-038 and D-039 ACCEPTED by the captain 2026-10-17. PR #9 (contracts v0.5) is merged with Dev 3's approval; D-039 was narrowed the same day and its earlier-word blocklist dropped (spec PR #26; code change requested on #16). D-037 PROPOSED. Earlier decisions as in `docs/DECISIONS.md`. |
@@ -32,7 +32,7 @@
 
 **Current (observed 2026-10-17 with `git`, `gh`):**
 - Default branch `main`; remote `origin` = https://github.com/Aieda1l/annona, **public**. Tag `baseline` (annotated) at `f750162`.
-- Squash-merged PRs so far are listed in section 9. Open PRs at the time of writing: #16, #19 (Dev 3), #21 (Dev 2), #25, #26 (captain). Open issue: #27 (Dev 1: open the Gemini adapter PR).
+- Squash-merged PRs so far are listed in section 9. Open PRs at the time of writing: #21 (Dev 2), #25 (captain). Open issue: #27 (Dev 1: open the Gemini adapter PR).
 - `next dev` writes an untracked `AGENTS.md` at the repo root; it must not be committed (CLAUDE.md).
 
 **Historical (observed 2026-10-15, before kickoff):**
@@ -101,7 +101,7 @@
 | D-036 | G-01 as written: a `pending` donor is `needs_review` whether or not licensed; any other non-approved donor is `rejected`. ACCEPTED (captain). Dev 3 approved PR #9 at 64ac044. |
 | D-037 | `findCandidates` takes `busy_courier_ids`, `committed_servings`, `active_provider`, `donor_location`; malformed top-level input returns `[]`. PROPOSED. Only `busy_courier_ids` and `donor_location` are implemented. |
 | D-038 | One cutoff resolution rule for S-06/S-08/S-09/S-14/S-15/S-16 and claim step 6: stored cutoff, else `min(donor_pickup_by, discard_by)`, else reached. ACCEPTED (captain). Dev 3 approved PR #9 at 64ac044. |
-| D-039 | Opt-out words honored narrowly in short messages (`STOP`, `STOPALL`, `UNSUBSCRIBE`; `END`/`QUIT`/`CANCEL` only as the whole message; image captions never). ACCEPTED, narrowed the same day, then the earlier-word blocklist (YES/NO/DECLINE/ACCEPT/JOIN) was dropped on Dev 3's suggestion because it made "No, stop texting me" a decline. Spec in PR #26; the grammar code change is requested on PR #16 (Dev 3's lane). |
+| D-039 | Opt-out words honored narrowly in short messages (`STOP`, `STOPALL`, `UNSUBSCRIBE`; `END`/`QUIT`/`CANCEL` only as the whole message; image captions never). ACCEPTED, narrowed the same day, then the earlier-word blocklist (YES/NO/DECLINE/ACCEPT/JOIN) was dropped on Dev 3's suggestion because it made "No, stop texting me" a decline. Spec merged (#26, 00369d8); the grammar code is on `main` via #19 and was verified by the captain with a 20-message probe. Not verified: the `stop_ack` rejoin wording. |
 
 ### 3.2 Resolved in contracts v0.2 (no longer open)
 
@@ -135,7 +135,7 @@
 | IB-5 | PGlite inside `next dev` untested (ARCHITECTURE §16) | Dev 2 spike SP-6; fallback is a personal Supabase project | Dev 2 |
 | IB-6 | `GET /api/dashboard`, `GET /api/donations/:id`, operator actions, handoff and the other read-model routes still return 501 on `main`; the dashboard, detail page and donor status page cannot show live data. | Dev 2's read-model PR ("PR 1c", after #9 and #10) | Dev 2 |
 | IB-7 | `LinkVerification` (the `/v` checklist) is a placeholder; scene 1 by message cannot run. | Dev 1 builds it against `/api/verify/*` once Dev 2 and Dev 3 wire the links | Dev 1 |
-| IB-8 | Dev 3's review of Dev 2's follow-up PR #21 (including the gate rules it changes, OWNERSHIP section 6) is outstanding, and #16 must drop its earlier-word blocklist to match D-039 (spec PR #26) before it merges. | Dev 3 reviews #21 and updates #16 | Dev 3 |
+| IB-8 | Dev 3's review of Dev 2's follow-up PR #21 (including the gate rules it changes, OWNERSHIP section 6) is outstanding, (#16 and #19 are merged; see the log for how). | Dev 3 reviews #21 and updates #16 | Dev 3 |
 | IB-9 | Deployment (Vercel) and the Devpost project shell need a human: interactive logins, billing check, the Devpost form. | A human does them; the Devpost text is drafted in PR #24 | captain + team |
 | IB-10 | The real Photon gateway and the real Gemini adapter have no verified evidence, so the Photon and Gemini tracks cannot be claimed yet. | T-MS-13 / T-E2E-04 and T-IN-10 recorded | Dev 3, Dev 1 |
 | IB-11 | VEYZL project cannot be created until a real Gemini call is on `main`. | Dev 1 opens and merges the adapter PR (issue #27); then the captain creates the project | Dev 1 + captain |
@@ -205,6 +205,9 @@
 | 18 | #24 Devpost draft (Dev 4) | Dev 1 | 04b7196 | docs only | n/a | Dev 1 approved |
 | 19 | #23 handoff for slice 2d (Dev 4) | Dev 1 | 7838540 | docs only | n/a | Dev 1 approved |
 | 20 | #22 demo script, draft (Dev 4) | Dev 1 | 48969b4 | docs only | n/a | Dev 1 approved |
+| 21 | #19 donor photo path (Dev 3) | Dev 3 | c853af0 | captain, main after all three merges: lint/typecheck/build 0, 1451 passed, 26 skipped, 1 todo (58 files) | fake/stubbed Photon, no real download | Dev 2 approved b1a379b; **merged at abf8aaa with two later commits** (the grammar merge and a photo-download hardening, ~30 source lines). Captain read them afterwards: fail-closed hardening, nothing risky |
+| 22 | #16 opt-out words anywhere in a short message (Dev 3) | Dev 3 (via #19) | 155a754 | captain probe on `main`: 12 of 12 messages as specified; head checks typecheck/lint 0, 1008 passed | n/a | **Never merged on its own**: it shows as merged because #19's branch contained its commits. Dev 2's last review was a comment on an older head (30a941f); captain verified 155a754 |
+| 23 | #26 D-039 spec without the earlier-word blocklist (captain) | Dev 1 | 00369d8 | docs only; contract tests passed before merge | n/a | **No reviewer approval recorded** (Dev 3 and Dev 2 were requested); merged by Dev 1 75 seconds after #19, so the code was on `main` just before its spec |
 
 ## 10. Environment and accounts
 
