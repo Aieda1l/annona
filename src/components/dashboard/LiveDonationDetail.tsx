@@ -33,7 +33,7 @@ export function LiveDonationDetail({ id }: { id: string }) {
     const seq = ++loadSeq.current;
     const latest = () => seq === loadSeq.current;
     try {
-      const res = await fetch(`/api/donations/${id}`, { cache: "no-store" });
+      const res = await fetch(`/api/donations/${encodeURIComponent(id)}`, { cache: "no-store" });
       if (!res.ok) {
         const f = await readFailure(res);
         if (latest()) setFailure(f);
@@ -68,7 +68,7 @@ export function LiveDonationDetail({ id }: { id: string }) {
 
   async function post(path: string, body: unknown): Promise<Outcome> {
     try {
-      const res = await fetch(`/api/donations/${id}/${path}`, {
+      const res = await fetch(`/api/donations/${encodeURIComponent(id)}/${path}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),

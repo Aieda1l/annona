@@ -151,3 +151,18 @@ describe("dashboard links to the detail page", () => {
     expect(links.every((l) => l.getAttribute("href")?.startsWith("/operator/donations/"))).toBe(true);
   });
 });
+
+describe("LiveDonationDetail id encoding", () => {
+  it("encodes the route id so it cannot reach another API path", async () => {
+    const raw = "x/../../other?y=1";
+    const fetchMock = vi.fn((..._a: unknown[]) => json({ ok: true, data: claimedCard }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LiveDonationDetail id={raw} />);
+    await flush();
+    expect(fetchMock.mock.calls[0][0]).toBe(`/api/donations/${encodeURIComponent(raw)}`);
+    fireEvent.click(screen.getByRole("button", { name: /Mark collected/ }));
+    await flush();
+    const post = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === "POST");
+    expect(post?.[0]).toBe(`/api/donations/${encodeURIComponent(raw)}/handoff`);
+  });
+});
