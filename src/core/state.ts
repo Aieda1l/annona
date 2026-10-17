@@ -48,7 +48,7 @@ export type DonationTransition = {
   to: readonly DonationStatus[];
   triggers: readonly TransitionTrigger[];
   /** Returns a failure message, or null when every guard holds. Unknown inputs fail closed. */
-  guard: (c: TransitionContext) => string | null;
+  guard: (c: TransitionContext, to: DonationStatus) => string | null;
   reason_codes?: readonly ReasonCode[];
 };
 
@@ -78,8 +78,14 @@ export const DONATION_TRANSITIONS: readonly DonationTransition[] = [
     from: ["draft", "needs_review"],
     to: ["eligible", "needs_review", "rejected"],
     triggers: ["submitVerification"],
-    guard: (c) =>
-      !c.authorized_owner ? "Verification must come from the owning donor or a valid link." : collected(c) ? "Food already collected; verification is closed." : ok,
+    guard: (c, to) =>
+      !c.authorized_owner
+        ? "Verification must come from the owning donor or a valid link."
+        : collected(c)
+          ? "Food already collected; verification is closed."
+          : c.gate_outcome !== to
+            ? "The stored status must equal the gate outcome."
+            : ok,
   },
   {
     id: "S-04",
@@ -111,7 +117,12 @@ export const DONATION_TRANSITIONS: readonly DonationTransition[] = [
     from: ["eligible", "unmatched", "offered", "needs_review"],
     to: ["expired"],
     triggers: ["expireDue"],
-    guard: (c) => (atOrAfterCutoff(c) ? ok : "The cutoff has not been reached."),
+    guard: (c) =>
+      collected(c)
+        ? "Food already collected; the operator must cancel or reject it."
+        : atOrAfterCutoff(c)
+          ? ok
+          : "The cutoff has not been reached.",
     reason_codes: ["CUTOFF_REACHED"],
   },
   {
@@ -201,7 +212,7 @@ export const DONATION_TRANSITIONS: readonly DonationTransition[] = [
     from: ["eligible"],
     to: ["needs_review", "rejected"],
     triggers: ["createNextOffers"],
-    guard: (c) => (c.gate_outcome === "needs_review" || c.gate_outcome === "rejected" ? ok : "The gate re-run did not leave eligible."),
+    guard: (c, to) => (c.gate_outcome === to ? ok : "The stored status must equal the non-eligible gate outcome."),
   },
   {
     id: "S-18",
@@ -209,8 +220,8 @@ export const DONATION_TRANSITIONS: readonly DonationTransition[] = [
     to: ["needs_review", "rejected"],
     triggers: ["retryMatching"],
     // retry_matching at or after the cutoff is INVALID_TRANSITION whatever the gate says (S-14).
-    guard: (c) =>
-      !beforeCutoff(c) ? "The cutoff has been reached." : c.gate_outcome === "needs_review" || c.gate_outcome === "rejected" ? ok : "The gate re-run did not leave eligible.",
+    guard: (c, to) =>
+      !beforeCutoff(c) ? "The cutoff has been reached." : c.gate_outcome === to ? ok : "The stored status must equal the non-eligible gate outcome.",
   },
 ];
 
@@ -224,6 +235,9 @@ const invalid = (message: string): TransitionCheck => ({ ok: false, code: "INVAL
  * Checks one requested donation transition against the S-table and its guards.
  * Pure and total: returns INVALID_TRANSITION instead of throwing. Terminal states never transition.
  */
+/** Triggers only an operator may fire (CLAUDE.md safety rule 5); everything else is checked by its own guard. */
+const OPERATOR_TRIGGERS: readonly TransitionTrigger[] = ["operatorCancel", "operatorReject", "returnToDonor", "retryMatching"];
+
 export function canTransition(req: {
   from: DonationStatus | null;
   to: DonationStatus;
@@ -232,6 +246,8 @@ export function canTransition(req: {
 }): TransitionCheck {
   const { from, to, trigger, ctx } = req;
   if (from !== null && TERMINAL_DONATION_STATUSES.includes(from)) return invalid(`${from} is terminal.`);
+
+  if (OPERATOR_TRIGGERS.includes(trigger) && ctx.actor_role !== "operator") return invalid(`${trigger} requires an operator.`);
 
   const candidates = DONATION_TRANSITIONS.filter((t) => t.from.includes(from) && t.to.includes(to) && t.triggers.includes(trigger));
   if (candidates.length === 0) return invalid(`No transition ${from ?? "none"} -> ${to} via ${trigger}.`);
@@ -248,7 +264,7 @@ export function canTransition(req: {
         if (needsNote && !hasNote(ctx)) { lastMessage = "A note is required."; continue; }
       }
     }
-    const failure = t.guard(ctx);
+    const failure = t.guard(ctx, to);
     if (failure === null) return { ok: true, transition: t.id };
     lastMessage = failure;
   }

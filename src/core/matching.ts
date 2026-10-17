@@ -20,9 +20,9 @@ export type MatchInput = {
   /** M-08: couriers already offered this donation. */
   excluded_courier_ids: string[];
   /** M-09: couriers holding any pending_send/open offer or a claimed/collected assignment (any donation). */
-  busy_courier_ids?: string[];
+  busy_courier_ids: string[];
   /** M-04: derived Σ servings of claimed/collected/delivered donations per recipient (never decremented). */
-  committed_servings?: Record<string, number>;
+  committed_servings: Record<string, number>;
 };
 
 const MIN = 60_000;
@@ -34,6 +34,9 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
+
+// Plain code-unit ordering: locale-independent, matches CONTRACTS §3.5 "ascending".
+const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 const minutesFor = (km: number, speedKmh: number) => Math.ceil((km / speedKmh) * 60);
 
@@ -48,8 +51,10 @@ function recipientEligible(r: RecipientOrg, input: MatchInput): boolean {
     ...facts.cross_contact_allergens,
   ]);
   if (r.excluded_allergens.some((a) => present.has(a))) return false; // M-03
-  const committed = input.committed_servings?.[r.id] ?? 0;
-  if (r.capacity_servings_available - committed < facts.servings) return false; // M-04
+  const committed = input.committed_servings[r.id] ?? 0;
+  // Positive form: NaN or undefined capacity, commitments or servings must refuse, not pass.
+  if (![r.capacity_servings_available, committed, facts.servings].every(Number.isFinite)) return false; // M-04
+  if (!(r.capacity_servings_available - committed >= facts.servings)) return false; // M-04
   return true;
 }
 
@@ -57,8 +62,14 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
   const { facts, policy, now, donation } = input;
   // Fail closed: NaN comparisons are false, which would otherwise read as "feasible".
   if (!Number.isFinite(now.getTime()) || !(policy.average_speed_kmh > 0)) return [];
+  const policyNumbers = [policy.response_window_seconds, policy.handoff_buffer_minutes, policy.max_transit_minutes];
+  if (!policyNumbers.every((n) => Number.isFinite(n) && n >= 0)) return [];
+  // Missing M-04/M-09 inputs would silently disable those rules; refuse instead.
+  if (!Array.isArray(input.busy_courier_ids) || !input.committed_servings) return [];
+  // Malformed facts (callers should pass Zod-parsed facts) cannot be matched.
+  if (!facts.allergens || !Array.isArray(facts.cross_contact_allergens)) return [];
   const excluded = new Set(input.excluded_courier_ids);
-  const busy = new Set(input.busy_courier_ids ?? []);
+  const busy = new Set(input.busy_courier_ids);
   const joined = new Set(
     input.identities.filter((i) => i.actor_role === "courier" && i.status === "joined").map((i) => i.actor_id),
   );
@@ -108,8 +119,8 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
   out.sort(
     (a, b) =>
       Date.parse(a.estimated_dropoff_at) - Date.parse(b.estimated_dropoff_at) ||
-      a.courier_id.localeCompare(b.courier_id) ||
-      a.recipient_id.localeCompare(b.recipient_id),
+      cmp(a.courier_id, b.courier_id) ||
+      cmp(a.recipient_id, b.recipient_id),
   );
   return out.map((c, i) => ({ ...c, rank: i + 1 }));
 }

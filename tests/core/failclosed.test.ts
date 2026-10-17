@@ -48,10 +48,40 @@ describe("matching fails closed on malformed numbers and times", () => {
     policy: DEMO_POLICY,
     now: NOW,
     excluded_courier_ids: [],
+    busy_courier_ids: [],
+    committed_servings: {},
     ...o,
   });
 
   it("control is a candidate", () => expect(findCandidates(base())).toHaveLength(1));
+  it("NaN or undefined recipient capacity -> no candidate (M-04)", () => {
+    expect(findCandidates(base({ recipients: [{ ...recipient, capacity_servings_available: NaN }] }))).toEqual([]);
+    expect(findCandidates(base({ recipients: [{ ...recipient, capacity_servings_available: undefined as never }] }))).toEqual([]);
+  });
+  it("NaN servings or NaN commitments -> no candidate (M-04)", () => {
+    expect(findCandidates(base({ facts: { ...scene1_eligible_facts, donor_pickup_by: iso(300), discard_by: iso(900), servings: NaN } }))).toEqual([]);
+    expect(findCandidates(base({ committed_servings: { r1: NaN } }))).toEqual([]);
+  });
+  it.each(["response_window_seconds", "handoff_buffer_minutes", "max_transit_minutes"] as const)("NaN policy.%s -> no candidate, no throw", (k) => {
+    expect(findCandidates(base({ policy: { ...DEMO_POLICY, [k]: NaN } }))).toEqual([]);
+  });
+  it("omitted busy_courier_ids / committed_servings -> no candidate (rules cannot be silently skipped)", () => {
+    expect(findCandidates(base({ busy_courier_ids: undefined as never }))).toEqual([]);
+    expect(findCandidates(base({ committed_servings: undefined as never }))).toEqual([]);
+  });
+  it("facts missing allergens or cross_contact_allergens -> no candidate, no throw", () => {
+    const f = { ...scene1_eligible_facts, donor_pickup_by: iso(300), discard_by: iso(900) };
+    expect(findCandidates(base({ facts: { ...f, allergens: undefined } as never }))).toEqual([]);
+    expect(findCandidates(base({ facts: { ...f, cross_contact_allergens: undefined } as never }))).toEqual([]);
+  });
+  it("ties on dropoff rank by plain courier_id order, independent of locale", () => {
+    const ids = ["b", "B", "a"];
+    const out = findCandidates(base({
+      couriers: ids.map((id) => ({ ...courier, id })),
+      identities: ids.map((id) => ({ id: "i" + id, actor_role: "courier" as const, actor_id: id, status: "joined" as const })),
+    }));
+    expect(out.map((c) => c.courier_id)).toEqual(["B", "a", "b"]);
+  });
   it("NaN courier coordinates -> no candidate", () => {
     expect(findCandidates(base({ couriers: [{ ...courier, location: loc(NaN, -122.33) }] }))).toEqual([]);
   });
@@ -128,4 +158,12 @@ describe("gate treats any unexpected value as unknown, never as a pass", () => {
     }
   });
   it("the control still passes", () => expect(gate({}).outcome).toBe("eligible"));
+});
+
+describe("gate fails closed on a missing ingredients_text", () => {
+  it("undefined ingredients_text -> INGREDIENTS_MISSING, no throw", () => {
+    const d = gate({ ingredients_text: undefined });
+    expect(d.reasons.map((r) => r.code)).toContain("INGREDIENTS_MISSING");
+    expect(d.outcome).not.toBe("eligible");
+  });
 });

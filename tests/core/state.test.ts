@@ -21,6 +21,7 @@ const CUTOFF = "2026-10-18T01:30:00.000Z";
 const AFTER = new Date("2026-10-18T01:30:00.000Z"); // now == cutoff counts as "reached"
 const DISCARD = "2026-10-18T05:00:00.000Z";
 
+const OPERATOR_TRIGGERS: TransitionTrigger[] = ["operatorCancel", "operatorReject", "returnToDonor", "retryMatching"];
 const ctx = (over: Partial<TransitionContext> = {}): TransitionContext => ({
   now: BEFORE,
   effective_cutoff_at: CUTOFF,
@@ -28,6 +29,9 @@ const ctx = (over: Partial<TransitionContext> = {}): TransitionContext => ({
   collected_at: null,
   ...over,
 });
+
+const withRole = (trigger: TransitionTrigger, over: Partial<TransitionContext>): Partial<TransitionContext> =>
+  OPERATOR_TRIGGERS.includes(trigger) ? { actor_role: "operator", ...over } : over;
 
 type Row = {
   id: string;
@@ -43,14 +47,15 @@ type Row = {
 const rows: Row[] = [
   { id: "S-01", from: null as never, to: "draft", trigger: "createDraft", ok: { actor_role: "donor", donor_status: "approved" }, bad: [["suspended donor", { actor_role: "donor", donor_status: "suspended" }], ["courier actor", { actor_role: "courier", donor_status: "approved" }]] },
   { id: "S-02", from: "draft", to: "draft", trigger: "attachAiResult", ok: {}, bad: [] },
-  { id: "S-03", from: "draft", to: "eligible", trigger: "submitVerification", ok: { authorized_owner: true }, bad: [["not owner/link", { authorized_owner: false }], ["collected", { collected_at: "2026-10-18T00:00:00.000Z", authorized_owner: true }]] },
-  { id: "S-03", from: "needs_review", to: "needs_review", trigger: "submitVerification", ok: { authorized_owner: true }, bad: [["collected", { collected_at: "2026-10-18T00:00:00.000Z", authorized_owner: true }]] },
-  { id: "S-03", from: "draft", to: "rejected", trigger: "submitVerification", ok: { authorized_owner: true }, bad: [] },
+  { id: "S-03", from: "draft", to: "eligible", trigger: "submitVerification", ok: { authorized_owner: true, gate_outcome: "eligible" }, bad: [["not owner/link", { authorized_owner: false, gate_outcome: "eligible" }], ["collected", { collected_at: "2026-10-18T00:00:00.000Z", authorized_owner: true, gate_outcome: "eligible" }], ["gate rejected", { authorized_owner: true, gate_outcome: "rejected" }], ["gate needs_review", { authorized_owner: true, gate_outcome: "needs_review" }], ["gate missing", { authorized_owner: true }]] },
+  { id: "S-03", from: "needs_review", to: "needs_review", trigger: "submitVerification", ok: { authorized_owner: true, gate_outcome: "needs_review" }, bad: [["collected", { collected_at: "2026-10-18T00:00:00.000Z", authorized_owner: true, gate_outcome: "needs_review" }], ["gate eligible", { authorized_owner: true, gate_outcome: "eligible" }]] },
+  { id: "S-03", from: "draft", to: "rejected", trigger: "submitVerification", ok: { authorized_owner: true, gate_outcome: "rejected" }, bad: [["gate eligible", { authorized_owner: true, gate_outcome: "eligible" }]] },
   { id: "S-04", from: "eligible", to: "offered", trigger: "createNextOffers", ok: { gate_outcome: "eligible", candidate_count: 1 }, bad: [["no candidates", { gate_outcome: "eligible", candidate_count: 0 }], ["gate not eligible", { gate_outcome: "needs_review", candidate_count: 1 }], ["gate missing", { candidate_count: 1 }]] },
   { id: "S-05", from: "eligible", to: "unmatched", trigger: "createNextOffers", ok: { gate_outcome: "eligible", candidate_count: 0 }, bad: [["candidates exist", { gate_outcome: "eligible", candidate_count: 1 }], ["gate not eligible", { gate_outcome: "rejected", candidate_count: 0 }], ["gate missing", { candidate_count: 0 }]], reasons: ["NO_ELIGIBLE_MATCH", "CANDIDATES_EXHAUSTED"] },
   { id: "S-06", from: "offered", to: "eligible", trigger: "expireDue", ok: { live_offer_count: 0 }, bad: [["live offers remain", { live_offer_count: 1 }], ["at cutoff", { live_offer_count: 0, now: AFTER }]] },
   { id: "S-07", from: "offered", to: "claimed", trigger: "claimOffer", ok: {}, bad: [] },
   { id: "S-08", from: "eligible", to: "expired", trigger: "expireDue", ok: { now: AFTER }, bad: [["before cutoff", {}]], reasons: ["CUTOFF_REACHED"] },
+  { id: "S-08", from: "needs_review", to: "expired", trigger: "expireDue", ok: { now: AFTER }, bad: [["collected (S-17 follow-up)", { now: AFTER, collected_at: "2026-10-18T00:00:00.000Z" }]], reasons: ["CUTOFF_REACHED"] },
   { id: "S-09", from: "claimed", to: "collected", trigger: "recordHandoff", ok: { simulated: true, donor_status: "approved" }, bad: [["not simulated", { simulated: false, donor_status: "approved" }], ["simulated missing", { donor_status: "approved" }], ["at cutoff", { simulated: true, donor_status: "approved", now: AFTER }], ["donor suspended", { simulated: true, donor_status: "suspended" }]] },
   { id: "S-10", from: "collected", to: "delivered", trigger: "recordHandoff", ok: { simulated: true, collected_at: "2026-10-18T00:00:00.000Z" }, bad: [["not simulated", { simulated: false }], ["at discard_by", { simulated: true, now: new Date(DISCARD) }]] },
   { id: "S-11", from: "eligible", to: "canceled", trigger: "operatorCancel", ok: {}, bad: [] },
@@ -65,8 +70,8 @@ const rows: Row[] = [
   { id: "S-16", from: "claimed", to: "expired", trigger: "expireDue", ok: { now: AFTER }, bad: [["before cutoff", {}], ["collected", { now: AFTER, collected_at: "2026-10-18T00:00:00.000Z" }]], reasons: ["PICKUP_NOT_COLLECTED"] },
   { id: "S-16", from: "claimed", to: "expired", trigger: "optOutIdentity", ok: { now: AFTER }, bad: [] },
   { id: "S-17", from: "collected", to: "needs_review", trigger: "optOutIdentity", ok: { collected_at: "2026-10-18T00:00:00.000Z" }, bad: [["not collected", {}]], reasons: ["COURIER_OPTED_OUT_AFTER_PICKUP"] },
-  { id: "S-18", from: "eligible", to: "needs_review", trigger: "createNextOffers", ok: { gate_outcome: "needs_review" }, bad: [["gate eligible", { gate_outcome: "eligible" }]] },
-  { id: "S-18", from: "eligible", to: "rejected", trigger: "createNextOffers", ok: { gate_outcome: "rejected" }, bad: [["gate eligible", { gate_outcome: "eligible" }]] },
+  { id: "S-18", from: "eligible", to: "needs_review", trigger: "createNextOffers", ok: { gate_outcome: "needs_review" }, bad: [["gate eligible", { gate_outcome: "eligible" }], ["gate rejected", { gate_outcome: "rejected" }]] },
+  { id: "S-18", from: "eligible", to: "rejected", trigger: "createNextOffers", ok: { gate_outcome: "rejected" }, bad: [["gate eligible", { gate_outcome: "eligible" }], ["gate needs_review", { gate_outcome: "needs_review" }]] },
   { id: "S-18", from: "unmatched", to: "rejected", trigger: "retryMatching", ok: { gate_outcome: "rejected" }, bad: [["gate eligible", { gate_outcome: "eligible" }]] },
   { id: "S-18", from: "unmatched", to: "needs_review", trigger: "retryMatching", ok: { gate_outcome: "needs_review" }, bad: [["gate eligible", { gate_outcome: "eligible" }]] },
 ];
@@ -86,13 +91,13 @@ describe("T-CO-15 every S-01..S-18 row exists in the table", () => {
 
 describe("T-CO-15 allowed transitions and their guards", () => {
   it.each(rows)("T-CO-15 $id $from -> $to via $trigger passes with its guards met", (r) => {
-    const res = canTransition({ from: r.from, to: r.to, trigger: r.trigger, ctx: ctx(r.ok) });
+    const res = canTransition({ from: r.from, to: r.to, trigger: r.trigger, ctx: ctx(withRole(r.trigger, r.ok)) });
     expect(res).toMatchObject({ ok: true, transition: r.id });
   });
   for (const r of rows) {
     for (const [name, over] of r.bad) {
       it(`T-CO-15 ${r.id} ${r.from}->${r.to} via ${r.trigger} refuses: ${name}`, () => {
-        const res = canTransition({ from: r.from, to: r.to, trigger: r.trigger, ctx: ctx(over) });
+        const res = canTransition({ from: r.from, to: r.to, trigger: r.trigger, ctx: ctx(withRole(r.trigger, over)) });
         expect(res).toMatchObject({ ok: false, code: "INVALID_TRANSITION" });
       });
     }
@@ -105,11 +110,14 @@ describe("T-CO-15 nothing outside the table is allowed", () => {
   const variants: TransitionContext[] = [
     ctx({ authorized_owner: true, actor_role: "donor", donor_status: "approved", gate_outcome: "eligible", candidate_count: 1, live_offer_count: 0, simulated: true, note: "n" }),
     ctx({ gate_outcome: "eligible", candidate_count: 0, now: AFTER, simulated: true, note: "n", donor_status: "approved" }),
-    ctx({ gate_outcome: "needs_review", collected_at: "2026-10-18T00:00:00.000Z", note: "n", simulated: true }),
-    ctx({ gate_outcome: "rejected", now: AFTER, collected_at: "2026-10-18T00:00:00.000Z", note: "n" }),
+    ctx({ gate_outcome: "needs_review", collected_at: "2026-10-18T00:00:00.000Z", note: "n", simulated: true, actor_role: "operator" }),
+    ctx({ gate_outcome: "rejected", now: AFTER, collected_at: "2026-10-18T00:00:00.000Z", note: "n", actor_role: "operator" }),
   ];
-  // Add a variant that is before the cutoff with a rejected gate (S-18 via retry_matching).
-  variants.push(ctx({ gate_outcome: "rejected", note: "n" }));
+  variants[1] = { ...variants[1]!, actor_role: "operator" };
+  // Before the cutoff, uncollected, one gate outcome per variant (S-03, S-18).
+  for (const gate_outcome of ["eligible", "needs_review", "rejected"] as const) {
+    variants.push(ctx({ gate_outcome, note: "n", actor_role: "operator", authorized_owner: true, live_offer_count: 0 }));
+  }
   // Spec combinations that several rows stand for (S-03, S-06, S-08, S-11).
   const extra: string[] = [];
   for (const from of ["draft", "needs_review"] as const) {
@@ -175,7 +183,7 @@ describe("T-CO-15 forbidden by design", () => {
     }
   });
   it("after S-17 (needs_review with collected_at): S-03, S-13, S-14 unavailable; cancel/reject with a note succeed", () => {
-    const c = ctx({ collected_at: "2026-10-18T00:00:00.000Z", note: "followed up off-platform", authorized_owner: true, gate_outcome: "eligible" });
+    const c = ctx({ collected_at: "2026-10-18T00:00:00.000Z", note: "followed up off-platform", authorized_owner: true, gate_outcome: "eligible", actor_role: "operator" });
     expect(canTransition({ from: "needs_review", to: "eligible", trigger: "submitVerification", ctx: c }).ok).toBe(false);
     expect(canTransition({ from: "needs_review", to: "draft", trigger: "returnToDonor", ctx: c }).ok).toBe(false);
     expect(canTransition({ from: "needs_review", to: "eligible", trigger: "retryMatching", ctx: c }).ok).toBe(false);
@@ -195,6 +203,33 @@ describe("T-CO-15 forbidden by design", () => {
     const res = canTransition({ from: "delivered", to: "draft", trigger: "returnToDonor", ctx: ctx() });
     expect(res).toMatchObject({ ok: false, code: "INVALID_TRANSITION" });
     if (!res.ok) expect(res.message.length).toBeGreaterThan(0);
+  });
+});
+
+describe("T-CO-15 review fixes: gate outcome, roles, collected expiry", () => {
+  it("S-03 cannot store eligible unless the gate said eligible", () => {
+    for (const gate_outcome of [undefined, "needs_review", "rejected"] as const) {
+      expect(canTransition({ from: "draft", to: "eligible", trigger: "submitVerification", ctx: ctx({ authorized_owner: true, gate_outcome }) }).ok).toBe(false);
+    }
+  });
+  it("S-18 cannot store a status that differs from the gate outcome", () => {
+    expect(canTransition({ from: "eligible", to: "needs_review", trigger: "createNextOffers", ctx: ctx({ gate_outcome: "rejected" }) }).ok).toBe(false);
+    expect(canTransition({ from: "unmatched", to: "rejected", trigger: "retryMatching", ctx: ctx({ gate_outcome: "needs_review", actor_role: "operator" }) }).ok).toBe(false);
+  });
+  it.each([
+    ["offered", "canceled", "operatorCancel", {}],
+    ["needs_review", "rejected", "operatorReject", { note: "n" }],
+    ["needs_review", "draft", "returnToDonor", {}],
+    ["unmatched", "eligible", "retryMatching", { gate_outcome: "eligible" }],
+  ] as const)("operator trigger %s -> %s via %s refuses missing or non-operator roles", (from, to, trigger, extra) => {
+    expect(canTransition({ from, to, trigger, ctx: ctx(extra) }).ok).toBe(false);
+    for (const actor_role of ["donor", "recipient", "courier", "system"] as const) {
+      expect(canTransition({ from, to, trigger, ctx: ctx({ ...extra, actor_role }) }).ok, actor_role).toBe(false);
+    }
+    expect(canTransition({ from, to, trigger, ctx: ctx({ ...extra, actor_role: "operator" }) }).ok).toBe(true);
+  });
+  it("a collected needs_review donation (S-17) does not expire at the cutoff", () => {
+    expect(canTransition({ from: "needs_review", to: "expired", trigger: "expireDue", ctx: ctx({ now: AFTER, collected_at: "2026-10-18T00:00:00.000Z" }) }).ok).toBe(false);
   });
 });
 

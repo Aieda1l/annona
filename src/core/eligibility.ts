@@ -140,7 +140,7 @@ export function evaluateEligibility({ facts, donor, policy, now }: EligibilityIn
   }
 
   // G-13 ingredients
-  if (facts.ingredients_text.trim().length < 3) {
+  if (typeof facts.ingredients_text !== "string" || facts.ingredients_text.trim().length < 3) {
     add("INGREDIENTS_MISSING", "Please list the ingredients.", "ingredients_text", "unknown");
   }
 

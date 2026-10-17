@@ -54,6 +54,8 @@ const base = (over: Partial<MatchInput> = {}): MatchInput => ({
   policy: DEMO_POLICY,
   now: NOW,
   excluded_courier_ids: [],
+  busy_courier_ids: [],
+  committed_servings: {},
   ...over,
 });
 
