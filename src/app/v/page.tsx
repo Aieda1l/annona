@@ -3,7 +3,8 @@ import { LinkVerification } from "@/features/intake/components";
 
 // The donor's one-time checklist (D-031, CONTRACTS §8.4). The token lives in the URL fragment, which the browser
 // never sends to the server; LinkVerification (Dev 1) reads it client-side. This page needs no session and loads
-// nothing third-party. The HTTP headers (Referrer-Policy and Cache-Control: no-store) are set in next.config.
+// nothing third-party. force-dynamic supplies Cache-Control: no-store today; the Referrer-Policy HTTP header is
+// NOT set yet (TODO: headers() in next.config, chore PR). Until then only the no-referrer meta tag applies.
 
 export const dynamic = "force-dynamic";
 
