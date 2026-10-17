@@ -27,10 +27,12 @@ export function DonationBoard({
   donations,
   counts_by_status,
   renderActions,
+  detailHref,
 }: {
   donations: readonly DonationCardData[];
   counts_by_status: Partial<Record<DonationStatus, number>>;
   renderActions?: (card: DonationCardData) => ReactNode;
+  detailHref?: (card: DonationCardData) => string;
 }) {
   return (
     <div className="space-y-6">
@@ -50,7 +52,7 @@ export function DonationBoard({
             </h2>
             <div className="grid gap-3 md:grid-cols-2">
               {cards.map((c) => (
-                <DonationCard key={c.id} card={c} actions={renderActions?.(c)} />
+                <DonationCard key={c.id} card={c} actions={renderActions?.(c)} detailHref={detailHref?.(c)} />
               ))}
             </div>
           </section>

@@ -304,14 +304,20 @@ export const Assignment = z.strictObject({
 });
 export type Assignment = z.infer<typeof Assignment>;
 
-export const ClaimResult = z.strictObject({
-  code: ClaimResultCode,
-  offer_id: Uuid.nullable(),
-  donation_id: Uuid.nullable(),
-  donation_status: DonationStatus.nullable(),
-  assignment: Assignment.nullable(),
-  message_for_actor: z.string(),
-});
+export const ClaimResult = z
+  .strictObject({
+    code: ClaimResultCode,
+    offer_id: Uuid.nullable(),
+    donation_id: Uuid.nullable(),
+    donation_status: DonationStatus.nullable(),
+    assignment: Assignment.nullable(),
+    message_for_actor: z.string(),
+  })
+  // Section 3.9: the assignment (with addresses) exists only for `claimed` and `already_claimed_by_you`.
+  .refine((r) => (r.code === "claimed" || r.code === "already_claimed_by_you") === (r.assignment !== null), {
+    message: "assignment must be present exactly for claimed and already_claimed_by_you",
+    path: ["assignment"],
+  });
 export type ClaimResult = z.infer<typeof ClaimResult>;
 
 export const DeclineResult = z.strictObject({
