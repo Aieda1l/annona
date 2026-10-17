@@ -9,9 +9,9 @@ import type {
 import { parseUtc } from "./time";
 
 // CONTRACTS §6 matching and feasibility (M-01..M-10). Pure: no I/O, no clock reads.
-// Input is exactly the §6 list. Not decidable from it, so enforced elsewhere (CONTRACTS §6, §8.1 step 8):
-//   M-09 (busy courier): partial unique index + `ON CONFLICT DO NOTHING` in createNextOffers.
-//   M-04 net of committed servings: re-checked under the recipient lock at claim. Here M-04 uses the raw capacity.
+// Input is the §6 list plus `busy_courier_ids` (captain-approved for M-09; the unique index only covers pending_send/open).
+// M-04 net of committed servings is not decidable from the input: re-checked under the recipient lock at claim.
+// Here M-04 uses the raw capacity.
 
 export type MatchInput = {
   donation: { id: string; donor_location: { lat: number; lng: number } };
@@ -23,6 +23,8 @@ export type MatchInput = {
   now: Date;
   /** M-08: couriers already offered this donation. */
   excluded_courier_ids: string[];
+  /** M-09 (captain-approved addition): couriers with a pending_send/open offer or a claimed/collected assignment, any donation. */
+  busy_courier_ids: string[];
 };
 
 const MIN = 60_000;
@@ -65,7 +67,10 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
   if (!policyNumbers.every((n) => Number.isFinite(n) && n >= 0)) return [];
   // Malformed facts (callers should pass Zod-parsed facts) cannot be matched.
   if (!facts.allergens || !Array.isArray(facts.cross_contact_allergens)) return [];
+  // A missing list would silently disable M-09; refuse instead.
+  if (!Array.isArray(input.busy_courier_ids)) return [];
   const excluded = new Set(input.excluded_courier_ids);
+  const busy = new Set(input.busy_courier_ids);
   const joined = new Set(
     input.identities.filter((i) => i.actor_role === "courier" && i.status === "joined").map((i) => i.actor_id),
   );
@@ -88,6 +93,7 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
       if (!c.affiliated_recipient_ids.includes(r.id)) continue; // M-06
       if (facts.handling_mode === "refrigerated" && !c.capabilities.cold_transport) continue; // M-07
       if (excluded.has(c.id)) continue; // M-08
+      if (busy.has(c.id)) continue; // M-09
 
       // M-10 feasibility
       const eta = minutesFor(haversineKm(c.location, donation.donor_location), policy.average_speed_kmh);

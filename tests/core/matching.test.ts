@@ -55,6 +55,7 @@ const base = (over: Partial<MatchInput> = {}): MatchInput => ({
   policy: DEMO_POLICY,
   now: NOW,
   excluded_courier_ids: [],
+  busy_courier_ids: [],
   ...over,
 });
 
@@ -119,6 +120,13 @@ describe("T-CO-13 courier rules and ranking (M-05..M-10)", () => {
   });
   it("M-08 already offered couriers excluded", () => {
     expect(findCandidates(base({ excluded_courier_ids: ["cA"] }))).toEqual([]);
+  });
+  it("M-09 courier with another live offer or active assignment excluded", () => {
+    expect(findCandidates(base({ busy_courier_ids: ["cA"] }))).toEqual([]);
+  });
+  it("M-09 a busy courier does not hide a free one", () => {
+    const out = findCandidates(base({ couriers: [mkCourier("cA", ["r1"]), mkCourier("cB", ["r1"])], identities: [joined("cA"), joined("cB")], busy_courier_ids: ["cA"] }));
+    expect(out.map((c) => c.courier_id)).toEqual(["cB"]);
   });
   it("ranking: dropoff ascending, then courier_id ascending; ranks are 1..n", () => {
     const near = mkCourier("cB", ["r1"], { location: loc(47.61, -122.32) });

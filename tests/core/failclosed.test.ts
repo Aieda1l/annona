@@ -51,6 +51,7 @@ describe("matching fails closed on malformed numbers and times", () => {
     policy: DEMO_POLICY,
     now: NOW,
     excluded_courier_ids: [],
+    busy_courier_ids: [],
     ...o,
   });
 
@@ -69,6 +70,9 @@ describe("matching fails closed on malformed numbers and times", () => {
   });
   it.each(["response_window_seconds", "handoff_buffer_minutes", "max_transit_minutes"] as const)("NaN policy.%s -> no candidate, no throw", (k) => {
     expect(findCandidates(base({ policy: { ...DEMO_POLICY, [k]: NaN } }))).toEqual([]);
+  });
+  it("omitted busy_courier_ids -> no candidate (M-09 cannot be silently skipped)", () => {
+    expect(findCandidates(base({ busy_courier_ids: undefined as never }))).toEqual([]);
   });
   it("facts missing allergens or cross_contact_allergens -> no candidate, no throw", () => {
     const f = { ...scene1_eligible_facts, donor_pickup_by: iso(300), discard_by: iso(900) };
