@@ -291,6 +291,27 @@ describe("T-MS-15 JOIN, STOP and help", () => {
     expect(double.identity(IDENTITY_ID)?.status).toBe("opted_out");
   });
 
+  it("opts a courier out when STOP is inside a short sentence (D-039)", async () => {
+    const { double, sent, handle } = setup();
+    const result = await handle(inbound("please stop messaging me"));
+    expect(double.calls.optOuts).toEqual([IDENTITY_ID]);
+    expect(result).toMatchObject({ outcome: "processed", command: "stop" });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ purpose: "stop_ack" });
+  });
+
+  it.each(["Running late, will stop by at 5", "can you cancel the other offer", "end of day, 20 portions"])(
+    "does not opt a courier out for ordinary phrasing: %j (D-039)",
+    async (text) => {
+      const { double, sent, handle } = setup();
+      const result = await handle(inbound(text));
+      expect(double.calls.optOuts).toEqual([]);
+      expect(result).toMatchObject({ outcome: "processed", command: "unknown" });
+      expect(sent[0]).toMatchObject({ purpose: "help" });
+      expect(double.identity(IDENTITY_ID)?.status).toBe("joined");
+    },
+  );
+
   it("does not send stop_ack when core failed to opt the identity out; the error propagates so the delivery is retried", async () => {
     const { double, sent, handle } = setup();
     double.failures.optOut = true;
