@@ -47,3 +47,49 @@ export const DEMO_POLICY: PolicyConfig = {
 };
 
 export type { Allergen };
+
+// ----- matching inputs (CONTRACTS §3.1, §3.5), lane-local until contracts-2 -----
+export type GeoLocation = { lat: number; lng: number; area_label: string; address_line: string };
+
+export type RecipientOrg = {
+  id: string;
+  display_name: string;
+  approval_status: "approved" | "pending" | "suspended";
+  registered_dfdo: boolean;
+  serves_highly_susceptible_population: boolean;
+  accepts_handling_modes: HandlingMode[];
+  excluded_allergens: Allergen[];
+  capacity_servings_available: number;
+  receiving_closes_at: string;
+  location: GeoLocation;
+  is_synthetic: true;
+};
+
+export type CourierProfile = {
+  id: string;
+  display_name: string;
+  approval_status: "approved" | "pending" | "suspended";
+  affiliated_recipient_ids: string[];
+  capabilities: { cold_transport: boolean };
+  available_until: string;
+  location: GeoLocation;
+  is_synthetic: true;
+};
+
+export type MessagingIdentityLite = {
+  id: string;
+  actor_role: "courier" | "donor" | "recipient";
+  actor_id: string;
+  status: "awaiting_join" | "joined" | "opted_out";
+};
+
+export type MatchCandidate = {
+  recipient_id: string;
+  courier_id: string;
+  eta_to_pickup_minutes: number;
+  transit_minutes: number;
+  estimated_pickup_at: string;
+  estimated_dropoff_at: string;
+  slack_minutes: number;
+  rank: number;
+};

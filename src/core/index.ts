@@ -38,9 +38,9 @@ export type { TestClock } from "./clock";
 export type { DonorProfile, PolicyConfig } from "./types";
 export { DEMO_POLICY } from "./types";
 
-export function findCandidates(_input: Pending): Pending[] {
-  throw notImplementedError(OWNER, "findCandidates");
-}
+export { findCandidates, classifyUnmatched } from "./matching";
+export type { MatchInput } from "./matching";
+export type { CourierProfile, RecipientOrg, MatchCandidate, MessagingIdentityLite } from "./types";
 
 // ----- intake (called by Dev 1) -----
 export async function storeDonationImage(_input: { mime: string; bytes: Uint8Array }, _deps?: Deps): Promise<Result<{ image_id: string }>> {
