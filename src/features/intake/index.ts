@@ -4,7 +4,6 @@ import {
   type DonationCard,
   type Result,
   type VerificationLinkView,
-  type VerifiedFacts,
 } from "@/contracts";
 
 // Server-side barrel owned by Dev 1 after the baseline (keep exported names stable). CONTRACTS §9.2.
@@ -23,9 +22,7 @@ export async function createDraftFromImage(_input: {
   return notImplementedResult(OWNER, "createDraftFromImage");
 }
 
-export function parseVerifiedFacts(_raw: unknown): Result<VerifiedFacts> {
-  return notImplementedResult(OWNER, "parseVerifiedFacts");
-}
+export { parseVerifiedFacts } from "./verified-facts";
 
 export async function submitDonorVerification(_input: {
   actor: Actor;
