@@ -7,12 +7,16 @@ import type { Outcome } from "./api";
 export function DemoControls({
   onTick,
   onReset,
+  locked = false,
 }: {
   onTick: () => Promise<Outcome>;
   onReset: () => Promise<Outcome>;
+  /** True while any demo action (tick, reset, dispatch) is in flight, so they cannot race each other. */
+  locked?: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [ownBusy, setBusy] = useState(false);
+  const busy = ownBusy || locked;
   const [result, setResult] = useState<Outcome | null>(null);
 
   async function run(fn: () => Promise<Outcome>) {
@@ -45,14 +49,23 @@ export function DemoControls({
             <button type="button" className={btn} disabled={busy} onClick={() => run(onReset)}>
               Confirm reset
             </button>
-            <button type="button" className={btn} onClick={() => setConfirming(false)}>
+            <button type="button" className={btn} disabled={busy} onClick={() => setConfirming(false)}>
               Back
             </button>
           </>
         )}
       </div>
       {result?.ok && (
-        <p role="status" aria-label="Demo control result" className="text-sm text-slate-900">
+        <p
+          role="status"
+          aria-label="Demo control result"
+          className={
+            result.warn
+              ? "rounded border border-amber-700 bg-amber-50 px-2 py-1 text-sm text-amber-950"
+              : "text-sm text-slate-900"
+          }
+        >
+          {result.warn && <strong>Completed with failures: </strong>}
           {result.summary}
         </p>
       )}

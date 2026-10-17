@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DemoControls } from "@/components/dashboard/DemoControls";
 import { OperatorDashboard } from "@/components/dashboard/OperatorDashboard";
 import { fixtureSnapshot } from "@/components/dashboard/fixture-snapshot";
-import { summarizeCounts } from "@/components/dashboard/api";
+import { postJson, summarizeCounts } from "@/components/dashboard/api";
 
 afterEach(cleanup);
 
@@ -76,5 +76,60 @@ describe("OperatorDashboard demo handlers", () => {
     });
     expect(onDispatch).toHaveBeenCalledWith("00000000-0000-4000-8000-0000000000d1");
     expect(screen.getByRole("alert", { name: /dispatch result/i })).toHaveTextContent("INVALID_TRANSITION");
+  });
+});
+
+describe("failure visibility and in-flight locking", () => {
+  it("shows a 2xx report with send_failures as a warning, not a clean success", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true, data: { offers_created: 1, send_failures: 1 } }), { status: 200 })),
+      ),
+    );
+    const out = await postJson("/api/internal/tick");
+    vi.unstubAllGlobals();
+    expect(out).toMatchObject({ ok: true, warn: true });
+    render(<DemoControls onTick={() => Promise.resolve(out)} onReset={vi.fn()} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /run tick now/i }));
+    });
+    expect(screen.getByRole("status", { name: /demo control result/i })).toHaveTextContent(/completed with failures/i);
+  });
+
+  it("does not treat a non-2xx response with ok:true as success", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify({ ok: true, data: {} }), { status: 502 }))));
+    const out = await postJson("/x");
+    vi.unstubAllGlobals();
+    expect(out.ok).toBe(false);
+  });
+
+  it("keeps the dispatch result after the card leaves the eligible column", async () => {
+    const demo = { onReset: vi.fn(), onTick: vi.fn(), onDispatch: vi.fn().mockResolvedValue({ ok: true, summary: "offers created: 1" }) };
+    const { rerender } = render(<OperatorDashboard snapshot={fixtureSnapshot()} sourceLabel="x" onAction={vi.fn()} demo={demo} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /dispatch now/i }));
+    });
+    const moved = fixtureSnapshot();
+    moved.donations = moved.donations.map((d) =>
+      d.id === "00000000-0000-4000-8000-0000000000d1" ? { ...d, status: "offered" as const } : d,
+    );
+    rerender(<OperatorDashboard snapshot={moved} sourceLabel="x" onAction={vi.fn()} demo={demo} />);
+    expect(screen.queryByRole("button", { name: /dispatch now/i })).toBeNull();
+    expect(screen.getByRole("status", { name: /dispatch result/i })).toHaveTextContent("offers created: 1");
+  });
+
+  it("disables Dispatch now and tick while another demo action is in flight", async () => {
+    let release!: (o: { ok: true; summary: string }) => void;
+    const onTick = vi.fn(() => new Promise<{ ok: true; summary: string }>((r) => (release = r)));
+    const demo = { onReset: vi.fn(), onTick, onDispatch: vi.fn() };
+    render(<OperatorDashboard snapshot={fixtureSnapshot()} sourceLabel="x" onAction={vi.fn()} demo={demo} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /run tick now/i }));
+    });
+    expect(screen.getByRole("button", { name: /dispatch now/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /run tick now/i })).toBeDisabled();
+    await act(async () => release({ ok: true, summary: "done" }));
+    expect(screen.getByRole("button", { name: /dispatch now/i })).toBeEnabled();
   });
 });

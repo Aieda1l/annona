@@ -118,4 +118,35 @@ describe("LiveOperatorDashboard", () => {
     await flush();
     expect(screen.queryByRole("button", { name: /run tick now|reset demo|dispatch now/i })).toBeNull();
   });
+
+  it("hides demo controls while the snapshot is stale", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => json(okBody()))
+      .mockImplementation(() => json(errBody("PROVIDER_UNAVAILABLE", "down"), 502));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LiveOperatorDashboard />);
+    await flush();
+    expect(screen.getByRole("button", { name: /run tick now/i })).toBeInTheDocument();
+    await flush(2000);
+    expect(screen.getByText(/stale since/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /run tick now|reset demo|dispatch now/i })).toBeNull();
+  });
+
+  it("ignores an older poll that resolves after a newer one", async () => {
+    const stale = fixtureSnapshot();
+    stale.donations = [];
+    let releaseOld!: () => void;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<Response>((r) => (releaseOld = () => r(new Response(JSON.stringify({ ok: true, data: stale }), { status: 200 })))))
+      .mockImplementation(() => json(okBody()));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LiveOperatorDashboard />);
+    await flush();
+    await flush(2000);
+    expect(screen.getAllByTestId("donation-card").length).toBeGreaterThan(0);
+    await act(async () => releaseOld());
+    expect(screen.getAllByTestId("donation-card").length).toBeGreaterThan(0);
+  });
 });

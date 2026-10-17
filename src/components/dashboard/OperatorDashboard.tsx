@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import type { DashboardSnapshot, OperatorAction } from "@/contracts";
 import type { Outcome } from "./api";
 import { DemoControls } from "./DemoControls";
-import { DispatchNowButton } from "./DispatchNowButton";
+import { DispatchNowButton, DispatchResult, type DispatchState } from "./DispatchNowButton";
 import { DonationBoard } from "./DonationBoard";
 import { IdentityList } from "./IdentityList";
 import { OperatorActions } from "./OperatorActions";
@@ -29,6 +30,30 @@ export function OperatorDashboard({
   actionErrors?: Record<string, string>;
   demo?: DemoHandlers;
 }) {
+  const [dispatch, setDispatch] = useState<Record<string, DispatchState>>({});
+  const [inflight, setInflight] = useState(0);
+  const locked = inflight > 0;
+
+  async function track(fn: () => Promise<Outcome>): Promise<Outcome> {
+    setInflight((n) => n + 1);
+    try {
+      return await fn();
+    } finally {
+      setInflight((n) => n - 1);
+    }
+  }
+  async function dispatchNow(id: string) {
+    if (!demo) return;
+    setDispatch((d) => ({ ...d, [id]: { busy: true, result: null } }));
+    let result: Outcome;
+    try {
+      result = await track(() => demo.onDispatch(id));
+    } catch {
+      result = { ok: false, error: "UNREACHABLE: The server could not be reached." };
+    }
+    setDispatch((d) => ({ ...d, [id]: { busy: false, result } }));
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-4">
       <header className="space-y-1">
@@ -42,7 +67,17 @@ export function OperatorDashboard({
           <p className="text-sm font-medium text-slate-900">Read-only: operator actions are not wired to the server yet.</p>
         )}
       </header>
-      {demo && <DemoControls onTick={demo.onTick} onReset={demo.onReset} />}
+      {demo && (
+        <DemoControls
+          locked={locked}
+          onTick={() => track(demo.onTick)}
+          onReset={async () => {
+            const out = await track(demo.onReset);
+            setDispatch({});
+            return out;
+          }}
+        />
+      )}
       <DonationBoard
         donations={snapshot.donations}
         counts_by_status={snapshot.counts_by_status}
@@ -58,8 +93,12 @@ export function OperatorDashboard({
                     />
                   )}
                   {demo && card.status === "eligible" && (
-                    <DispatchNowButton onDispatch={() => demo.onDispatch(card.id)} />
+                    <DispatchNowButton
+                      disabled={locked || dispatch[card.id]?.busy === true}
+                      onDispatch={() => void dispatchNow(card.id)}
+                    />
                   )}
+                  {demo && dispatch[card.id]?.result && <DispatchResult result={dispatch[card.id]!.result!} />}
                 </>
               )
             : undefined
