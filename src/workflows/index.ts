@@ -2,10 +2,8 @@ import {
   notImplementedError,
   type Deps,
   type DeliveryStatusEvent,
-  type DraftReadyView,
   type InboundMessage,
   type InboundResult,
-  type OfferMessageView,
 } from "@/contracts";
 
 // Barrel owned by Dev 3 after the baseline (keep exported names stable). CONTRACTS §9.4.
@@ -39,10 +37,4 @@ export async function dispatchDonation(_donation_id: string, _deps?: Deps): Prom
   throw notImplementedError(OWNER, "dispatchDonation");
 }
 
-export function formatOfferMessage(_view: OfferMessageView): string {
-  throw notImplementedError(OWNER, "formatOfferMessage");
-}
-
-export function formatDraftReadyMessage(_view: DraftReadyView): string {
-  throw notImplementedError(OWNER, "formatDraftReadyMessage");
-}
+export { formatDraftReadyMessage, formatOfferMessage } from "./templates";
