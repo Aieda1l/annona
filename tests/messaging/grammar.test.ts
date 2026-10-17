@@ -82,8 +82,10 @@ describe("T-MS-01 photo", () => {
   });
 });
 
-// D-039 (CONTRACTS §3.10, v0.5): opt-out words are honored anywhere in a short message. A missed opt-out is the worse
-// failure; an accidental opt-out is undone by texting JOIN.
+// D-039 (CONTRACTS §3.10, narrowed): STOP, STOPALL and UNSUBSCRIBE are honored anywhere in a short message. A missed
+// opt-out is the worse failure; an accidental opt-out is undone by texting JOIN. END, QUIT and CANCEL count only as the
+// whole message, "stop by / at / in / off / over" is ordinary phrasing, and the text of a message with an image is never
+// an opt-out.
 describe("T-MS-01 opt-out words anywhere in a short message (D-039)", () => {
   it.each([
     "please stop messaging me",
@@ -91,12 +93,48 @@ describe("T-MS-01 opt-out words anywhere in a short message (D-039)", () => {
     "Please, STOP!",
     "please don't text me anymore, stop",
     "unsubscribe",
-    "cancel",
-    "end",
-    "quit",
+    "please unsubscribe me",
     "stopall",
+    "STOP ALL texts, stopall",
   ])("%j is stop", (input) => {
     expect(parseCommand(text(input))).toEqual({ command: "stop", short_code: null });
+  });
+
+  it("normalizes full-width and compatibility characters (NFKC) before matching", () => {
+    expect(parseCommand(text("ＳＴＯＰ")).command).toBe("stop");
+    expect(parseCommand(text("please ｓｔｏｐ texting me")).command).toBe("stop");
+    expect(parseCommand(text("ＵＮＳＵＢＳＣＲＩＢＥ")).command).toBe("stop");
+    expect(parseCommand(text("ＹＥＳ")).command).toBe("accept");
+  });
+
+  it.each(["cancel", "Cancel.", "END", "  quit  ", "“end”"])("%j alone is stop", (input) => {
+    expect(parseCommand(text(input))).toEqual({ command: "stop", short_code: null });
+  });
+
+  it.each([
+    "can you cancel the other offer",
+    "end of day, 20 portions",
+    "I quit my other job, happy to help",
+    "cancel my other plans, I'll take it",
+    "that's the end",
+    "end quit",
+  ])("%j is not an opt-out: END, QUIT and CANCEL count only as the whole message", (input) => {
+    expect(parseCommand(text(input)).command).toBe("unknown");
+  });
+
+  it.each([
+    "will stop by at 5",
+    "I can stop at the pantry first",
+    "I'll stop in later",
+    "I'll stop off on the way",
+    "can stop over after work",
+    "we can STOP BY at 5",
+  ])("%j is ordinary phrasing, not an opt-out", (input) => {
+    expect(parseCommand(text(input)).command).toBe("unknown");
+  });
+
+  it("a later STOP still opts out even after a 'stop by'", () => {
+    expect(parseCommand(text("will stop by, then stop")).command).toBe("stop");
   });
 
   it("is not blocked by a leading HELP", () => {
@@ -131,23 +169,27 @@ describe("T-MS-01 opt-out words anywhere in a short message (D-039)", () => {
   });
 });
 
-describe("T-MS-01 opt-out beats a photo (D-039)", () => {
+describe("T-MS-01 the text of a message with an image is never an opt-out (D-039)", () => {
   const image = { kind: "image" as const, provider_attachment_id: "pho_att_x", mime: null };
 
-  it.each(["STOP", "please stop sending me these", "unsubscribe"])("an image captioned %j opts the sender out, with no photo", (caption) => {
-    expect(parseCommand({ text: caption, attachments: [image] })).toEqual({ command: "stop", short_code: null });
+  it.each(["STOP", "please stop sending me these", "unsubscribe", "cancel", "end", "yes stop"])(
+    "an image captioned %j is a photo",
+    (caption) => {
+      expect(parseCommand({ text: caption, attachments: [image] })).toEqual({ command: "photo", short_code: null });
+    },
+  );
+
+  it("'end of day, 20 portions' is unknown as text, and a photo with the same caption", () => {
+    expect(parseCommand(text("end of day, 20 portions")).command).toBe("unknown");
+    expect(parseCommand({ text: "end of day, 20 portions", attachments: [image] }).command).toBe("photo");
   });
 
-  it("an ordinary caption word from the opt-out list also wins, as D-039 accepts", () => {
-    expect(parseCommand({ text: "end of day tray", attachments: [image] }).command).toBe("stop");
-  });
-
-  it("a caption blocked by an earlier command word stays a photo", () => {
-    expect(parseCommand({ text: "yes stop", attachments: [image] }).command).toBe("photo");
-  });
-
-  it("an image with no caption, or a caption without an opt-out word, is still a photo", () => {
+  it("an image with no caption, or an ordinary caption, is still a photo", () => {
     expect(parseCommand({ text: null, attachments: [image] }).command).toBe("photo");
     expect(parseCommand({ text: "leftover sandwiches", attachments: [image] }).command).toBe("photo");
+  });
+
+  it("the same STOP text without an image is an opt-out", () => {
+    expect(parseCommand(text("please stop sending me these")).command).toBe("stop");
   });
 });
