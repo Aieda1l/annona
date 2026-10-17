@@ -48,13 +48,14 @@ DELIVERED:
 - `createDispatchStore({ kind, database_url, pglite_dir })` in `src/db/index.ts`: one Drizzle implementation, drivers PGlite (undefined dir = in memory) and postgres.js (`prepare: false`). `postgres` without `database_url` throws; it never falls back to PGlite. The Drizzle client stays private in `src/db/internal.ts`; the contract handle is still `{ kind }`.
 - `src/db/seed/`: deterministic synthetic seed relative to `now`, every persona ID from `DEMO_ACTORS`, donor + courier A/B identities (awaiting JOIN), one active policy row. Re-running refreshes times and keeps joined phones joined. `photon` without all three handles stops with a clear error. No phone literal anywhere; fallback handles are `@example.invalid`.
 - `pnpm db:migrate` and `pnpm db:seed` work from the repo root.
-- Tests: `tests/core/db.test.ts` = T-CO-23 PGlite half (migrate, seed, determinism, DEMO_ACTORS ids, every index and CHECK above, ignored-sender row, identity seeded).
+- Tests: `db.test.ts` = T-CO-23 PGlite half (migrate, seed, determinism, DEMO_ACTORS ids, every index and CHECK above). `db-edge.test.ts` = foreign keys, NOT NULL, value CHECKs, round trips, persistence across reopen, refusal paths, seed input validation. `db-fuzz.test.ts` = model-based test (30 seeds x 70 random operations; the database must accept exactly what a JS model of the index rules accepts) plus 10-way concurrent writers (exactly one wins). `seed-integration.test.ts` = seeded rows read back and run through the real gate and `findCandidates`.
+- Found and fixed by the extra test rounds: timestamps no longer default to the database clock (every time comes from the injected Clock); `excluded_allergens` and `accepts_handling_modes` are CHECKed against the contract enums (a misspelled allergen would have silently never matched); an unknown store `kind` throws instead of picking pglite; closing a PGlite store before it finished starting hung; seed handles are trimmed, blank counts as unset, duplicate handles and an invalid `now` are refused with clear errors; the migration runner explains a wrong working directory. `drizzle-kit generate` reports no drift between schema and migration.
 
 EVIDENCE (commands run locally; PGlite only, nothing real):
 - `pnpm typecheck`: exit 0; `pnpm lint`: exit 0; `pnpm build`: succeeded
-- `pnpm test`: 15 files, 413 passed, 26 skipped (the Postgres half of T-CO-23, gated on `TEST_DATABASE_URL`)
+- `pnpm test`: 18 files, 487 passed, 26 skipped (the Postgres half of T-CO-23, gated on `TEST_DATABASE_URL`)
 - `pnpm db:migrate` and `pnpm db:seed` on a PGlite directory (twice, plus the photon missing-handle error and photon with handles): ran as described.
-- NOT RUN / UNVERIFIED: Postgres half of T-CO-23 (needs a disposable `TEST_DATABASE_URL`), T-CO-16, T-CO-17 (claim race on real Postgres), everything in slice 2.
+- NOT RUN / UNVERIFIED: real concurrent connections (the 10-way race above is PGlite, one connection), Postgres half of T-CO-23 (needs a disposable `TEST_DATABASE_URL`), T-CO-16, T-CO-17 (claim race on real Postgres), everything in slice 2.
 
 CONTRACT CHANGES OR REQUESTS (captain):
 - `docs/requests/dev2-demo-handle-env.md`: add `DEMO_*_HANDLE` and `TEST_DATABASE_URL` to `getEnv()`. Until then the seed CLI is the only reader of the handles.

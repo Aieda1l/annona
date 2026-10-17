@@ -29,7 +29,7 @@ CREATE TABLE "donation_images" (
 	"mime" text NOT NULL,
 	"bytes" "bytea" NOT NULL,
 	"sha256" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "donation_images_size_check" CHECK (octet_length("donation_images"."bytes") <= 5242880)
 );
 --> statement-breakpoint
@@ -49,8 +49,8 @@ CREATE TABLE "donations" (
 	"effective_cutoff_at" timestamp with time zone,
 	"claimed_offer_id" uuid,
 	"collected_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL,
 	"is_synthetic" boolean DEFAULT true NOT NULL,
 	CONSTRAINT "donations_status_check" CHECK ("status" in ('draft', 'needs_review', 'eligible', 'unmatched', 'offered', 'claimed', 'collected', 'delivered', 'rejected', 'canceled', 'expired')),
 	CONSTRAINT "donations_source_check" CHECK ("source" in ('web_upload', 'messaging', 'fixture')),
@@ -111,7 +111,7 @@ CREATE TABLE "offers" (
 	"short_code" text NOT NULL,
 	"status" text NOT NULL,
 	"wave_no" integer NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
 	"sent_at" timestamp with time zone,
 	"expires_at" timestamp with time zone,
 	"responded_at" timestamp with time zone,
@@ -137,7 +137,7 @@ CREATE TABLE "outbound_messages" (
 	"provider_message_id" text,
 	"correlation" jsonb,
 	"send_result" jsonb,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "outbound_messages_purpose_check" CHECK ("purpose" in ('offer', 'claim_result', 'decline_ack', 'offer_closed', 'join_ack', 'stop_ack', 'draft_ready', 'intake_failed', 'donor_update', 'recipient_update', 'help')),
 	CONSTRAINT "outbound_messages_provider_mode_check" CHECK ("provider_mode" in ('real', 'fake'))
 );
@@ -172,6 +172,8 @@ CREATE TABLE "recipients" (
 	"receiving_closes_at" timestamp with time zone NOT NULL,
 	"location" jsonb NOT NULL,
 	"is_synthetic" boolean DEFAULT true NOT NULL,
+	CONSTRAINT "recipients_excluded_allergens_check" CHECK ("excluded_allergens" <@ ARRAY['milk', 'eggs', 'fish', 'crustacean_shellfish', 'tree_nuts', 'peanuts', 'wheat', 'soybeans', 'sesame']::text[]),
+	CONSTRAINT "recipients_handling_modes_check" CHECK ("accepts_handling_modes" <@ ARRAY['refrigerated', 'hot_held', 'ambient', 'frozen', 'unknown']::text[]),
 	CONSTRAINT "recipients_approval_status_check" CHECK ("approval_status" in ('approved', 'pending', 'suspended')),
 	CONSTRAINT "recipients_capacity_check" CHECK ("recipients"."capacity_servings_available" >= 0),
 	CONSTRAINT "recipients_synthetic_check" CHECK ("recipients"."is_synthetic" = true)
@@ -180,7 +182,7 @@ CREATE TABLE "recipients" (
 CREATE TABLE "system_status" (
 	"key" text PRIMARY KEY NOT NULL,
 	"value" jsonb NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+	"updated_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "verification_links" (

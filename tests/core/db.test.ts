@@ -68,6 +68,8 @@ const donationRow = (over: Partial<typeof donations.$inferInsert> = {}): typeof 
   status: "draft",
   source: "fixture",
   ai_status: "pending",
+  created_at: NOW,
+  updated_at: NOW,
   ...over,
 });
 const ALPHABET = "ACDEFHJKMNPRTUVWXY3479";
@@ -80,6 +82,7 @@ const offerRow = (donation_id: string, courier_id: string, over: Partial<typeof 
   short_code: code(),
   status: "pending_send",
   wave_no: 1,
+  created_at: NOW,
   provider_mode: "fake",
   candidate: {},
   ...over,
@@ -288,14 +291,14 @@ function schemaChecks(getStore: () => DispatchStore) {
     });
     it("outbound messages are unique per idempotency_key", async () => {
       await expectCode(getStore(), UNIQUE, async (tx) => {
-        const row = { identity_id: SEED_IDENTITY_IDS.courier_a, purpose: "offer", text: "hi", idempotency_key: "k-1", provider_mode: "fake" };
+        const row = { identity_id: SEED_IDENTITY_IDS.courier_a, purpose: "offer", text: "hi", idempotency_key: "k-1", provider_mode: "fake", created_at: NOW };
         await tx.insert(outbound_messages).values(row);
         await tx.insert(outbound_messages).values(row);
       });
     });
     it("outbound purpose is checked", async () => {
       await expectCode(getStore(), CHECK, async (tx) => {
-        await tx.insert(outbound_messages).values({ identity_id: SEED_IDENTITY_IDS.courier_a, purpose: "spam", text: "x", idempotency_key: "k-2", provider_mode: "fake" });
+        await tx.insert(outbound_messages).values({ identity_id: SEED_IDENTITY_IDS.courier_a, purpose: "spam", text: "x", idempotency_key: "k-2", provider_mode: "fake", created_at: NOW });
       });
     });
     it("messaging identities are unique per (provider, handle)", async () => {
@@ -316,10 +319,10 @@ function schemaChecks(getStore: () => DispatchStore) {
     it("an image over 5 MB violates the size CHECK; one at the limit is stored", async () => {
       const limit = 5 * 1024 * 1024;
       await expectCode(getStore(), CHECK, async (tx) => {
-        await tx.insert(donation_images).values({ mime: "image/jpeg", bytes: new Uint8Array(limit + 1), sha256: "x" });
+        await tx.insert(donation_images).values({ mime: "image/jpeg", bytes: new Uint8Array(limit + 1), sha256: "x", created_at: NOW });
       });
       await expectOk(getStore(), async (tx) => {
-        await tx.insert(donation_images).values({ mime: "image/jpeg", bytes: new Uint8Array(limit), sha256: "y" });
+        await tx.insert(donation_images).values({ mime: "image/jpeg", bytes: new Uint8Array(limit), sha256: "y", created_at: NOW });
       });
     });
     it("only one policy row can be active", async () => {

@@ -43,8 +43,18 @@ const SYNTHETIC_HANDLES = {
   courier_b: "courier-b@example.invalid",
 } as const;
 
+const clean = (v: string | undefined): string | undefined => {
+  const t = v?.trim();
+  return t ? t : undefined;
+};
+
 export function resolveHandles(opts: Pick<SeedOptions, "messaging_provider" | "handles">) {
-  const given = opts.handles ?? {};
+  if (opts.messaging_provider !== "fake" && opts.messaging_provider !== "photon") {
+    throw new Error(`Seed: unknown messaging_provider '${String(opts.messaging_provider)}' (expected 'fake' or 'photon').`);
+  }
+  // Blank or whitespace-only values count as unset; real values are trimmed.
+  const given = { donor: clean(opts.handles?.donor), courier_a: clean(opts.handles?.courier_a), courier_b: clean(opts.handles?.courier_b) };
+  let out: { provider: "fake" | "photon"; donor: string; courier_a: string; courier_b: string };
   if (opts.messaging_provider === "photon") {
     const missing = (["donor", "courier_a", "courier_b"] as const).filter((k) => !given[k]);
     if (missing.length > 0) {
@@ -52,19 +62,27 @@ export function resolveHandles(opts: Pick<SeedOptions, "messaging_provider" | "h
         `Seed: messaging is 'photon' but handles are missing for ${missing.join(", ")}. Set DEMO_DONOR_HANDLE, DEMO_COURIER_A_HANDLE and DEMO_COURIER_B_HANDLE.`,
       );
     }
-    return { provider: "photon" as const, donor: given.donor!, courier_a: given.courier_a!, courier_b: given.courier_b! };
+    out = { provider: "photon", donor: given.donor!, courier_a: given.courier_a!, courier_b: given.courier_b! };
+  } else {
+    out = {
+      provider: "fake",
+      donor: given.donor ?? SYNTHETIC_HANDLES.donor,
+      courier_a: given.courier_a ?? SYNTHETIC_HANDLES.courier_a,
+      courier_b: given.courier_b ?? SYNTHETIC_HANDLES.courier_b,
+    };
   }
-  return {
-    provider: "fake" as const,
-    donor: given.donor ?? SYNTHETIC_HANDLES.donor,
-    courier_a: given.courier_a ?? SYNTHETIC_HANDLES.courier_a,
-    courier_b: given.courier_b ?? SYNTHETIC_HANDLES.courier_b,
-  };
+  // UNIQUE (provider, handle): one phone cannot play two personas.
+  const lowered = [out.donor, out.courier_a, out.courier_b].map((x) => x.toLowerCase());
+  if (new Set(lowered).size !== lowered.length) {
+    throw new Error("Seed: the donor, courier A and courier B handles must differ from each other.");
+  }
+  return out;
 }
 
 /** Builds the rows. Pure and deterministic for a given `now` and handles. */
 export function buildSeed(opts: SeedOptions) {
   const { now } = opts;
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error("Seed: `now` must be a valid Date.");
   const h = resolveHandles(opts);
   const closes = hoursFrom(now, 8);
   const eastlake = actorId("recipient_eastlake");

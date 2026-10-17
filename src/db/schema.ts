@@ -15,8 +15,10 @@ import {
 import {
   ACTOR_ROLES,
   AI_STATUSES,
+  ALLERGENS,
   DELIVERY_STATUSES,
   DONATION_STATUSES,
+  HANDLING_MODES,
   MESSAGE_PURPOSES,
   MESSAGING_IDENTITY_STATUSES,
   OFFER_STATUSES,
@@ -26,9 +28,14 @@ import {
 // ARCHITECTURE §7. text + CHECK constraints instead of PG enums; timestamptz everywhere.
 // jsonb columns keep the contract field names, so there is no mapping layer.
 
-const inList = (column: { name: string }, values: readonly string[]): SQL =>
-  sql.raw(`"${column.name}" in (${values.map((v) => `'${v}'`).join(", ")})`);
+const quoted = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ");
+const inList = (column: { name: string }, values: readonly string[]): SQL => sql.raw(`"${column.name}" in (${quoted(values)})`);
+/** Every element of a text[] column must come from `values` (a misspelled allergen would otherwise never match). */
+const subsetOf = (column: { name: string }, values: readonly string[]): SQL =>
+  sql.raw(`"${column.name}" <@ ARRAY[${quoted(values)}]::text[]`);
 
+// Every timestamp is supplied by the caller from the injected Clock (CONTRACTS section 9.0). No column defaults to the
+// database clock, because that would bypass the test clock and the "server time only" rule.
 const tstz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 
 const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({
@@ -77,6 +84,8 @@ export const recipients = pgTable(
     is_synthetic: boolean("is_synthetic").notNull().default(true),
   },
   (t) => [
+    check("recipients_excluded_allergens_check", subsetOf(t.excluded_allergens, ALLERGENS)),
+    check("recipients_handling_modes_check", subsetOf(t.accepts_handling_modes, HANDLING_MODES)),
     check("recipients_approval_status_check", inList(t.approval_status, APPROVAL_STATUSES)),
     check("recipients_capacity_check", sql`${t.capacity_servings_available} >= 0`),
     check("recipients_synthetic_check", sql`${t.is_synthetic} = true`),
@@ -130,7 +139,7 @@ export const donation_images = pgTable(
     mime: text("mime").notNull(),
     bytes: bytea("bytes").notNull(),
     sha256: text("sha256").notNull(),
-    created_at: tstz("created_at").notNull().defaultNow(),
+    created_at: tstz("created_at").notNull(),
   },
   (t) => [check("donation_images_size_check", sql`octet_length(${t.bytes}) <= ${sql.raw(String(MAX_IMAGE_BYTES))}`)],
 );
@@ -157,8 +166,8 @@ export const donations = pgTable(
     // only the claim transaction writes it.
     claimed_offer_id: uuid("claimed_offer_id"),
     collected_at: tstz("collected_at"),
-    created_at: tstz("created_at").notNull().defaultNow(),
-    updated_at: tstz("updated_at").notNull().defaultNow(),
+    created_at: tstz("created_at").notNull(),
+    updated_at: tstz("updated_at").notNull(),
     is_synthetic: boolean("is_synthetic").notNull().default(true),
   },
   (t) => [
@@ -213,7 +222,7 @@ export const offers = pgTable(
     short_code: text("short_code").notNull(),
     status: text("status").notNull(),
     wave_no: integer("wave_no").notNull(),
-    created_at: tstz("created_at").notNull().defaultNow(),
+    created_at: tstz("created_at").notNull(),
     sent_at: tstz("sent_at"),
     expires_at: tstz("expires_at"),
     responded_at: tstz("responded_at"),
@@ -297,7 +306,7 @@ export const outbound_messages = pgTable(
     provider_message_id: text("provider_message_id"),
     correlation: jsonb("correlation"),
     send_result: jsonb("send_result"),
-    created_at: tstz("created_at").notNull().defaultNow(),
+    created_at: tstz("created_at").notNull(),
   },
   (t) => [
     check("outbound_messages_purpose_check", inList(t.purpose, MESSAGE_PURPOSES)),
@@ -344,5 +353,5 @@ export const policy_config = pgTable(
 export const system_status = pgTable("system_status", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
-  updated_at: tstz("updated_at").notNull().defaultNow(),
+  updated_at: tstz("updated_at").notNull(),
 });

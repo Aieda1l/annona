@@ -1,5 +1,5 @@
 {
-  "id": "030a667b-c243-4cc7-8d1e-4d23165e8f8a",
+  "id": "18b28d9f-437d-4453-9b2b-681afde866c7",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -206,8 +206,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         }
       },
       "indexes": {},
@@ -324,15 +323,13 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "is_synthetic": {
           "name": "is_synthetic",
@@ -773,8 +770,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         },
         "sent_at": {
           "name": "sent_at",
@@ -1048,8 +1044,7 @@
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         }
       },
       "indexes": {
@@ -1337,6 +1332,14 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "recipients_excluded_allergens_check": {
+          "name": "recipients_excluded_allergens_check",
+          "value": "\"excluded_allergens\" <@ ARRAY['milk', 'eggs', 'fish', 'crustacean_shellfish', 'tree_nuts', 'peanuts', 'wheat', 'soybeans', 'sesame']::text[]"
+        },
+        "recipients_handling_modes_check": {
+          "name": "recipients_handling_modes_check",
+          "value": "\"accepts_handling_modes\" <@ ARRAY['refrigerated', 'hot_held', 'ambient', 'frozen', 'unknown']::text[]"
+        },
         "recipients_approval_status_check": {
           "name": "recipients_approval_status_check",
           "value": "\"approval_status\" in ('approved', 'pending', 'suspended')"
@@ -1372,8 +1375,7 @@
           "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
+          "notNull": true
         }
       },
       "indexes": {},
