@@ -11,6 +11,7 @@ CREATE TABLE "audit_events" (
 	CONSTRAINT "audit_events_actor_role_check" CHECK ("actor_role" in ('donor', 'recipient', 'courier', 'operator', 'system'))
 );
 --> statement-breakpoint
+ALTER TABLE "audit_events" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "couriers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"display_name" text NOT NULL,
@@ -24,6 +25,7 @@ CREATE TABLE "couriers" (
 	CONSTRAINT "couriers_synthetic_check" CHECK ("couriers"."is_synthetic" = true)
 );
 --> statement-breakpoint
+ALTER TABLE "couriers" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "donation_images" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"mime" text NOT NULL,
@@ -33,6 +35,7 @@ CREATE TABLE "donation_images" (
 	CONSTRAINT "donation_images_size_check" CHECK (octet_length("donation_images"."bytes") <= 5242880)
 );
 --> statement-breakpoint
+ALTER TABLE "donation_images" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "donations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"donor_id" uuid NOT NULL,
@@ -56,9 +59,11 @@ CREATE TABLE "donations" (
 	CONSTRAINT "donations_source_check" CHECK ("source" in ('web_upload', 'messaging', 'fixture')),
 	CONSTRAINT "donations_ai_status_check" CHECK ("ai_status" in ('pending', 'succeeded', 'failed', 'skipped')),
 	CONSTRAINT "donations_version_check" CHECK ("donations"."version" >= 1),
+	CONSTRAINT "donations_claim_linked_check" CHECK ("donations"."status" not in ('claimed', 'collected') or "donations"."claimed_offer_id" is not null),
 	CONSTRAINT "donations_synthetic_check" CHECK ("donations"."is_synthetic" = true)
 );
 --> statement-breakpoint
+ALTER TABLE "donations" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "donors" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"display_name" text NOT NULL,
@@ -72,6 +77,7 @@ CREATE TABLE "donors" (
 	CONSTRAINT "donors_synthetic_check" CHECK ("donors"."is_synthetic" = true)
 );
 --> statement-breakpoint
+ALTER TABLE "donors" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "inbound_messages" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"provider" text NOT NULL,
@@ -87,6 +93,7 @@ CREATE TABLE "inbound_messages" (
 	CONSTRAINT "inbound_messages_provider_check" CHECK ("provider" in ('photon', 'fake'))
 );
 --> statement-breakpoint
+ALTER TABLE "inbound_messages" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "messaging_identities" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"actor_role" text NOT NULL,
@@ -103,6 +110,7 @@ CREATE TABLE "messaging_identities" (
 	CONSTRAINT "messaging_identities_status_check" CHECK ("status" in ('awaiting_join', 'joined', 'opted_out'))
 );
 --> statement-breakpoint
+ALTER TABLE "messaging_identities" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "offers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"donation_id" uuid NOT NULL,
@@ -124,9 +132,11 @@ CREATE TABLE "offers" (
 	CONSTRAINT "offers_provider_mode_check" CHECK ("provider_mode" in ('real', 'fake')),
 	CONSTRAINT "offers_delivery_status_check" CHECK ("delivery_status" in ('unknown', 'accepted', 'delivered', 'failed')),
 	CONSTRAINT "offers_wave_no_check" CHECK ("offers"."wave_no" >= 1),
+	CONSTRAINT "offers_open_has_deadline_check" CHECK ("offers"."status" <> 'open' or "offers"."expires_at" is not null),
 	CONSTRAINT "offers_short_code_check" CHECK ("offers"."short_code" ~ '^[ACDEFHJKMNPRTUVWXY3479]{4}$')
 );
 --> statement-breakpoint
+ALTER TABLE "offers" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "outbound_messages" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"identity_id" uuid NOT NULL,
@@ -142,6 +152,7 @@ CREATE TABLE "outbound_messages" (
 	CONSTRAINT "outbound_messages_provider_mode_check" CHECK ("provider_mode" in ('real', 'fake'))
 );
 --> statement-breakpoint
+ALTER TABLE "outbound_messages" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "policy_config" (
 	"policy_id" text NOT NULL,
 	"policy_version" text NOT NULL,
@@ -149,6 +160,7 @@ CREATE TABLE "policy_config" (
 	"active" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "policy_config" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "provider_status_events" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"provider" text NOT NULL,
@@ -160,6 +172,7 @@ CREATE TABLE "provider_status_events" (
 	CONSTRAINT "provider_status_events_provider_check" CHECK ("provider" in ('photon', 'fake'))
 );
 --> statement-breakpoint
+ALTER TABLE "provider_status_events" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "recipients" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"display_name" text NOT NULL,
@@ -179,12 +192,14 @@ CREATE TABLE "recipients" (
 	CONSTRAINT "recipients_synthetic_check" CHECK ("recipients"."is_synthetic" = true)
 );
 --> statement-breakpoint
+ALTER TABLE "recipients" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "system_status" (
 	"key" text PRIMARY KEY NOT NULL,
 	"value" jsonb NOT NULL,
 	"updated_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
+ALTER TABLE "system_status" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE TABLE "verification_links" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"donation_id" uuid NOT NULL,
@@ -193,9 +208,11 @@ CREATE TABLE "verification_links" (
 	"issued_at" timestamp with time zone NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
 	"consumed_at" timestamp with time zone,
-	"revoked_at" timestamp with time zone
+	"revoked_at" timestamp with time zone,
+	CONSTRAINT "verification_links_token_hash_hex_check" CHECK ("verification_links"."token_hash" ~ '^[0-9a-f]{64}$')
 );
 --> statement-breakpoint
+ALTER TABLE "verification_links" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "donations" ADD CONSTRAINT "donations_donor_id_donors_id_fk" FOREIGN KEY ("donor_id") REFERENCES "public"."donors"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "donations" ADD CONSTRAINT "donations_image_id_donation_images_id_fk" FOREIGN KEY ("image_id") REFERENCES "public"."donation_images"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "offers" ADD CONSTRAINT "offers_donation_id_donations_id_fk" FOREIGN KEY ("donation_id") REFERENCES "public"."donations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -206,6 +223,7 @@ ALTER TABLE "verification_links" ADD CONSTRAINT "verification_links_donation_id_
 ALTER TABLE "verification_links" ADD CONSTRAINT "verification_links_donor_id_donors_id_fk" FOREIGN KEY ("donor_id") REFERENCES "public"."donors"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "audit_events_donation_at_idx" ON "audit_events" USING btree ("donation_id","at");--> statement-breakpoint
 CREATE INDEX "donations_status_idx" ON "donations" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "donations_donor_idx" ON "donations" USING btree ("donor_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "donations_source_ref_uq" ON "donations" USING btree ("source","source_ref") WHERE "donations"."source_ref" is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "inbound_messages_provider_message_uq" ON "inbound_messages" USING btree ("provider","provider_message_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "messaging_identities_provider_handle_uq" ON "messaging_identities" USING btree ("provider","handle");--> statement-breakpoint
@@ -214,6 +232,7 @@ CREATE UNIQUE INDEX "offers_one_active_assignment_uq" ON "offers" USING btree ("
 CREATE UNIQUE INDEX "offers_one_live_offer_per_courier_uq" ON "offers" USING btree ("courier_id") WHERE "offers"."status" in ('pending_send', 'open');--> statement-breakpoint
 CREATE INDEX "offers_status_expires_idx" ON "offers" USING btree ("status","expires_at");--> statement-breakpoint
 CREATE INDEX "offers_courier_status_idx" ON "offers" USING btree ("courier_id","status");--> statement-breakpoint
+CREATE INDEX "offers_donation_status_idx" ON "offers" USING btree ("donation_id","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "outbound_messages_idempotency_key_uq" ON "outbound_messages" USING btree ("idempotency_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "policy_config_id_version_uq" ON "policy_config" USING btree ("policy_id","policy_version");--> statement-breakpoint
 CREATE UNIQUE INDEX "policy_config_one_active_uq" ON "policy_config" USING btree ("active") WHERE "policy_config"."active" = true;--> statement-breakpoint

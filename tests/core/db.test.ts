@@ -89,13 +89,15 @@ const offerRow = (donation_id: string, courier_id: string, over: Partial<typeof 
   created_at: NOW,
   provider_mode: "fake",
   candidate: {},
+  // An open offer always carries a deadline (offers_open_has_deadline_check).
+  ...(over.status === "open" ? { sent_at: NOW, expires_at: new Date(NOW.getTime() + 60_000) } : {}),
   ...over,
 });
 const linkRow = (donation_id: string, over: Partial<typeof verification_links.$inferInsert> = {}): typeof verification_links.$inferInsert => ({
   id: randomUUID(),
   donation_id,
   donor_id: DONOR,
-  token_hash: randomUUID().replaceAll("-", ""),
+  token_hash: randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", ""),
   issued_at: NOW,
   expires_at: new Date(NOW.getTime() + 30 * 60_000),
   ...over,
@@ -236,8 +238,8 @@ function schemaChecks(getStore: () => DispatchStore) {
         const d1 = donationRow();
         const d2 = donationRow();
         await tx.insert(donations).values([d1, d2]);
-        await tx.insert(verification_links).values(linkRow(d1.id!, { token_hash: "abc123" }));
-        await tx.insert(verification_links).values(linkRow(d2.id!, { token_hash: "abc123" }));
+        await tx.insert(verification_links).values(linkRow(d1.id!, { token_hash: "a".repeat(64) }));
+        await tx.insert(verification_links).values(linkRow(d2.id!, { token_hash: "a".repeat(64) }));
       });
     });
   });
@@ -260,7 +262,7 @@ function schemaChecks(getStore: () => DispatchStore) {
       await expectCode(getStore(), CHECK, async (tx) => void (await tx.insert(donations).values(donationRow({ status: "safe" }))));
       await expectCode(getStore(), CHECK, async (tx) => void (await tx.insert(donations).values(donationRow({ source: "email" }))));
       await expectCode(getStore(), CHECK, async (tx) => void (await tx.insert(donations).values(donationRow({ version: 0 }))));
-      for (const status of ["unmatched", "needs_review", "collected"]) {
+      for (const status of ["unmatched", "needs_review", "delivered"]) {
         await expectOk(getStore(), async (tx) => void (await tx.insert(donations).values(donationRow({ status }))));
       }
     });
