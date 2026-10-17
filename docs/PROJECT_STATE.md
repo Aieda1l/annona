@@ -1,34 +1,41 @@
 # PROJECT_STATE.md — captain's checkpoint
 
 > **Owner:** integration captain (Dev 4) only. Lanes report through `docs/handoffs/dev-N.md` and PR descriptions, never by editing this file (OWNERSHIP §9).
-> **As of:** 2026-10-15, pre-event ideation. Written by the master bootstrap planning session; updated 2026-10-16 for D-029, for the kickoff review D-031..D-034, and for the Q-1 answer (D-035), the Dev 4 assignment and the judging/video re-check (R-DH-5, R-DH-14).
-> **Status:** **Nothing is implemented. No build, test, deployment or provider call has happened.** Every claim below is labeled.
+> **As of:** 2026-10-17 15:55 PDT (updated by the captain after the CP0a/CP0b work and the first integration round; earlier history: written 2026-10-15 pre-event, revised 2026-10-16 for D-029, D-031..D-035). Observed facts are labeled with how they were observed; anything not run is UNVERIFIED.
+> **Status:** Code exists and is merged on `main` (lanes 1 to 4 slice PRs, contracts, UI kit, env schema). **Nothing has been verified end to end:** the read models behind `/api/dashboard`, the donor checklist component, real Gemini and real Photon are not wired or proven. Every claim below is labeled.
 
 ## 1. Checkpoint summary
 
 | Item | Value |
 |---|---|
-| Phase | Pre-event ideation (D-002). Code is allowed from Sat Oct 17, 12:30 PM PDT (R-DH-1, R-DH-3). |
-| Last known passing build | **None.** No code exists. |
-| Baseline | **Pending.** The captain creates it at kickoff (at or after 12:30 PM Sat) via `docs/plans/active/kickoff-baseline.md`, tags it **`baseline`**, and posts `BASELINE_SHA` = `git rev-parse 'baseline^{commit}'` (D-023). Lanes branch from the tag; prompts are never edited. |
-| Contracts version | See the `docs/CONTRACTS.md` header (the only place the number is stated, D-034); generated into `src/contracts` at kickoff |
-| Decisions | D-001..D-017, D-019, D-021..D-034 PROPOSED (D-002's commit clause refined by D-035; D-008's donor path superseded by D-031; D-014's scope clause by D-030; D-025/D-029 STOP behavior by D-032); D-018 SUPERSEDED by D-022; D-020 and D-035 ACCEPTED (`docs/DECISIONS.md`) |
+| Phase | Event: build window (code allowed since Sat Oct 17, 12:00 PM PDT per the organizers' early start; CLAUDE.md note). |
+| Last known passing build | `main` at **3c43862**, run 2026-10-17 ~15:50 PDT in the captain worktree: `pnpm lint`, `pnpm typecheck`, `pnpm build` exit 0; `pnpm test` exit 0 with **1283 passed, 26 skipped (gated real-Postgres tests), 1 todo** (53 files). PGlite and fakes only; nothing real. |
+| Baseline | **Done.** Annotated tag `baseline` (object 2d7215e) points to **BASELINE_SHA `f750162953dbe37b89111071976c8fd247e96f57`** (commit 2026-10-17 12:12 PDT, contracts v0.4). Repo https://github.com/Aieda1l/annona is **public** (verified with `gh repo view`). |
+| Contracts version | See the `docs/CONTRACTS.md` header (the only place the number is stated, D-034). `main` has v0.4; v0.5 (spec) is in PR #9 and its types are in PR #10, both open. |
+| Decisions | D-036, D-038 and D-039 ACCEPTED by the captain 2026-10-17 (D-036/D-038 still need Dev 3's explicit gate and expiry sign-off on PR #9; D-039 was narrowed the same day). D-037 PROPOSED. Earlier decisions as in `docs/DECISIONS.md`. |
 | Entry doc | `docs/KICKOFF.md` (D-034) |
-| Next checkpoint | **CP0a Baseline push, Sat 1:15 PM** |
+| Next checkpoint | **CP1 Lane slices, Sat 4:00 PM** (partly reached, see below) |
 
 | Checkpoint | Target (PDT) | State | Evidence |
 |---|---|---|---|
-| CP0a Baseline (captain push + smoke, tag `baseline`, SHA posted) | Sat 1:15 PM | NOT REACHED | — |
-| CP0b Baseline (all four machines on their branches, install/typecheck/test/build pass) | Sat 1:30 PM | NOT REACHED | — |
-| CP1 Lane slices | Sat 4:00 PM | NOT REACHED | — |
-| CP1.5 Core unblocked (Dev 2 sub-PRs 2(a) + 2(b) merged, D-027) | Sat 5:15 PM | NOT REACHED | — |
+| CP0a Baseline (captain push + smoke, tag `baseline`, SHA posted) | Sat 1:15 PM | **REACHED** | Tag and public repo above. Dev 4 smoke on the baseline (observed 12:20 PDT): typecheck, lint, test (47 passed), build all exit 0. Time the tag was pushed was not recorded. |
+| CP0b Baseline (all four machines on their branches, install/typecheck/test/build pass) | Sat 1:30 PM | **REACHED (Dev 4 verified; others by branch evidence)** | Dev 4: `feat/dashboard` from the tag, install/typecheck/lint/test/build exit 0. Dev 1/2/3 branches (`feat/intake`, `feat/dispatch`, `feat/messaging`) exist and merged PRs; their own install results are in their handoffs and were not re-run by the captain. |
+| CP1 Lane slices | Sat 4:00 PM | **PARTLY REACHED** | Slice PRs merged for all four lanes (see §9). Open: Dev 2 follow-up #21 (review fixes, awaiting Dev 3), Dev 3 #16 and #19, contracts #9 and #10. Dev 3's explicit gate-rule sign-off (OWNERSHIP §6) is not recorded. |
+| CP1.5 Core unblocked (Dev 2 sub-PRs 2(a) + 2(b) merged, D-027) | Sat 5:15 PM | NOT REACHED | Only Dev 2's PR 1a (gate, matching, state) and PR 1b (persistence skeleton) are merged; the intake-facing, dispatch-facing and read-model functions are still `NOT_IMPLEMENTED` stubs on `main`. |
 | CP2 Fake end-to-end (web fallback at minimum) | Sat 6:30 PM | NOT REACHED | — |
 | CP3 Real providers + scene 1 by message + T-CO-17 | Sat 9:00 PM | NOT REACHED | — |
 | CP4 Draft submitted | Target Sat 9:30 PM; latest 10:15 PM (hard 10:30 PM) | NOT REACHED | — |
 | CP5 Freeze | Sun 7:30 AM | NOT REACHED | — |
 | CP6 Final | Sun 9:30 AM (hard 10:00 AM) | NOT REACHED | — |
 
-## 2. Repository facts (observed 2026-10-15 with `git status` / `git branch` / `git remote -v`)
+## 2. Repository facts
+
+**Current (observed 2026-10-17 with `git`, `gh`):**
+- Default branch `main`; remote `origin` = https://github.com/Aieda1l/annona, **public**. Tag `baseline` (annotated) at `f750162`.
+- Squash-merged PRs so far are listed in section 9. Open PRs at the time of writing: #9, #10 (captain), #16, #19 (Dev 3), #21 (Dev 2), #22, #23, #24 (Dev 4 docs).
+- `next dev` writes an untracked `AGENTS.md` at the repo root; it must not be committed (CLAUDE.md).
+
+**Historical (observed 2026-10-15, before kickoff):**
 
 - Branch: `master`, with **zero commits**. The contract expects `main`; kickoff renames it.
 - Remote: **none**. Teammates cannot read the package until N-0 shares a read-only copy.
@@ -58,7 +65,7 @@
 | `docs/RESEARCH.md`, `docs/PROMPT_EVAL.md` | Evidence ledger; Dev 1 prompt registry | Present (PROPOSED) |
 | `prompts/dev-01-vision-intake.md` … `prompts/dev-04-dashboard-integration.md` | Four lane prompts, v1.3 (D-031..D-034; they read the contracts version from the CONTRACTS.md header) | Present. Never edited at kickoff: each lane checks that `git rev-parse 'baseline^{commit}'` equals the posted `BASELINE_SHA` (D-023). |
 
-**Does not exist yet:** any `src/`, `tests/`, `package.json`, lockfile, migrations, `.env*`, GitHub repo, Supabase project, Vercel project, Photon project, AI Studio key or VEYZL install.
+**Exists now:** `src/` (contracts, server, core, db, features, lib/ai, integrations, workflows, app, components), `tests/`, `package.json`, lockfile, migrations, the public GitHub repo, the UI kit. **Does not exist / not recorded here:** a Vercel project, a deployed URL, the VEYZL install, a Supabase project (none recorded), and any real Photon or Gemini evidence.
 
 ### 3.1 Decisions added by the v0.2 cross-document review (all PROPOSED)
 
@@ -87,6 +94,15 @@
 | D-033 | T-CO-17 on real Postgres (independent connections, demo pooler mode) is required before anyone calls claims race-safe. |
 | D-034 | Lean kickoff: `docs/KICKOFF.md`; minimal baseline by default; CP0a 1:15 / CP0b 1:30; 28 must-run tests; contracts version only in the CONTRACTS.md header; minimal prompt edits. |
 
+### 3.1c Decisions added during the event (2026-10-17)
+
+| ID | Short form |
+|---|---|
+| D-036 | G-01 as written: a `pending` donor is `needs_review` whether or not licensed; any other non-approved donor is `rejected`. ACCEPTED (captain). Needs Dev 3's explicit gate sign-off on PR #9. |
+| D-037 | `findCandidates` takes `busy_courier_ids`, `committed_servings`, `active_provider`, `donor_location`; malformed top-level input returns `[]`. PROPOSED. Only `busy_courier_ids` and `donor_location` are implemented. |
+| D-038 | One cutoff resolution rule for S-06/S-08/S-09/S-14/S-15/S-16 and claim step 6: stored cutoff, else `min(donor_pickup_by, discard_by)`, else reached. ACCEPTED (captain). Needs Dev 3's explicit expiry sign-off. |
+| D-039 | Opt-out words honored narrowly in short messages (`STOP`, `STOPALL`, `UNSUBSCRIBE`; `END`/`QUIT`/`CANCEL` only as the whole message; image captions never). ACCEPTED, then narrowed the same day. Open question: whether the earlier-word blocklist (YES/NO/DECLINE/ACCEPT/JOIN) should stay (Dev 3 says it misses real opt-outs). |
+
 ### 3.2 Resolved in contracts v0.2 (no longer open)
 
 - Env var names: `TICK_INTERVAL_MS`, `TEST_DATABASE_URL`, `DEMO_COURIER_A_HANDLE`, `DEMO_COURIER_B_HANDLE` are in CONTRACTS §12.
@@ -100,23 +116,28 @@
 
 | Provider / surface | Planned real path | Fake / fallback | Status | Evidence required to mark VERIFIED | Owner |
 |---|---|---|---|---|---|
-| Gemini (`@google/genai`) | `VISION_PROVIDER=gemini`, `gemini-3.5-flash-lite` (D-012) | SHA-256-keyed fixture fake, labeled "AI: FAKE"; `misconfigured` (never silently fake) if the key is missing | **NOT STARTED / UNVERIFIED** | T-IN-10: model ID, latency, schema-valid output on ≥ 2 synthetic fixtures | Dev 1 |
-| Photon 2.0 Beta (iMessage) | `MESSAGING_PROVIDER=photon`, shared line, JOIN opt-in (D-011) | Simulated phone (fake mode only), labeled "Messaging: SIMULATED"; `misconfigured` if Photon keys are missing | **NOT STARTED / UNVERIFIED** | T-MS-13: real JOIN → offer → YES → claimed with `provider_message_id`s | Dev 3 |
-| Supabase Postgres | `STORE=postgres`, transaction pooler 6543, `prepare: false` (R-INF-7) | `STORE=pglite` | **NOT STARTED / UNVERIFIED** | T-CO-23 migrations + **T-CO-17 (required, D-033)** independent-connection race through the pooler on `TEST_DATABASE_URL`. Until it passes, no race-safety claim anywhere. | Dev 2 (migrations); Dev 4 (project) |
-| Photo intake by message (D-031) | Donor iPhone → Photon attachment → Gemini → `draft_ready` link | Simulated phone with `fixture_id` (fake mode); web upload fallback | **NOT STARTED / UNVERIFIED** | SP-14 (MIME, size, retries, HEIC accepted?) then T-MS-19 with `provider_message_id`s | Dev 3 + Dev 1 |
-| Vercel Hobby | Deployed `main` (D-017 step 1) | `next start` locally (step 2), fully local fake (step 3) | **NOT STARTED / UNVERIFIED** | T-E2E-05: deployed `/api/health` shows modes; dashboard loads; reset works | Dev 4 |
-| VEYZL | GitHub App on the public repo; evidence PR = first intake/AI PR after CP2 (D-022) | None. Track dropped, not swapped. | **NOT STARTED / UNVERIFIED** | Check visible on that PR + a follow-up commit on it fixing a cited finding (R-SP-3) | Dev 4 + Dev 1 (the finding's lane) |
+| Gemini (`@google/genai`) | `VISION_PROVIDER=gemini`, `gemini-3.5-flash-lite` (D-012) | SHA-256-keyed fixture fake, labeled "AI: FAKE"; `misconfigured` (never silently fake) if the key is missing | **ADAPTER NOT BUILT / UNVERIFIED.** The fake provider and strict parser are merged (#5). Dev 1's spike notes (`docs/handoffs/dev-1.md`) say Vertex with ADC worked at location `global`; the AI Studio key path in D-012 is undecided. | T-IN-10: model ID, latency, schema-valid output on ≥ 2 synthetic fixtures | Dev 1 |
+| Photon 2.0 Beta (iMessage) | `MESSAGING_PROVIDER=photon`, shared line, JOIN opt-in (D-011) | Simulated phone (fake mode only), labeled "Messaging: SIMULATED"; `misconfigured` if Photon keys are missing | **CODE MERGED, NOTHING REAL VERIFIED.** The fake gateway and parser (#7) and the real send, tick, relay worker and routes (#12) are merged, tested only with stubbed `fetch`. Dev 2's reviews say none of it is Photon evidence. The real gateway must report a non-ok status while sends are not implemented (#7 review item 3; confirm). | T-MS-13: real JOIN → offer → YES → claimed with `provider_message_id`s | Dev 3 |
+| Supabase Postgres | `STORE=postgres`, transaction pooler 6543, `prepare: false` (R-INF-7) | `STORE=pglite` | **PGlite STORE MERGED; Postgres half UNVERIFIED.** Schema, migrations, seed and the PGlite store are merged (#11); the 26 gated Postgres tests (T-CO-23 half, T-CO-17) are skipped for lack of `TEST_DATABASE_URL`. No Supabase project is recorded here. | T-CO-23 migrations + **T-CO-17 (required, D-033)** independent-connection race through the pooler on `TEST_DATABASE_URL`. Until it passes, no race-safety claim anywhere. | Dev 2 (migrations); Dev 4 (project) |
+| Photo intake by message (D-031) | Donor iPhone → Photon attachment → Gemini → `draft_ready` link | Simulated phone with `fixture_id` (fake mode); web upload fallback | **NOT VERIFIED.** Dev 3's photo path is PR #19 (open); the SP-14 result is in the lane handoffs. | SP-14 (MIME, size, retries, HEIC accepted?) then T-MS-19 with `provider_message_id`s | Dev 3 + Dev 1 |
+| Vercel Hobby | Deployed `main` (D-017 step 1) | `next start` locally (step 2), fully local fake (step 3) | **NOT STARTED.** Needs a human for interactive `vercel login` / `vercel link` and a billing check. | T-E2E-05: deployed `/api/health` shows modes; dashboard loads; reset works | Dev 4 |
+| VEYZL | GitHub App on the public repo; evidence PR = first intake/AI PR after CP2 (D-022) | None. Track dropped, not swapped. | **NOT INSTALLED.** Needs an explicit organizer OK (D-022); the evidence PR would be Dev 1's first Gemini-adapter PR after CP2. | Check visible on that PR + a follow-up commit on it fixing a cited finding (R-SP-3) | Dev 4 + Dev 1 (the finding's lane) |
 
 ## 5. Integration blockers (current)
 
 | # | Blocker | Unblocks when | Owner |
 |---|---|---|---|
 | IB-0 | **RESOLVED 2026-10-16:** the package has been shared with teammates (N-0). | — | organizer / Dev 4 |
-| IB-1 | No baseline. All lanes are blocked from branching. | Tag `baseline` pushed and `BASELINE_SHA` posted (CP0a) | Dev 4 |
+| IB-1 | **RESOLVED 2026-10-17:** baseline tagged and pushed; all lanes branched. | — | Dev 4 |
 | IB-2 | **Partly resolved (D-035):** pre-event docs may be in the repo and committed now. Still unanswered: sponsor accounts before 12:30 PM (default: at or after 12:30). | `#ask-dh` reply recorded in §6. If unanswered at 12:30, apply the kickoff-baseline §0 defaults and proceed; the baseline never waits on a reply. VEYZL waits for an explicit organizer OK. | Dev 4 |
 | IB-3 | Lanes assigned 2026-10-17 (Colin, Rui, Ronnie, Cyrus). Still open: holders of the three iMessage handles (donor + couriers A/B) | Team decision recorded in §6 | team |
 | IB-4 | Photon Beta access and behavior unverified: unprompted offer after JOIN, how long send permission lasts, webhook signature scheme, inbound photo attachments (format, readiness) | Dev 3 kickoff spikes SP-1..SP-3 and SP-14 | Dev 3 |
 | IB-5 | PGlite inside `next dev` untested (ARCHITECTURE §16) | Dev 2 spike SP-6; fallback is a personal Supabase project | Dev 2 |
+| IB-6 | `GET /api/dashboard`, `GET /api/donations/:id`, operator actions, handoff and the other read-model routes still return 501 on `main`; the dashboard, detail page and donor status page cannot show live data. | Dev 2's read-model PR ("PR 1c", after #9 and #10) | Dev 2 |
+| IB-7 | `LinkVerification` (the `/v` checklist) is a placeholder; scene 1 by message cannot run. | Dev 1 builds it against `/api/verify/*` once Dev 2 and Dev 3 wire the links | Dev 1 |
+| IB-8 | Dev 3's explicit sign-off is missing on D-036/D-038 (PR #9) and on the gate rules changed in Dev 2's follow-up PR #21 (OWNERSHIP section 6); #16 must match the narrowed D-039 before it merges. | Dev 3 returns (usage reset 4:00 PM) | Dev 3 |
+| IB-9 | Deployment (Vercel) and the Devpost project shell need a human: interactive logins, billing check, the Devpost form. | A human does them; the Devpost text is drafted in PR #24 | captain + team |
+| IB-10 | The real Photon gateway and the real Gemini adapter have no verified evidence, so the Photon and Gemini tracks cannot be claimed yet. | T-MS-13 / T-E2E-04 and T-IN-10 recorded | Dev 3, Dev 1 |
 
 ## 6. Human decisions and questions (open)
 
@@ -136,10 +157,10 @@
 | N-2 | Assign Dev 1–4, confirm iPhone holders (Q-2), and apply the weekly-quota rule (ROADMAP §3 P-02b) | team | Fri Oct 16 |
 | N-3 | Complete the pre-event checklist (ROADMAP §3). **Dev 4 P-01/P-03/P-07 checked 2026-10-16:** Claude Code 2.1.302, `ANTHROPIC_API_KEY` unset (Git Bash and PowerShell), Node v22.23.2, pnpm 10.33.3 (a stale 9.7.0 `pnpm.exe` that shadowed it in PowerShell was renamed), gh 2.100.0 logged in, git 2.55.0 | each | Sat 12:30 PM |
 | N-4 | Handles: the donor-phone and courier-phone holders DM their handles to Dev 2, Dev 3 and the captain only (Dev 3 needs them for the Photon assignments, R-PH-4; env `DEMO_DONOR_HANDLE`, `DEMO_COURIER_A_HANDLE`, `DEMO_COURIER_B_HANDLE`; never git, D-024). Dev 3 creates matching Photon assignments after kickoff. | handle holders; Dev 3 | DM Fri; assignments Sat after 12:30 |
-| N-5 | Execute `docs/plans/active/kickoff-baseline.md` (minimal baseline); push the `baseline` tag; post `BASELINE_SHA` and the contracts version; record them and the smoke exit codes here | Dev 4 | CP0a Sat 1:15 PM |
-| N-6 | Each lane branches from the tag and passes install/typecheck/test/build | each | CP0b Sat 1:30 PM |
+| N-5 | Execute `docs/plans/active/kickoff-baseline.md` (minimal baseline); push the `baseline` tag; post `BASELINE_SHA` and the contracts version; record them and the smoke exit codes here | Dev 4 | CP0a Sat 1:15 PM. **DONE** 2026-10-17 (baseline commit 12:12 PDT) |
+| N-6 | Each lane branches from the tag and passes install/typecheck/test/build | each | CP0b Sat 1:30 PM. **Done for Dev 4**; others by branch evidence |
 | N-7 | Lane spikes: Gemini call (Dev 1, SP-4), Photon round trip and send-permission test (Dev 3, SP-1..SP-3), **photo intake SP-14 (Dev 3 + Dev 1) by 1:15 PM**; record VERIFIED/UNVERIFIED in handoffs; post the SP-14 go/no-go in chat | Dev 1, Dev 3 | SP-14 by 1:15 PM; others by 2:00 PM |
-| N-8 | Create the Devpost project shell: all 4 contributors, Discord handles, Community Kitchen + SideShift + DubHacks NEXT only. First test whether a track can be removed; add Photon / Gemini / VEYZL at the 9:30 PM draft only if removable or their evidence exists. | Dev 4 | Sat ~2:00 PM |
+| N-8 | Create the Devpost project shell: all 4 contributors, Discord handles, Community Kitchen + SideShift + DubHacks NEXT only. First test whether a track can be removed; add Photon / Gemini / VEYZL at the 9:30 PM draft only if removable or their evidence exists. | Dev 4 | Sat ~2:00 PM. **NOT DONE** (needs a human at the form; text drafted in PR #24) |
 | N-9 | Judging: whole team at all three rounds; outside the assigned round at least Dev 3 (iPhones) + one presenter stay. Before each judge: each courier phone sends a fresh JOIN, then demo reset; backup video on a second device. | Dev 3 + Dev 4 | Sun from 10:20 AM |
 
 ## 8. Risk register (top risks)
@@ -161,9 +182,23 @@
 
 ## 9. Merged-PR log
 
-| # | PR | Lane | Merged SHA | Checks (real output summary) | Real vs fake | Reviewer |
+| # | PR | Merged by | Merged SHA | Checks (real output summary) | Real vs fake | Reviewer |
 |---|---|---|---|---|---|---|
-| — | *(none yet)* | | | | | |
+| 1 | #1 shadcn/ui kit (Dev 4) | captain | afce238 | author-reported typecheck/lint/test/build 0 | n/a | Dev 1 approved |
+| 2 | #2 dashboard on fixtures (Dev 4) | Dev 4 | 88ceb13 | author-reported pass | fixtures | Dev 1 approved (pushed fix commit) |
+| 3 | #3 gate + matching + state, PR 1a (Dev 2) | Dev 2 | 953d539 | author-reported pass | pure functions | **No approval recorded; self-merged. Dev 3's gate sign-off (OWNERSHIP section 6) outstanding** |
+| 4 | #4 demo controls (Dev 4) | Dev 4 | 6624dbf | captain re-ran: typecheck/lint/build 0, 127 tests | mocked fetch | Dev 1 pushed review fixes; no formal approval recorded |
+| 5 | #5 fake vision + intake parsing (Dev 1) | Dev 1 | 6484786 | captain re-ran head: typecheck/lint/build 0, 492 passed | fake provider | Dev 4 safety review (comment, ECC reviewer); no formal approval; Dev 1 applied the fixes |
+| 6 | #6 simulated phone (Dev 4) | Dev 4 | f4e73b7 | captain trial-merge: 947 passed, lint/typecheck/build 0 | mocked fetch | Dev 1 pushed review fixes; no formal approval recorded |
+| 7 | #7 fake gateway + inbound parser (Dev 3) | Dev 3 | 00f2c67 | author-reported pass | fake gateway | **Self-merged with no review; Dev 2 post-merge review (comment) lists follow-ups** |
+| 8 | #8 reset without a body (Dev 4) | Dev 4 | 2673503 | captain re-ran: 394 passed, lint/typecheck/build 0 | mocked fetch | Dev 1 fix commit; no formal approval |
+| 9 | #11 persistence skeleton, PR 1b (Dev 2) | captain | 8fb9b8a | captain trial-merge: 1189 passed, 26 skipped, lint/typecheck/build 0 | PGlite only | Dev 3 approved at 4acd5ff. **Captain merged without reading Dev 3's review comment; its fixes are in follow-up PR #21, not in this merge** |
+| 10 | #12 tick, delivery, real Photon send, routes, worker (Dev 3) | Dev 3 | 95db97c | Dev 2 ran head: typecheck/lint/test 0 (1043 passed) | stubbed fetch only, no real Photon | Dev 2 review (comment, approve with comments); Dev 3 applied fixes and merged |
+| 11 | #14 env names (Dev 4) | Dev 1 | 846b2b3 | captain: lint/typecheck/build 0, 940 passed | n/a | **No human review recorded; merged by Dev 1** |
+| 12 | #15 operator detail page (Dev 4) | Dev 1 | 832a76e | captain: 986 passed; Dev 1 re-ran | mocked fetch | Dev 1 approved (pushed fixes) |
+| 13 | #17 /v donor page (Dev 4) | Dev 1 | c9ea7fa | captain: 952 passed | placeholder component | Dev 1 approved (pushed a comment fix) |
+| 14 | #20 donor web upload + status (Dev 4) | Dev 1 | 0225ac8 | captain trial-merge: 1280 passed, lint/typecheck/build 0 | mocked fetch | Dev 1 approved (pushed fixes) |
+| 15 | #18 /v response headers (Dev 4) | captain | 3c43862 | captain: 1283 passed on merged result; production `next start` shows `/v` dynamic with `Referrer-Policy: no-referrer` and `Cache-Control: no-store` | real local server | Dev 2 review comment "approve-ready after one production check" (check done) |
 
 ## 10. Environment and accounts
 
@@ -171,8 +206,8 @@
 |---|---|---|---|---|
 | Claude Code + own Pro account (≥ v2.1.284); ECC via the committed project settings after folder trust (D-030) | each | Pre-event | UNVERIFIED per teammate | Never set `ANTHROPIC_API_KEY` (R-TOOL-5) |
 | Devpost account + Discord handle | each → Dev 4 | Pre-event | NOT STARTED | — |
-| GitHub repo (**public from kickoff**, D-023) | Dev 4 | Kickoff, ≥ 12:30 Sat | NOT CREATED | No secrets in git; canonical scan (ARCHITECTURE §9) before every push |
-| Supabase project (Free), created fresh | Dev 4 | Right after baseline | NOT CREATED | `DATABASE_URL` to Dev 2 via a private channel only (CLAUDE.md: never commit secrets; project created fresh per R-INF-1) |
+| GitHub repo (**public from kickoff**, D-023) | Dev 4 | Kickoff, ≥ 12:30 Sat | CREATED, public (https://github.com/Aieda1l/annona) | No secrets in git; canonical scan (ARCHITECTURE §9) before every push |
+| Supabase project (Free), created fresh | Dev 4 | Right after baseline | NOT RECORDED here (ask Dev 2 whether a project exists) | `DATABASE_URL` to Dev 2 via a private channel only (CLAUDE.md: never commit secrets; project created fresh per R-INF-1) |
 | Disposable Postgres for gated tests (`TEST_DATABASE_URL`) | Dev 2 | Before CP3 | NOT CREATED | Never the shared demo DB (CONTRACTS §12) |
 | Vercel Hobby project | Dev 4 | Right after baseline | NOT CREATED | Env vars in Vercel only; captain deploys via CLI if needed (R-INF-4) |
 | Photon Beta org/project, API key, shared-line assignments, webhook destination | Dev 3 | Kickoff spike, ≥ 12:30 (unless Q-1 allows earlier) | NOT CREATED | `PHOTON_*` server-only; API key shown once (R-PH-2); webhook secret shown once (R-PH-6) |
