@@ -166,7 +166,7 @@ describe("db edge: foreign keys and required columns", () => {
   });
   it("a verification link needs a real donation and donor", async () => {
     const d = donationRow();
-    const link = { id: randomUUID(), donation_id: d.id!, donor_id: DONOR, token_hash: "h1", issued_at: NOW, expires_at: NOW };
+    const link = { id: randomUUID(), donation_id: d.id!, donor_id: DONOR, token_hash: "a".repeat(64), issued_at: NOW, expires_at: NOW };
     expect(sqlState(await inRollback(store, async (tx) => void (await tx.insert(verification_links).values({ ...link, donation_id: randomUUID() }))))).toBe("23503");
     expect(sqlState(await inRollback(store, async (tx) => { await tx.insert(donations).values(d); await tx.insert(verification_links).values({ ...link, donor_id: randomUUID() }); }))).toBe("23503");
   });

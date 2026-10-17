@@ -36,6 +36,9 @@ const subsetOf = (column: { name: string }, values: readonly string[]): SQL =>
 
 // Every timestamp is supplied by the caller from the injected Clock (CONTRACTS section 9.0). No column defaults to the
 // database clock, because that would bypass the test clock and the "server time only" rule.
+// Row-level security is enabled on every table with no policies: Supabase exposes the public schema through a public
+// anon key, and RLS-without-policies denies that role everything. The backend connects as the table owner, which
+// bypasses RLS, so no application query changes.
 const tstz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 
 const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({
@@ -66,7 +69,7 @@ export const donors = pgTable(
     check("donors_org_type_check", inList(t.org_type, ["restaurant", "caterer", "campus_dining"])),
     check("donors_synthetic_check", sql`${t.is_synthetic} = true`),
   ],
-);
+).enableRLS();
 
 export const recipients = pgTable(
   "recipients",
@@ -90,7 +93,7 @@ export const recipients = pgTable(
     check("recipients_capacity_check", sql`${t.capacity_servings_available} >= 0`),
     check("recipients_synthetic_check", sql`${t.is_synthetic} = true`),
   ],
-);
+).enableRLS();
 
 export const couriers = pgTable(
   "couriers",
@@ -108,7 +111,7 @@ export const couriers = pgTable(
     check("couriers_approval_status_check", inList(t.approval_status, APPROVAL_STATUSES)),
     check("couriers_synthetic_check", sql`${t.is_synthetic} = true`),
   ],
-);
+).enableRLS();
 
 export const messaging_identities = pgTable(
   "messaging_identities",
@@ -130,7 +133,7 @@ export const messaging_identities = pgTable(
     check("messaging_identities_provider_check", inList(t.provider, MESSAGING_PROVIDERS)),
     check("messaging_identities_status_check", inList(t.status, MESSAGING_IDENTITY_STATUSES)),
   ],
-);
+).enableRLS();
 
 export const donation_images = pgTable(
   "donation_images",
@@ -142,7 +145,7 @@ export const donation_images = pgTable(
     created_at: tstz("created_at").notNull(),
   },
   (t) => [check("donation_images_size_check", sql`octet_length(${t.bytes}) <= ${sql.raw(String(MAX_IMAGE_BYTES))}`)],
-);
+).enableRLS();
 
 export const donations = pgTable(
   "donations",
@@ -175,11 +178,14 @@ export const donations = pgTable(
     check("donations_source_check", inList(t.source, DONATION_SOURCES)),
     check("donations_ai_status_check", inList(t.ai_status, AI_STATUSES)),
     check("donations_version_check", sql`${t.version} >= 1`),
+    // claim step 3 (already_claimed_by_you) reads claimed_offer_id; S-15 and S-17 clear it on their way out of these states.
+    check("donations_claim_linked_check", sql`${t.status} not in ('claimed', 'collected') or ${t.claimed_offer_id} is not null`),
     check("donations_synthetic_check", sql`${t.is_synthetic} = true`),
     index("donations_status_idx").on(t.status),
+    index("donations_donor_idx").on(t.donor_id),
     uniqueIndex("donations_source_ref_uq").on(t.source, t.source_ref).where(sql`${t.source_ref} is not null`),
   ],
-);
+).enableRLS();
 
 export const verification_links = pgTable(
   "verification_links",
@@ -199,12 +205,14 @@ export const verification_links = pgTable(
     revoked_at: tstz("revoked_at"),
   },
   (t) => [
+    // Lowercase hex SHA-256 only, so a raw token can never be stored by mistake.
+    check("verification_links_token_hash_hex_check", sql`${t.token_hash} ~ '^[0-9a-f]{64}$'`),
     uniqueIndex("verification_links_token_hash_uq").on(t.token_hash),
     uniqueIndex("verification_links_one_live_per_donation_uq")
       .on(t.donation_id)
       .where(sql`${t.consumed_at} is null and ${t.revoked_at} is null`),
   ],
-);
+).enableRLS();
 
 export const offers = pgTable(
   "offers",
@@ -237,6 +245,8 @@ export const offers = pgTable(
     check("offers_provider_mode_check", inList(t.provider_mode, PROVIDER_MODES)),
     check("offers_delivery_status_check", inList(t.delivery_status, DELIVERY_STATUSES)),
     check("offers_wave_no_check", sql`${t.wave_no} >= 1`),
+    // Lazy expiry compares now >= expires_at; NULL would make that never true, so an open offer must carry a deadline.
+    check("offers_open_has_deadline_check", sql`${t.status} <> 'open' or ${t.expires_at} is not null`),
     check("offers_short_code_check", sql`${t.short_code} ~ '^[ACDEFHJKMNPRTUVWXY3479]{4}$'`),
     // Never reused until resetDemo deletes offers (D-026): no WHERE clause.
     uniqueIndex("offers_short_code_uq").on(t.short_code),
@@ -250,8 +260,9 @@ export const offers = pgTable(
       .where(sql`${t.status} in ('pending_send', 'open')`),
     index("offers_status_expires_idx").on(t.status, t.expires_at),
     index("offers_courier_status_idx").on(t.courier_id, t.status),
+    index("offers_donation_status_idx").on(t.donation_id, t.status),
   ],
-);
+).enableRLS();
 
 export const inbound_messages = pgTable(
   "inbound_messages",
@@ -273,7 +284,7 @@ export const inbound_messages = pgTable(
     check("inbound_messages_provider_check", inList(t.provider, MESSAGING_PROVIDERS)),
     uniqueIndex("inbound_messages_provider_message_uq").on(t.provider, t.provider_message_id),
   ],
-);
+).enableRLS();
 
 export const provider_status_events = pgTable(
   "provider_status_events",
@@ -290,7 +301,7 @@ export const provider_status_events = pgTable(
     check("provider_status_events_provider_check", inList(t.provider, MESSAGING_PROVIDERS)),
     uniqueIndex("provider_status_events_provider_event_uq").on(t.provider, t.provider_event_id),
   ],
-);
+).enableRLS();
 
 export const outbound_messages = pgTable(
   "outbound_messages",
@@ -313,7 +324,7 @@ export const outbound_messages = pgTable(
     check("outbound_messages_provider_mode_check", inList(t.provider_mode, PROVIDER_MODES)),
     uniqueIndex("outbound_messages_idempotency_key_uq").on(t.idempotency_key),
   ],
-);
+).enableRLS();
 
 export const audit_events = pgTable(
   "audit_events",
@@ -333,7 +344,7 @@ export const audit_events = pgTable(
     // No FKs on donation_id/offer_id: audit rows are append-only history and must outlive resetDemo deletes.
     index("audit_events_donation_at_idx").on(t.donation_id, t.at),
   ],
-);
+).enableRLS();
 
 export const policy_config = pgTable(
   "policy_config",
@@ -348,10 +359,10 @@ export const policy_config = pgTable(
     // One active row.
     uniqueIndex("policy_config_one_active_uq").on(t.active).where(sql`${t.active} = true`),
   ],
-);
+).enableRLS();
 
 export const system_status = pgTable("system_status", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
   updated_at: tstz("updated_at").notNull(),
-});
+}).enableRLS();

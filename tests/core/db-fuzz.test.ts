@@ -106,6 +106,7 @@ describe("model-based: unique indexes accept exactly what the rules allow", () =
                 await sp.insert(offers).values({
                   id: randomUUID(), donation_id: donation, recipient_id: pick(RECIPIENTS), courier_id: courier, short_code: code,
                   status, wave_no: 1, created_at: NOW, close_reason: closeReason, provider_mode: "fake", candidate: {},
+                  sent_at: status === "open" ? NOW : null, expires_at: status === "open" ? NOW : null,
                 });
               }, () => {
                 codes.add(code);
@@ -115,7 +116,7 @@ describe("model-based: unique indexes accept exactly what the rules allow", () =
             } else {
               const donation = pick(donationIds);
               const state = pick(["live", "consumed", "revoked"] as const);
-              const hash = r() < 0.15 && hashes.size > 0 ? pick([...hashes]) : randomUUID();
+              const hash = r() < 0.15 && hashes.size > 0 ? pick([...hashes]) : randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
               const live = state === "live";
               const violation = hashes.has(hash) || (live && liveLink.has(donation));
               await attempt(violation, `link ${state}`, async (sp) => {
@@ -153,7 +154,7 @@ describe("ten competing writes, run serially on one connection: the index lets e
     await db.insert(donations).values(ids.map((id) => ({ id, donor_id: DONOR, status: "eligible", source: "fixture", ai_status: "succeeded", created_at: NOW, updated_at: NOW })));
     const mk = (donation_id: string, i: number) => ({
       id: randomUUID(), donation_id, recipient_id: RECIPIENTS[0]!, courier_id: COURIERS[0]!, short_code: `${ALPHABET[i]}${ALPHABET[i]}KM`,
-      status: i % 2 ? "open" : "pending_send", wave_no: 1, created_at: NOW, provider_mode: "fake" as const, candidate: {},
+      status: i % 2 ? "open" : "pending_send", expires_at: i % 2 ? NOW : null, wave_no: 1, created_at: NOW, provider_mode: "fake" as const, candidate: {},
     });
     const { ok, bad } = await settle(ids.map((id, i) => db.insert(offers).values(mk(id, i))));
     expect(ok).toBe(1);
