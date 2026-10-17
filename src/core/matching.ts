@@ -1,6 +1,5 @@
 import {
   ALLERGENS,
-  type CourierProfile,
   type MatchCandidate,
   type MatchInput,
   type ReasonCode,
