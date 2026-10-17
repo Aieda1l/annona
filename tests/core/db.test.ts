@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEMO_ACTORS, type DispatchStore } from "@/contracts";
 import { createDispatchStore } from "@/db";
 import { closeStore, storeInternals } from "@/db/internal";
@@ -20,6 +20,9 @@ import {
   recipients,
   verification_links,
 } from "@/db/schema";
+
+// Each test file starts one or more WASM Postgres instances. Under the parallel full run that can exceed the 5 s default.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 // T-CO-23: empty DB -> migrate -> seed applies cleanly; seed is deterministic and uses DEMO_ACTORS ids;
 // the partial unique indexes and CHECKs from ARCHITECTURE §7 hold. PGlite always; Postgres only if TEST_DATABASE_URL

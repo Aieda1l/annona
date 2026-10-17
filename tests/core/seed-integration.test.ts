@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEMO_ACTORS, type DispatchStore } from "@/contracts";
 import { scene1_eligible_facts } from "@/contracts/fixtures/scenes";
 import { evaluateEligibility, findCandidates } from "@/core";
@@ -8,6 +8,9 @@ import { closeStore, storeInternals } from "@/db/internal";
 import { runMigrations } from "@/db/run-migrations";
 import { seedStore } from "@/db/seed/seed";
 import { couriers, donors, messaging_identities, policy_config, recipients } from "@/db/schema";
+
+// Each test file starts one or more WASM Postgres instances. Under the parallel full run that can exceed the 5 s default.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 // The seeded rows must fit the PR 1a pure functions: read them back from the database, map them to the lane types,
 // and run the real gate and matcher. This is the guard against the two halves of the lane drifting apart.

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEMO_ACTORS, type DispatchStore } from "@/contracts";
 import { createDispatchStore } from "@/db";
 import { closeStore, storeInternals } from "@/db/internal";
@@ -22,6 +22,9 @@ import {
   system_status,
   verification_links,
 } from "@/db/schema";
+
+// Each test file starts one or more WASM Postgres instances. Under the parallel full run that can exceed the 5 s default.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 // Edge cases beyond T-CO-23: foreign keys, NOT NULL, value CHECKs, round trips, persistence, and refusal paths.
 

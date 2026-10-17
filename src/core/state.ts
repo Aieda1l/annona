@@ -259,7 +259,8 @@ export function canTransition(req: {
     if (t.id === "S-11") {
       if (trigger === "donorCancel") {
         if (!ctx.authorized_owner) { lastMessage = "Only the owning donor can cancel."; continue; }
-        if (from === "claimed" || from === "collected") { lastMessage = "A donor can't cancel after a claim."; continue; }
+        // collected_at also covers needs_review after a post-pickup STOP (S-17): only the operator closes that one.
+        if (from === "claimed" || from === "collected" || ctx.collected_at !== null) { lastMessage = "A donor can't cancel after a claim."; continue; }
       } else {
         const needsNote = from === "claimed" || from === "collected" || (from === "needs_review" && ctx.collected_at !== null);
         if (needsNote && !hasNote(ctx)) { lastMessage = "A note is required."; continue; }
