@@ -64,20 +64,20 @@ describe("multi-fixture cases", () => {
   const c2 = EVAL_CASES[1]!;
   const amb = { ...good, dish_suggestions: [{ name: "buffet", confidence: "low" as const }], uncertainty_notes: ["a", "b"] };
   const two: CaseResult = (() => {
-    const scores = [scoreRun(c2, ok(amb), 1000, "buffet_ambiguous"), scoreRun(c2, ok(amb), 1100, "buffet_ambiguous_2")];
+    const scores = [scoreRun(c2, ok(amb), 1000, "buffet_ambiguous"), scoreRun(c2, ok(amb), 1100, "buffet_closed")];
     return { status: "ran", case: c2, scores, summary: summarizeCase(c2, scores) };
   })();
 
   it("lists every fixture path and tags each observed run with its fixture", () => {
     const rec = buildYamlRecord(real, two);
-    expect(rec).toContain('fixture: ["fixtures/intake/images/buffet_ambiguous.jpg","fixtures/intake/images/buffet_ambiguous_2.jpg","fixtures/intake/images/buffet_closed.jpg"]');
-    expect(rec).toContain('"fixture":"buffet_ambiguous_2"');
+    expect(rec).toContain('fixture: ["fixtures/intake/images/buffet_ambiguous.jpg","fixtures/intake/images/buffet_closed.jpg"]');
+    expect(rec).toContain('"fixture":"buffet_closed"');
   });
 
   it("shows both fixtures in the table, with a pass count per image", () => {
     const t = formatTable(real, [two]);
-    expect(t).toMatch(/buffet_ambiguous\+buffet_ambiguous_2/);
-    expect(t).toMatch(/per image: buffet_ambiguous 1\/1, buffet_ambiguous_2 1\/1/);
+    expect(t).toMatch(/buffet_ambiguous\+buffet_closed/);
+    expect(t).toMatch(/per image: buffet_ambiguous 1\/1, buffet_closed 1\/1/);
   });
 
   it("reports retried runs in the table and in each observed run", () => {

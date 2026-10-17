@@ -87,3 +87,11 @@ Full eval on the committed fixtures (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs
 **Result:** v1 and v2 each pass 5 of 8 on identical fixtures. v2 fixes the buffet crop (3/3 vs 1/3) and shellfish (10/10 vs 1/10) but regresses on the blurry photo (rated `usable` 3 of 10 times; v1 was 10 of 10 `poor`). Details and a comparison table in `docs/PROMPT_EVAL.md` §11.
 
 **Decisions needed:** (1) remove `buffet_ambiguous_2` from T-PE-02: the model is right to call the visible fried rice `high`, so the case cannot pass for a correct model. (2) Approve a v3 draft: restore the blurry-photo behavior (move or strengthen the poor-photo rule), have `not_food` photos use "No food is visible in the photo.", and add a sauces-and-seasonings rule for soy and wheat. v3 is a new file and a new full run.
+
+## 2026-10-17 — v3 prompt; `buffet_ambiguous_2` dropped
+
+`buffet_ambiguous_2.jpg` is out of T-PE-02 and out of the repo (local copy kept). T-PE-02 now runs the crop and `buffet_closed`; v2 and v3 both pass it 6/6.
+
+**v3 written** (`annona-intake.v3.md`): poor-photo rule first and broader, fixed `not_food` note, sauces rule (soy, wheat), a blurry-photo example. It fixes the blurry-photo regression (10/10 `poor`) and soy recall (10/10) but shellfish for sushi fell to about 50%. Current full-eval scores on the same fixtures: v2 7/8, v3 6/8. No version passes all eight, and the default stays v1 in code.
+
+**Decision needed:** the rules are crowding each other. Options: (a) try `gemini-3.8-flash` with v3; (b) a v4 that merges the allergen rules into one checklist; (c) accept v2 or v3 for the demo as advisory-only (the donor verifies everything and the AI never fills a fact) and stop tuning. Stalls also cluster (2 of 3 runs in one eval); the retry rescued them.

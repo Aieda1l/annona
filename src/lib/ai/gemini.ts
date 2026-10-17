@@ -27,7 +27,7 @@ export type GeminiClientLike = {
   };
 };
 
-export const PROMPT_VERSIONS = ["v1", "v2"] as const;
+export const PROMPT_VERSIONS = ["v1", "v2", "v3"] as const;
 export type PromptVersion = (typeof PROMPT_VERSIONS)[number];
 /** Stays v1 until a version passes the release rule (docs/PROMPT_EVAL.md §6); flip this one constant then. */
 export const DEFAULT_PROMPT_VERSION: PromptVersion = "v1";

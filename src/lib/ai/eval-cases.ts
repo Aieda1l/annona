@@ -63,7 +63,7 @@ export const EVAL_CASES: EvalCase[] = [
   },
   {
     id: "T-PE-02",
-    fixtures: ["buffet_ambiguous", "buffet_ambiguous_2", "buffet_closed"],
+    fixtures: ["buffet_ambiguous", "buffet_closed"],
     expected: ["all dishes low confidence (or image not usable)", ">= 2 uncertainty notes", ">= 1 question"],
     mustList: [],
     recallRunFraction: 1,

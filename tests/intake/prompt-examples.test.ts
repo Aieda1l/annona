@@ -8,7 +8,9 @@ import { parseVisionOutput } from "@/lib/ai/parse";
 // strict parse and claim-word guard as real model output, and the schema block must not drift from the contract.
 const META = { provider: "gemini", model: "test", mode: "real" } as const;
 
-describe.each(["v1", "v2"] as const)("annona-intake.%s.md", (version) => {
+const EXAMPLE_COUNT = { v1: 3, v2: 3, v3: 4 } as const;
+
+describe.each(["v1", "v2", "v3"] as const)("annona-intake.%s.md", (version) => {
 const prompt = readFileSync(join(process.cwd(), `src/lib/ai/prompts/annona-intake.${version}.md`), "utf8");
 const fences = [...prompt.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => m[1]!);
 const exampleBlocks = fences.slice(1); // fences[0] is the schema skeleton in OUTPUT
@@ -41,11 +43,11 @@ describe("structure", () => {
 });
 
 describe("few-shot examples", () => {
-  it("has the three examples", () => {
-    expect(exampleBlocks).toHaveLength(3);
+  it("has the expected number of examples", () => {
+    expect(exampleBlocks).toHaveLength(EXAMPLE_COUNT[version]);
   });
 
-  it.each([0, 1, 2])("example %i passes the strict parse and the claim-word guard", (i) => {
+  it.each(Array.from({ length: EXAMPLE_COUNT[version] }, (_, i) => i))("example %i passes the strict parse and the claim-word guard", (i) => {
     const r = parseVisionOutput(exampleBlocks[i]!, META);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.data).toMatchObject({ ingredients_verified: false, handling_verified: false, requires_donor_confirmation: true });
@@ -89,5 +91,42 @@ describe("v2 changes", () => {
   it("asks for nuts on baked goods and sauces, and shellfish with seafood", () => {
     expect(v2).toMatch(/baked goods, desserts, sauces, spreads and dressings/);
     expect(v2).toMatch(/fish or other seafood/);
+  });
+});
+
+describe("v3 changes", () => {
+  const v3 = readFileSync(join(process.cwd(), "src/lib/ai/prompts/annona-intake.v3.md"), "utf8");
+  const rules = v3.slice(v3.indexOf("# RULES") + "# RULES".length, v3.indexOf("# OUTPUT"));
+
+  it("keeps the v2 confidence, injection-note, nuts and shellfish rules", () => {
+    expect(v3).toContain("Confidence belongs to each dish name");
+    expect(v3).toMatch(/Ordinary labels, menu cards and table signs/);
+    expect(v3).toMatch(/baked goods, desserts, sauces, spreads and dressings/);
+    expect(v3).toMatch(/fish or other seafood/);
+  });
+
+  it("states the poor-photo rule first and defines poor broadly, preferring poor when unsure", () => {
+    expect(rules.trimStart().startsWith("- When the photo is `poor`")).toBe(true);
+    expect(rules).toMatch(/never give `medium` or `high`/);
+    expect(v3).toMatch(/if you are unsure between `usable` and `poor`, choose `poor`/);
+  });
+
+  it("gives non-food photos a fixed note that avoids the guard's phrases", () => {
+    expect(rules).toContain('"No food is visible in the photo."');
+    expect(v3).toMatch(/Do not write that the photo "does not contain" something/);
+  });
+
+  it("raises soy and wheat for sauces and seasonings", () => {
+    expect(rules).toMatch(/soy sauce, teriyaki, tempura batter/);
+    expect(rules).toMatch(/`soybeans` and `wheat`/);
+  });
+
+  it("example D is a poor photo with null servings and only low-confidence dishes", () => {
+    const blocks = [...v3.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => m[1]!).slice(1);
+    const o = JSON.parse(blocks[3]!) as VisionModelOutput;
+    expect(o.image_quality).toBe("poor");
+    expect(o.estimated_servings).toBeNull();
+    expect(o.dish_suggestions.every((d) => d.confidence === "low")).toBe(true);
+    expect(o.questions_for_donor.length).toBeGreaterThanOrEqual(1);
   });
 });

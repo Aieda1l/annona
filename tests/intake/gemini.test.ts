@@ -317,6 +317,13 @@ describe("prompt version", () => {
     expect(r.ok && r.data.prompt_version).toBe("v1");
   });
 
+  it("v3 loads the v3 file and stamps v3", async () => {
+    const { provider, generateContent } = setup(async () => ok(), { promptVersion: "v3" });
+    const r = await analyze(provider);
+    expect(r.ok && r.data.prompt_version).toBe("v3");
+    expect(textOf(generateContent)).toContain("No food is visible in the photo.");
+  });
+
   it("v2 loads the v2 file and stamps v2", async () => {
     const { provider, generateContent } = setup(async () => ok(), { promptVersion: "v2" });
     const r = await analyze(provider);
