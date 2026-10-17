@@ -476,12 +476,12 @@ function assertDisposableDatabase(url: string): void {
 
 describe("assertDisposableDatabase", () => {
   it("accepts names that say they are disposable and refuses everything else", () => {
-    expect(() => assertDisposableDatabase("postgres://u:p@localhost:5432/annona_test")).not.toThrow();
-    expect(() => assertDisposableDatabase("postgres://u:p@localhost:5432/disposable-1")).not.toThrow();
-    expect(() => assertDisposableDatabase("postgres://u:p@db.example.invalid/postgres")).toThrow(/disposable/);
-    expect(() => assertDisposableDatabase("postgres://u:p@db.example.invalid/annona")).toThrow(/disposable/);
-    expect(() => assertDisposableDatabase("postgres://u:p@db.example.invalid/contest")).toThrow(/disposable/);
-    expect(() => assertDisposableDatabase("postgres://u:p@db.example.invalid")).toThrow(/disposable/);
+    expect(() => assertDisposableDatabase("postgres://u@localhost:5432/annona_test")).not.toThrow();
+    expect(() => assertDisposableDatabase("postgres://u@localhost:5432/disposable-1")).not.toThrow();
+    expect(() => assertDisposableDatabase("postgres://u@db.example.invalid/postgres")).toThrow(/disposable/);
+    expect(() => assertDisposableDatabase("postgres://u@db.example.invalid/annona")).toThrow(/disposable/);
+    expect(() => assertDisposableDatabase("postgres://u@db.example.invalid/contest")).toThrow(/disposable/);
+    expect(() => assertDisposableDatabase("postgres://u@db.example.invalid")).toThrow(/disposable/);
     expect(() => assertDisposableDatabase("not a url")).toThrow(/disposable/);
   });
 });

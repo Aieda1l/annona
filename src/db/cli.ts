@@ -6,6 +6,26 @@ import { closeStore } from "./internal";
 // Shared plumbing for the `pnpm db:*` commands (run from the repo root).
 
 /**
+ * Everything in a connection URL that must never be printed: the whole URL, its password and its user name.
+ * A driver error may quote only a part of the URL, so masking the whole string alone is not enough. Very short user
+ * names are left alone, because masking them would garble ordinary words.
+ */
+export function connectionSecrets(url: string | undefined): string[] {
+  if (!url) return [];
+  const out = [url];
+  try {
+    const u = new URL(url);
+    const password = decodeURIComponent(u.password);
+    const user = decodeURIComponent(u.username);
+    if (password.length >= 3) out.push(password);
+    if (user.length >= 4) out.push(user);
+  } catch {
+    // Not a parseable URL: the whole string is still masked.
+  }
+  return out;
+}
+
+/**
  * One line per error in the `cause` chain, safe to print.
  * Drizzle wraps a failed query in an error whose message is `Failed query: <sql>\nparams: <values>`. The params can hold
  * the demo phone handles (personal data, CONTRACTS §12), so the wrapper's message is never printed; the driver's own
@@ -58,7 +78,7 @@ export async function withEnvStore<T>(fn: (store: DispatchStore, env: Env) => Pr
       await closeStore(store);
     } catch (closeErr) {
       if (!failed) throw closeErr;
-      console.error(`also failed to close the store: ${describeError(closeErr, [env.database_url])}`);
+      console.error(`also failed to close the store: ${describeError(closeErr, connectionSecrets(env.database_url))}`);
     }
   }
 }
@@ -66,7 +86,7 @@ export async function withEnvStore<T>(fn: (store: DispatchStore, env: Env) => Pr
 /** Runs a CLI `main`; prints a sanitized error and exits 1 on failure. */
 export function runCli(main: () => Promise<void>): void {
   main().catch((err) => {
-    console.error(describeError(err, [process.env.DATABASE_URL]));
+    console.error(describeError(err, [...connectionSecrets(process.env.DATABASE_URL), ...connectionSecrets(process.env.TEST_DATABASE_URL)]));
     process.exit(1);
   });
 }
