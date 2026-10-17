@@ -73,8 +73,8 @@ function AiPanel({ suggestion }: { suggestion: VisionSuggestion }) {
         <div className="text-sm">
           <p className="font-medium">What the AI is unsure about:</p>
           <ul className="list-disc pl-5">
-            {suggestion.uncertainty_notes.map((n) => (
-              <li key={n}>{n}</li>
+            {suggestion.uncertainty_notes.map((n, i) => (
+              <li key={`${i}-${n}`}>{n}</li>
             ))}
           </ul>
         </div>
@@ -83,8 +83,8 @@ function AiPanel({ suggestion }: { suggestion: VisionSuggestion }) {
         <div className="text-sm">
           <p className="font-medium">Questions to consider:</p>
           <ul className="list-disc pl-5">
-            {suggestion.questions_for_donor.map((q) => (
-              <li key={q}>{q}</li>
+            {suggestion.questions_for_donor.map((q, i) => (
+              <li key={`${i}-${q}`}>{q}</li>
             ))}
           </ul>
         </div>

@@ -203,3 +203,34 @@ describe("required fields and states", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/something went wrong/i);
   });
 });
+
+describe("accessibility", () => {
+  it("groups the cross-contact checkboxes in a labelled fieldset", () => {
+    renderForm();
+    const group = screen.getByRole("group", { name: /allergens that may have touched this food/i });
+    expect(within(group).getAllByRole("checkbox")).toHaveLength(ALLERGENS.length);
+  });
+
+  it.each([/^Dish name/i, /^Servings/i, /Latest time you can hand/i, /Your name or role/i])("marks %s as required", (label) => {
+    renderForm();
+    expect(screen.getByLabelText(label)).toHaveAttribute("aria-required", "true");
+  });
+
+  it("moves focus to the error list when submit fails validation", () => {
+    renderForm();
+    fireEvent.click(screen.getByRole("button", { name: /submit for review/i }));
+    expect(screen.getByRole("alert")).toHaveFocus();
+  });
+
+  it("renders duplicate messages without a React key collision", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      renderForm({ error: "Dish name is required." });
+      fireEvent.click(screen.getByRole("button", { name: /submit for review/i }));
+      expect(screen.getAllByText("Dish name is required.")).toHaveLength(2);
+      expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key|unique "key"/i);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

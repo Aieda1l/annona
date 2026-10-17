@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import {
   ALLERGENS,
   HANDLING_MODES,
@@ -90,6 +90,8 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
   const [state, setState] = useState<FormState>(initialFormState);
   const [errors, setErrors] = useState<string[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const alertRef = useRef<HTMLDivElement>(null);
+  const [attempt, setAttempt] = useState(0);
   const id = (name: string) => `${uid}-${name}`;
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setState((s) => ({ ...s, [key]: value }));
   const text = (key: keyof FormState) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -103,6 +105,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
     const built = buildFacts(state);
     if (!built.ok) {
       setErrors(built.errors);
+      setAttempt((n) => n + 1);
       return;
     }
     setErrors([]);
@@ -114,6 +117,11 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
       fail();
     }
   }
+
+  // After a failed submit, move focus to the error list so keyboard and screen-reader users hear it.
+  useEffect(() => {
+    if (attempt > 0) alertRef.current?.focus();
+  }, [attempt]);
 
   const shown = [...errors, ...(submitError ? [submitError] : []), ...(error ? [error] : [])];
   const declared = state.cross_contact_status === "declared";
@@ -147,7 +155,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           )
         }
       >
-        <Input id={id("dish_name")} maxLength={80} value={state.dish_name} onChange={text("dish_name")} />
+        <Input id={id("dish_name")} aria-required="true" maxLength={80} value={state.dish_name} onChange={text("dish_name")} />
       </Field>
 
       <Field label="Description (optional)" htmlFor={id("description")}>
@@ -159,7 +167,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         htmlFor={id("servings")}
         hint={est && <Hint id="servings">AI estimate (unverified): {est.min}–{est.max} servings</Hint>}
       >
-        <Input id={id("servings")} type="number" inputMode="numeric" value={state.servings} onChange={text("servings")} />
+        <Input id={id("servings")} aria-required="true" type="number" inputMode="numeric" value={state.servings} onChange={text("servings")} />
       </Field>
 
       <Field
@@ -227,27 +235,30 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           <option value="declared">I&apos;ll declare below (including none)</option>
         </select>
       </Field>
-      <div className="flex flex-wrap gap-4" aria-label="Allergens that may have touched this food">
-        {ALLERGENS.map((a) => (
-          <label key={a} className="flex items-center gap-1.5 text-sm">
-            <input
-              type="checkbox"
-              aria-label={`${ALLERGEN_NAMES[a]} cross-contact`}
-              disabled={!declared}
-              checked={state.cross_contact_allergens.includes(a)}
-              onChange={(e) =>
-                set(
-                  "cross_contact_allergens",
-                  e.target.checked
-                    ? [...state.cross_contact_allergens, a]
-                    : state.cross_contact_allergens.filter((x) => x !== a),
-                )
-              }
-            />
-            {ALLERGEN_NAMES[a]}
-          </label>
-        ))}
-      </div>
+      <fieldset className="flex flex-col gap-1">
+        <legend className="text-sm font-medium">Allergens that may have touched this food</legend>
+        <div className="flex flex-wrap gap-4">
+          {ALLERGENS.map((a) => (
+            <label key={a} className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                aria-label={`${ALLERGEN_NAMES[a]} cross-contact`}
+                disabled={!declared}
+                checked={state.cross_contact_allergens.includes(a)}
+                onChange={(e) =>
+                  set(
+                    "cross_contact_allergens",
+                    e.target.checked
+                      ? [...state.cross_contact_allergens, a]
+                      : state.cross_contact_allergens.filter((x) => x !== a),
+                  )
+                }
+              />
+              {ALLERGEN_NAMES[a]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <Field label="How is this food being held right now?" htmlFor={id("handling_mode")}>
         {select("handling_mode", HANDLING_MODES, HANDLING_LABELS)}
@@ -301,6 +312,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
       <Field label="Latest time you can hand the food over" htmlFor={id("donor_pickup_by")}>
         <Input
           id={id("donor_pickup_by")}
+          aria-required="true"
           type="datetime-local"
           value={state.donor_pickup_by_local}
           onChange={text("donor_pickup_by_local")}
@@ -319,6 +331,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
       <Field label="Your name or role (for the attestation)" htmlFor={id("attested_by_label")}>
         <Input
           id={id("attested_by_label")}
+          aria-required="true"
           maxLength={80}
           value={state.attested_by_label}
           onChange={text("attested_by_label")}
@@ -335,11 +348,11 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
       </label>
 
       {shown.length > 0 && (
-        <Alert variant="destructive" role="alert">
+        <Alert ref={alertRef} tabIndex={-1} variant="destructive" role="alert">
           <AlertDescription>
             <ul className="list-disc pl-4">
-              {shown.map((m) => (
-                <li key={m}>{m}</li>
+              {shown.map((m, i) => (
+                <li key={`${i}-${m}`}>{m}</li>
               ))}
             </ul>
           </AlertDescription>
