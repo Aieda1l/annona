@@ -193,3 +193,90 @@ describe("simulated phone link", () => {
     expect(screen.queryByRole("link", { name: /simulated phone/i })).toBeNull();
   });
 });
+
+describe("SimulatedPhone review fixes", () => {
+  it("ignores a late thread response for a contact that is no longer selected", async () => {
+    const snap = fixtureSnapshot();
+    const [first, second] = snap.identities;
+    let release: (r: Response) => void = () => {};
+    const slow = new Promise<Response>((r) => (release = r));
+    stubFetch((url) => {
+      if (!url.startsWith("/api/messaging/simulated/thread")) return undefined;
+      if (url.includes(encodeURIComponent(first.identity_id))) return slow;
+      return json({ ok: true, data: { messages: [{ id: "n1", direction: "inbound", text: "SECOND-THREAD" }] } });
+    }, snap);
+    render(<SimulatedPhone />);
+    await flush();
+    fireEvent.change(screen.getByRole("combobox", { name: /simulated contact/i }), { target: { value: second.identity_id } });
+    await flush();
+    await act(async () => {
+      release(await json({ ok: true, data: { messages: [{ id: "o1", direction: "inbound", text: "FIRST-THREAD" }] } }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.queryByText("FIRST-THREAD")).toBeNull();
+    expect(screen.getByText("SECOND-THREAD")).toBeInTheDocument();
+  });
+
+  it("keeps typed text when the send fails", async () => {
+    stubFetch((url) =>
+      url === "/api/messaging/simulated/inbound"
+        ? json({ ok: false, error: { code: "VALIDATION_FAILED", message: "bad", retryable: false } }, 400)
+        : undefined,
+    );
+    render(<SimulatedPhone />);
+    await flush();
+    const input = screen.getByLabelText(/message text/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "hello" } });
+    await act(async () => {
+      fireEvent.submit(input.closest("form")!);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(input.value).toBe("hello");
+  });
+
+  it("clears typed text after a successful send", async () => {
+    stubFetch((url) =>
+      url === "/api/messaging/simulated/inbound"
+        ? json({ ok: true, data: { outcome: "processed", command: "unknown", reply: null } })
+        : undefined,
+    );
+    render(<SimulatedPhone />);
+    await flush();
+    const input = screen.getByLabelText(/message text/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "hello" } });
+    await act(async () => {
+      fireEvent.submit(input.closest("form")!);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(input.value).toBe("");
+  });
+
+  it("does not put trailing sentence punctuation into a /v link", async () => {
+    stubFetch((url) =>
+      url.startsWith("/api/messaging/simulated/thread")
+        ? json({
+            ok: true,
+            data: { messages: [{ id: "m1", direction: "outbound", text: "Review (https://demo.example.invalid/v#abc123)." }] },
+          })
+        : undefined,
+    );
+    render(<SimulatedPhone />);
+    await flush();
+    expect(screen.getByRole("link", { name: /\/v#abc123/ })).toHaveAttribute("href", "/v#abc123");
+  });
+
+  it("shows the disabled notice when the inbound POST answers 403", async () => {
+    stubFetch((url) =>
+      url === "/api/messaging/simulated/inbound"
+        ? json({ ok: false, error: { code: "NOT_AUTHORIZED", message: "no", retryable: false } }, 403)
+        : undefined,
+    );
+    render(<SimulatedPhone />);
+    await flush();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^JOIN$/ }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText(/Simulated phone disabled/)).toBeInTheDocument();
+  });
+});

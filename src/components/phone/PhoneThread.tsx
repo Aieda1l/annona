@@ -34,9 +34,10 @@ export function linkify(text: string): ReactNode[] {
   let last = 0;
   for (const match of text.matchAll(/https?:\/\/[^\s]+/g)) {
     const start = match.index ?? 0;
+    const raw = match[0].replace(/[.,;:!?)\]'"]+$/, "");
     let url: URL | null = null;
     try {
-      url = new URL(match[0]);
+      url = new URL(raw);
     } catch {
       url = null;
     }
@@ -48,7 +49,7 @@ export function linkify(text: string): ReactNode[] {
         {href}
       </a>,
     );
-    last = start + match[0].length;
+    last = start + raw.length;
   }
   if (last < text.length) parts.push(text.slice(last));
   return parts;

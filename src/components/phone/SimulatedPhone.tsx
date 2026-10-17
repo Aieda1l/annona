@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DashboardSnapshot, InboundResult } from "@/contracts";
 import { ClaimResultView } from "./ClaimResultView";
 import { PhoneThread, normalizeMessages, type PhoneMessage } from "./PhoneThread";
@@ -48,6 +48,11 @@ export function SimulatedPhone() {
   }, []);
 
   const selected = identityId || snapshot?.identities[0]?.identity_id || "";
+  // Guards against a slow thread response for a previously selected contact overwriting the current thread.
+  const selectedRef = useRef(selected);
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
 
   const loadThread = useCallback(async () => {
     if (document.hidden || !selected) return;
@@ -55,8 +60,10 @@ export function SimulatedPhone() {
       const res = await fetch(`/api/messaging/simulated/thread?identity_id=${encodeURIComponent(selected)}`, {
         cache: "no-store",
       });
+      if (selectedRef.current !== selected) return;
       if (res.status === 403) return setForbidden(true);
       const body = await res.json().catch(() => null);
+      if (selectedRef.current !== selected) return;
       if (body?.ok) {
         setForbidden(false);
         setMessages(normalizeMessages(body.data?.messages));
@@ -84,7 +91,7 @@ export function SimulatedPhone() {
     };
   }, [loadThread]);
 
-  async function send(body: { text: string; fixture_id?: string }) {
+  async function send(body: { text: string; fixture_id?: string }): Promise<boolean> {
     setSendError(null);
     setResult(null);
     try {
@@ -93,20 +100,27 @@ export function SimulatedPhone() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ identity_id: selected, ...body }),
       });
-      if (res.status === 403) return setForbidden(true);
+      if (res.status === 403) {
+        setForbidden(true);
+        return false;
+      }
       if (!res.ok) {
         const f = await failureOf(res);
-        return setSendError(`${f.code}: ${f.message}`);
+        setSendError(`${f.code}: ${f.message}`);
+        return false;
       }
       const parsed = await res.json();
       if (parsed?.ok) {
         setResult(parsed.data);
         void loadThread();
         void loadSnapshot();
-      } else setSendError(`${parsed?.error?.code ?? "INTERNAL"}: ${parsed?.error?.message ?? "Request failed."}`);
+        return true;
+      }
+      setSendError(`${parsed?.error?.code ?? "INTERNAL"}: ${parsed?.error?.message ?? "Request failed."}`);
     } catch {
       setSendError("UNREACHABLE: The server could not be reached.");
     }
+    return false;
   }
 
   const realMessaging = snapshot ? snapshot.modes.messaging.mode !== "fake" : false;
@@ -213,7 +227,7 @@ export function SimulatedPhone() {
                 className="flex gap-2"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (text.trim()) void send({ text: text.trim() }).then(() => setText(""));
+                  if (text.trim()) void send({ text: text.trim() }).then((ok) => ok && setText(""));
                 }}
               >
                 <label htmlFor="free" className="sr-only">
