@@ -20,6 +20,8 @@ export type EligibilityInput = {
 };
 
 export function evaluateEligibility({ facts, donor, policy, now }: EligibilityInput): EligibilityDecision {
+  // A broken clock is a programmer error (CONTRACTS §1), not a donor-fixable input; never evaluate against it.
+  if (!Number.isFinite(now.getTime())) throw new Error("evaluateEligibility: `now` is not a valid Date");
   const reasons: EligibilityReason[] = [];
   const field_states: Record<string, FieldState> = {};
 
@@ -72,15 +74,15 @@ export function evaluateEligibility({ facts, donor, policy, now }: EligibilityIn
   // G-04 excluded category
   if (facts.contains_excluded_category === "yes") {
     add("EXCLUDED_CATEGORY", "This food is in a category the prototype policy excludes.", "contains_excluded_category", "rejected");
-  } else if (facts.contains_excluded_category === "unknown") {
+  } else if (facts.contains_excluded_category !== "no") {
     add("EXCLUDED_CATEGORY_UNKNOWN", "Please confirm whether the food is in any excluded category.", "contains_excluded_category", "unknown");
   }
 
   // G-05 continuous cold holding
-  if (facts.continuous_cold_holding === "unknown") {
-    add("COLD_HOLDING_UNKNOWN", "We can't offer this until continuous cold holding is confirmed.", "continuous_cold_holding", "unknown");
-  } else if (facts.continuous_cold_holding === "no") {
+  if (facts.continuous_cold_holding === "no") {
     add("COLD_HOLDING_NOT_CONFIRMED", "Cold holding was not continuous, so this can't be offered.", "continuous_cold_holding", "rejected");
+  } else if (facts.continuous_cold_holding !== "yes") {
+    add("COLD_HOLDING_UNKNOWN", "We can't offer this until continuous cold holding is confirmed.", "continuous_cold_holding", "unknown");
   }
 
   // G-06 temperature log (only when policy requires it)
@@ -96,27 +98,29 @@ export function evaluateEligibility({ facts, donor, policy, now }: EligibilityIn
   // G-07 previously served
   if (facts.previously_served === "yes") {
     add("PREVIOUSLY_SERVED", "Food that was served to or handled by consumers can't be offered.", "previously_served", "rejected");
-  } else if (facts.previously_served === "unknown") {
+  } else if (facts.previously_served !== "no") {
     add("PREVIOUSLY_SERVED_UNKNOWN", "Please confirm the food was not previously served.", "previously_served", "unknown");
   }
 
   // G-08 covered food-grade containers
   if (facts.covered_food_grade_containers === "no") {
     add("PACKAGING_NOT_COVERED", "The food needs covered, food-grade containers. You can repackage and resubmit.", "covered_food_grade_containers", "needs_review");
-  } else if (facts.covered_food_grade_containers === "unknown") {
+  } else if (facts.covered_food_grade_containers !== "yes") {
     add("PACKAGING_UNKNOWN", "Please confirm the food is in covered, food-grade containers.", "covered_food_grade_containers", "unknown");
   }
 
   // G-09 discard-by
-  if (facts.discard_by === null) {
+  // An unparseable discard-by is treated as missing: never let NaN comparisons pass a rule.
+  if (facts.discard_by === null || !Number.isFinite(Date.parse(facts.discard_by))) {
     add("DISCARD_BY_MISSING", "Please enter the kitchen's discard-by time.", "discard_by", "unknown");
-  } else if (new Date(facts.discard_by).getTime() <= now.getTime()) {
+  } else if (Date.parse(facts.discard_by) <= now.getTime()) {
     add("DISCARD_BY_PASSED", "The kitchen's discard-by time has passed.", "discard_by", "rejected");
   }
 
   // G-10 donor pickup cutoff
-  const pickupMs = new Date(facts.donor_pickup_by).getTime();
-  if (pickupMs <= now.getTime()) {
+  const pickupMs = Date.parse(facts.donor_pickup_by);
+  // An unparseable pickup time can't prove a usable window, so it fails like a passed window.
+  if (!Number.isFinite(pickupMs) || pickupMs <= now.getTime()) {
     add("PICKUP_WINDOW_PASSED", "The donor pickup time has already passed.", "donor_pickup_by", "rejected");
   } else if (pickupMs < now.getTime() + policy.min_pickup_lead_minutes * 60_000) {
     add("PICKUP_WINDOW_TOO_SHORT", `The pickup window is shorter than the ${policy.min_pickup_lead_minutes}-minute minimum lead time.`, "donor_pickup_by", "rejected");
@@ -124,13 +128,14 @@ export function evaluateEligibility({ facts, donor, policy, now }: EligibilityIn
 
   // G-11 one reason per unknown allergen
   for (const a of ALLERGENS) {
-    if (facts.allergens[a] === "unknown") {
+    // Only an explicit donor declaration counts; a missing or unrecognized value is unknown.
+    if (facts.allergens?.[a] !== "present" && facts.allergens?.[a] !== "not_in_listed_ingredients") {
       add("ALLERGEN_UNKNOWN", `Please confirm whether ${a.replace("_", " ")} is in the listed ingredients.`, `allergens.${a}`, "unknown", a);
     }
   }
 
   // G-12 cross-contact
-  if (facts.cross_contact_status === "unknown") {
+  if (facts.cross_contact_status !== "declared") {
     add("CROSS_CONTACT_UNKNOWN", "Please say whether any allergens could have cross-contacted this food.", "cross_contact_status", "unknown");
   }
 

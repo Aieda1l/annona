@@ -54,16 +54,11 @@ export type DonationTransition = {
 
 const hasNote = (c: TransitionContext) => (c.note ?? "").trim().length > 0;
 const collected = (c: TransitionContext) => c.collected_at !== null;
-const cutoffMs = (c: TransitionContext) => (c.effective_cutoff_at === null ? null : Date.parse(c.effective_cutoff_at));
-/** True only when a cutoff exists and now is strictly before it (unknown cutoff fails closed). */
-const beforeCutoff = (c: TransitionContext) => {
-  const t = cutoffMs(c);
-  return t !== null && c.now.getTime() < t;
-};
-const atOrAfterCutoff = (c: TransitionContext) => {
-  const t = cutoffMs(c);
-  return t !== null && c.now.getTime() >= t;
-};
+const nowMs = (c: TransitionContext) => c.now.getTime();
+const cutoffMs = (c: TransitionContext) => (c.effective_cutoff_at === null ? NaN : Date.parse(c.effective_cutoff_at));
+// Both comparisons are false for an unknown cutoff, an unparseable time or an invalid `now`: fail closed.
+const beforeCutoff = (c: TransitionContext) => nowMs(c) < cutoffMs(c);
+const atOrAfterCutoff = (c: TransitionContext) => nowMs(c) >= cutoffMs(c);
 const ok = null;
 
 export const DONATION_TRANSITIONS: readonly DonationTransition[] = [
@@ -140,8 +135,10 @@ export const DONATION_TRANSITIONS: readonly DonationTransition[] = [
     triggers: ["recordHandoff"],
     guard: (c) => {
       if (c.simulated !== true) return "Handoff must be simulated.";
-      if (c.discard_by !== null && c.discard_by !== undefined && c.now.getTime() >= Date.parse(c.discard_by)) {
-        return "The discard-by time has passed; the operator must cancel.";
+      // Only an explicit null means "no discard-by"; a missing or unparseable value refuses.
+      if (c.discard_by === null) return Number.isFinite(nowMs(c)) ? ok : "Invalid server time.";
+      if (c.discard_by === undefined || !(nowMs(c) < Date.parse(c.discard_by))) {
+        return "The discard-by time has passed or is unknown; the operator must cancel.";
       }
       return ok;
     },

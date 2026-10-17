@@ -55,6 +55,8 @@ function recipientEligible(r: RecipientOrg, input: MatchInput): boolean {
 
 export function findCandidates(input: MatchInput): MatchCandidate[] {
   const { facts, policy, now, donation } = input;
+  // Fail closed: NaN comparisons are false, which would otherwise read as "feasible".
+  if (!Number.isFinite(now.getTime()) || !(policy.average_speed_kmh > 0)) return [];
   const excluded = new Set(input.excluded_courier_ids);
   const busy = new Set(input.busy_courier_ids ?? []);
   const joined = new Set(
@@ -63,12 +65,15 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
 
   const pickupBy = Date.parse(facts.donor_pickup_by);
   const discardBy = facts.discard_by === null ? Number.POSITIVE_INFINITY : Date.parse(facts.discard_by);
+  if (!Number.isFinite(pickupBy) || Number.isNaN(discardBy)) return [];
   const effectiveCutoff = Math.min(pickupBy, discardBy);
 
   const out: Array<Omit<MatchCandidate, "rank">> = [];
   for (const r of input.recipients) {
     if (!recipientEligible(r, input)) continue;
     const transit = minutesFor(haversineKm(donation.donor_location, r.location), policy.average_speed_kmh);
+    const closes = Date.parse(r.receiving_closes_at);
+    if (!Number.isFinite(transit) || !Number.isFinite(closes)) continue;
     if (transit > policy.max_transit_minutes) continue; // M-10
 
     for (const c of input.couriers) {
@@ -82,8 +87,8 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
       const eta = minutesFor(haversineKm(c.location, donation.donor_location), policy.average_speed_kmh);
       const estPickup = now.getTime() + policy.response_window_seconds * 1000 + eta * MIN;
       const estDropoff = estPickup + (transit + policy.handoff_buffer_minutes) * MIN;
-      const closes = Date.parse(r.receiving_closes_at);
       const availableUntil = Date.parse(c.available_until);
+      if (!Number.isFinite(eta) || !Number.isFinite(availableUntil)) continue;
       if (estPickup > pickupBy) continue;
       if (estDropoff > Math.min(discardBy, closes, availableUntil)) continue;
 
