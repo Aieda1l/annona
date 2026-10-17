@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   DONATION_CARD_FIXTURES,
   DONATION_STATUSES,
-  eligibleCard,
+  unmatchedCard,
   type DonationCard as DonationCardData,
   type DonationStatus,
 } from "@/contracts";
@@ -14,22 +14,6 @@ import { DonationBoard } from "@/components/dashboard/DonationBoard";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 
 afterEach(cleanup); // vitest globals are off, so RTL does not auto-clean
-
-const unmatchedCard: DonationCardData = {
-  ...eligibleCard,
-  id: "00000000-0000-4000-8000-0000000000d9",
-  status: "unmatched",
-  decision: {
-    ...eligibleCard.decision!,
-    reasons: [
-      {
-        code: "NO_ELIGIBLE_MATCH",
-        severity: "dispatch",
-        message: "No cold-capable courier is available right now.",
-      },
-    ],
-  },
-};
 
 const counts = (cards: readonly DonationCardData[]): Partial<Record<DonationStatus, number>> => {
   const out: Partial<Record<DonationStatus, number>> = {};
@@ -66,16 +50,16 @@ describe("T-UI-01 DonationCard", () => {
 
   it("renders an unmatched card with a dispatch reason", () => {
     render(<DonationCard card={unmatchedCard} />);
-    expect(screen.getByText("No cold-capable courier is available right now.")).toBeInTheDocument();
+    expect(screen.getByText(unmatchedCard.decision!.reasons[0]!.message)).toBeInTheDocument();
   });
 });
 
 describe("T-UI-01 DonationBoard", () => {
-  const all = [...DONATION_CARD_FIXTURES, unmatchedCard];
+  const all = DONATION_CARD_FIXTURES; // contracts-2: one card per DonationStatus
 
   it("groups cards by status with server counts", () => {
     render(<DonationBoard donations={all} counts_by_status={counts(all)} />);
-    for (const status of ["needs_review", "eligible", "claimed"] as const) {
+    for (const status of DONATION_STATUSES) {
       const group = screen.getByTestId(`group-${status}`);
       expect(within(group).getAllByTestId("donation-card")).toHaveLength(1);
     }
