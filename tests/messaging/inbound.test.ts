@@ -400,6 +400,35 @@ describe("T-MS-18 photo routing", () => {
     expect(sent).toHaveLength(0);
   });
 
+  // D-039 (narrowed): the text of a message that carries an image is never an opt-out.
+  it.each(["STOP", "please stop sending me these", "unsubscribe", "end of day, 20 portions"])(
+    "a joined donor's photo captioned %j is still a photo: the handler runs and nobody is opted out",
+    async (caption) => {
+      const photo = vi.fn(async () => ({ purpose: "draft_ready" as const, text: "AI guess ... link", idempotency_key: "draft_ready:d1:v1" }));
+      const { double, sent, handle } = setup("joined", "photon", photo);
+      asDonor(double);
+      const result = await handle(inbound(caption, { attachments: image }));
+      expect(photo).toHaveBeenCalledTimes(1);
+      expect(double.calls.optOuts).toEqual([]);
+      expect(double.identity(IDENTITY_ID)?.status).toBe("joined");
+      expect(result).toMatchObject({ outcome: "processed", command: "photo" });
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ purpose: "draft_ready" });
+    },
+  );
+
+  it("the same donor texting STOP without a photo is opted out and the handler is not called", async () => {
+    const photo = vi.fn(async () => null);
+    const { double, sent, handle } = setup("joined", "photon", photo);
+    asDonor(double);
+    const result = await handle(inbound("please stop messaging me"));
+    expect(photo).not.toHaveBeenCalled();
+    expect(double.calls.optOuts).toEqual([IDENTITY_ID]);
+    expect(result).toMatchObject({ outcome: "processed", command: "stop" });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ purpose: "stop_ack" });
+  });
+
   it("never downloads or drafts for an unknown sender", async () => {
     const photo = vi.fn(async () => null);
     const { double, sent, handle } = setup(null, "photon", photo);
