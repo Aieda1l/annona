@@ -6,8 +6,12 @@ import type {
   PolicyConfig,
   RecipientOrg,
 } from "./types";
+import { parseUtc } from "./time";
 
 // CONTRACTS §6 matching and feasibility (M-01..M-10). Pure: no I/O, no clock reads.
+// Input is exactly the §6 list. Not decidable from it, so enforced elsewhere (CONTRACTS §6, §8.1 step 8):
+//   M-09 (busy courier): partial unique index + `ON CONFLICT DO NOTHING` in createNextOffers.
+//   M-04 net of committed servings: re-checked under the recipient lock at claim. Here M-04 uses the raw capacity.
 
 export type MatchInput = {
   donation: { id: string; donor_location: { lat: number; lng: number } };
@@ -19,10 +23,6 @@ export type MatchInput = {
   now: Date;
   /** M-08: couriers already offered this donation. */
   excluded_courier_ids: string[];
-  /** M-09: couriers holding any pending_send/open offer or a claimed/collected assignment (any donation). */
-  busy_courier_ids: string[];
-  /** M-04: derived Σ servings of claimed/collected/delivered donations per recipient (never decremented). */
-  committed_servings: Record<string, number>;
 };
 
 const MIN = 60_000;
@@ -51,10 +51,9 @@ function recipientEligible(r: RecipientOrg, input: MatchInput): boolean {
     ...facts.cross_contact_allergens,
   ]);
   if (r.excluded_allergens.some((a) => present.has(a))) return false; // M-03
-  const committed = input.committed_servings[r.id] ?? 0;
-  // Positive form: NaN or undefined capacity, commitments or servings must refuse, not pass.
-  if (![r.capacity_servings_available, committed, facts.servings].every(Number.isFinite)) return false; // M-04
-  if (!(r.capacity_servings_available - committed >= facts.servings)) return false; // M-04
+  // Positive form: NaN or undefined capacity or servings must refuse, not pass.
+  if (![r.capacity_servings_available, facts.servings].every(Number.isFinite)) return false; // M-04
+  if (!(r.capacity_servings_available >= facts.servings)) return false; // M-04
   return true;
 }
 
@@ -64,18 +63,15 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
   if (!Number.isFinite(now.getTime()) || !(policy.average_speed_kmh > 0)) return [];
   const policyNumbers = [policy.response_window_seconds, policy.handoff_buffer_minutes, policy.max_transit_minutes];
   if (!policyNumbers.every((n) => Number.isFinite(n) && n >= 0)) return [];
-  // Missing M-04/M-09 inputs would silently disable those rules; refuse instead.
-  if (!Array.isArray(input.busy_courier_ids) || !input.committed_servings) return [];
   // Malformed facts (callers should pass Zod-parsed facts) cannot be matched.
   if (!facts.allergens || !Array.isArray(facts.cross_contact_allergens)) return [];
   const excluded = new Set(input.excluded_courier_ids);
-  const busy = new Set(input.busy_courier_ids);
   const joined = new Set(
     input.identities.filter((i) => i.actor_role === "courier" && i.status === "joined").map((i) => i.actor_id),
   );
 
-  const pickupBy = Date.parse(facts.donor_pickup_by);
-  const discardBy = facts.discard_by === null ? Number.POSITIVE_INFINITY : Date.parse(facts.discard_by);
+  const pickupBy = parseUtc(facts.donor_pickup_by);
+  const discardBy = facts.discard_by === null ? Number.POSITIVE_INFINITY : parseUtc(facts.discard_by);
   if (!Number.isFinite(pickupBy) || Number.isNaN(discardBy)) return [];
   const effectiveCutoff = Math.min(pickupBy, discardBy);
 
@@ -83,7 +79,7 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
   for (const r of input.recipients) {
     if (!recipientEligible(r, input)) continue;
     const transit = minutesFor(haversineKm(donation.donor_location, r.location), policy.average_speed_kmh);
-    const closes = Date.parse(r.receiving_closes_at);
+    const closes = parseUtc(r.receiving_closes_at);
     if (!Number.isFinite(transit) || !Number.isFinite(closes)) continue;
     if (transit > policy.max_transit_minutes) continue; // M-10
 
@@ -92,13 +88,12 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
       if (!c.affiliated_recipient_ids.includes(r.id)) continue; // M-06
       if (facts.handling_mode === "refrigerated" && !c.capabilities.cold_transport) continue; // M-07
       if (excluded.has(c.id)) continue; // M-08
-      if (busy.has(c.id)) continue; // M-09
 
       // M-10 feasibility
       const eta = minutesFor(haversineKm(c.location, donation.donor_location), policy.average_speed_kmh);
       const estPickup = now.getTime() + policy.response_window_seconds * 1000 + eta * MIN;
       const estDropoff = estPickup + (transit + policy.handoff_buffer_minutes) * MIN;
-      const availableUntil = Date.parse(c.available_until);
+      const availableUntil = parseUtc(c.available_until);
       if (!Number.isFinite(eta) || !Number.isFinite(availableUntil)) continue;
       if (estPickup > pickupBy) continue;
       if (estDropoff > Math.min(discardBy, closes, availableUntil)) continue;

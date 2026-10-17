@@ -8,6 +8,7 @@ import {
   type VerifiedFacts,
 } from "@/contracts";
 import type { DonorProfile, PolicyConfig } from "./types";
+import { parseUtc } from "./time";
 
 // CONTRACTS §5 gate G-01..G-13. Pure: no I/O, no clock reads, and no VisionSuggestion in the input.
 // Every rule runs (no short-circuit). Precedence: any reject -> rejected, else any review -> needs_review.
@@ -111,14 +112,14 @@ export function evaluateEligibility({ facts, donor, policy, now }: EligibilityIn
 
   // G-09 discard-by
   // An unparseable discard-by is treated as missing: never let NaN comparisons pass a rule.
-  if (facts.discard_by === null || !Number.isFinite(Date.parse(facts.discard_by))) {
+  if (facts.discard_by === null || !Number.isFinite(parseUtc(facts.discard_by))) {
     add("DISCARD_BY_MISSING", "Please enter the kitchen's discard-by time.", "discard_by", "unknown");
-  } else if (Date.parse(facts.discard_by) <= now.getTime()) {
+  } else if (parseUtc(facts.discard_by) <= now.getTime()) {
     add("DISCARD_BY_PASSED", "The kitchen's discard-by time has passed.", "discard_by", "rejected");
   }
 
   // G-10 donor pickup cutoff
-  const pickupMs = Date.parse(facts.donor_pickup_by);
+  const pickupMs = parseUtc(facts.donor_pickup_by);
   // An unparseable pickup time can't prove a usable window, so it fails like a passed window.
   if (!Number.isFinite(pickupMs) || pickupMs <= now.getTime()) {
     add("PICKUP_WINDOW_PASSED", "The donor pickup time has already passed.", "donor_pickup_by", "rejected");

@@ -15,18 +15,18 @@ DELIVERED:
 EVIDENCE (commands run locally on this branch; pure functions, no database, nothing real):
 - `pnpm typecheck`: exit 0
 - `pnpm lint`: exit 0
-- `pnpm test`: 6 files, 284 tests passed (24 of the new tests fail against the pre-review `src/core`)
+- `pnpm test`: 6 files, 310 tests passed. Extra check outside the repo: seeded random fuzz (16,000 gate inputs, 6,000 matching inputs, 60,000 transitions) against an independent oracle, all passed.
 - Secret scan (ARCHITECTURE §9) over unpushed commits: clean; no tracked `.env*`.
 - NOT RUN / UNVERIFIED: T-CO-15 persistence half (owning functions), T-CO-16, T-CO-17 (real Postgres), T-CO-23. Claim race safety is UNVERIFIED (D-033).
 
 CONTRACT CHANGES OR REQUESTS (captain):
 - Type `DonorProfile`, `PolicyConfig`, `RecipientOrg`, `CourierProfile`, `MessagingIdentity`, `MatchCandidate` in `@/contracts`; `src/core/types.ts` mirrors them for now.
-- CONTRACTS §6 `findCandidates` input lacks M-09 busy couriers, M-04 committed servings and the donor location. Added as REQUIRED `busy_courier_ids` and `committed_servings` (omitting them returns no candidates), plus `donation.donor_location`.
+- CONTRACTS §6 `findCandidates` input is implemented EXACTLY as listed (no added keys). Two gaps follow from that, captain to decide: (a) M-04 net of committed servings and M-09 busy couriers cannot be decided from the §6 input, so `findCandidates` uses raw capacity and ignores busy couriers; the claim transaction (step 8) and the courier unique index in `createNextOffers` must enforce them (PR 1b). (b) `donation` needs the donor location to compute distance; it is typed `{ id, donor_location }` inside the existing `donation` key, but §6 does not say where it comes from.
 - Confirm the NO_ELIGIBLE_MATCH vs CANDIDATES_EXHAUSTED rule (exhausted = feasible without exclusions, none left with them).
 - Confirm `field_states` mapping: `unknown` for unknown/null, `needs_review` for a concrete value needing a person, `rejected` for a reject, else `donor_verified`.
 - G-01 for a pending donor with `licensed_food_establishment=false` is unspecified; implemented as review (DONOR_APPROVAL_PENDING).
-- Review fixes in this PR: S-03/S-18 target status must equal `gate_outcome`; operator triggers (`operatorCancel`, `operatorReject`, `returnToDonor`, `retryMatching`) need `actor_role = operator`; a collected `needs_review` donation (S-17) no longer expires via S-08; M-04 and policy numerics fail closed on NaN; plain-order rank tie-break.
-- OPEN, needs captain: `MessagingIdentity` has no `provider`, so M-05 cannot filter by the active provider. S-08 has no `donor_pickup_by` fallback when `effective_cutoff_at` is null (null never expires).
+- Review fixes in this PR: S-03/S-18 target status must equal `gate_outcome`; operator triggers (`operatorCancel`, `operatorReject`, `returnToDonor`, `retryMatching`) need `actor_role = operator`; a collected `needs_review` donation (S-17) no longer expires via S-08; M-04 and policy numerics fail closed on NaN; times must be UTC ISO strings (`Date.parse` leniency such as `12345` or `"1"` no longer counts); plain-order rank tie-break. The `@/core` barrel exports only what CONTRACTS §9.3 lists (`evaluateEligibility`, `findCandidates`, `createTestClock(start: Date)`); other core modules are reached by path inside this lane.
+- OPEN, needs captain: the §6 input has no active-provider value, so `findCandidates` assumes `identities` are already filtered to the active provider (M-05); the caller must do that. S-08 has no `donor_pickup_by` fallback when `effective_cutoff_at` is null (null never expires).
 
 BLOCKERS + SAFETY RISKS:
 - Gate rules need Dev 3's explicit OK (OWNERSHIP §6). Claim race safety UNVERIFIED until T-CO-17 passes on real Postgres.

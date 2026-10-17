@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { REASON_CODE_SEVERITY } from "@/contracts";
 import { scene1_eligible_facts } from "@/contracts/fixtures/scenes";
-import { classifyUnmatched, findCandidates, type MatchInput } from "@/core";
+import { findCandidates } from "@/core";
+import { classifyUnmatched, type MatchInput } from "@/core/matching";
 import { DEMO_POLICY, type CourierProfile, type MessagingIdentityLite, type RecipientOrg } from "@/core/types";
 
 const NOW = new Date("2026-10-17T23:10:00.000Z");
@@ -54,8 +55,6 @@ const base = (over: Partial<MatchInput> = {}): MatchInput => ({
   policy: DEMO_POLICY,
   now: NOW,
   excluded_courier_ids: [],
-  busy_courier_ids: [],
-  committed_servings: {},
   ...over,
 });
 
@@ -88,10 +87,10 @@ describe("T-CO-12 ineligible recipients are excluded (M-01..M-04)", () => {
     const r = mkRecipient("r1", { excluded_allergens: ["peanuts", "tree_nuts"] });
     expect(findCandidates(base({ recipients: [r] }))).toHaveLength(1);
   });
-  it("T-CO-12 M-04 capacity used up by committed_servings of another donation (F5)", () => {
-    const r = mkRecipient("r1", { capacity_servings_available: 30 });
-    expect(findCandidates(base({ recipients: [r], committed_servings: { r1: 10 } }))).toEqual([]); // 20 < 24
-    expect(findCandidates(base({ recipients: [r], committed_servings: { r1: 6 } }))).toHaveLength(1); // 24 >= 24
+  it("T-CO-12 M-04 raw capacity must cover the servings (committed servings are re-checked at claim)", () => {
+    const need = base().facts.servings;
+    expect(findCandidates(base({ recipients: [mkRecipient("r1", { capacity_servings_available: need - 1 })] }))).toEqual([]);
+    expect(findCandidates(base({ recipients: [mkRecipient("r1", { capacity_servings_available: need })] }))).toHaveLength(1);
   });
   it("T-CO-12 an excluded recipient does not hide a valid one", () => {
     const bad = mkRecipient("r0", { serves_highly_susceptible_population: true });
@@ -120,9 +119,6 @@ describe("T-CO-13 courier rules and ranking (M-05..M-10)", () => {
   });
   it("M-08 already offered couriers excluded", () => {
     expect(findCandidates(base({ excluded_courier_ids: ["cA"] }))).toEqual([]);
-  });
-  it("M-09 courier with another live offer or active assignment excluded", () => {
-    expect(findCandidates(base({ busy_courier_ids: ["cA"] }))).toEqual([]);
   });
   it("ranking: dropoff ascending, then courier_id ascending; ranks are 1..n", () => {
     const near = mkCourier("cB", ["r1"], { location: loc(47.61, -122.32) });

@@ -1,3 +1,4 @@
+import { parseUtc } from "./time";
 import type { ActorRole, DonationStatus, EligibilityOutcome, OfferStatus, ReasonCode } from "@/contracts";
 
 // CONTRACTS §4.1 (S-01..S-18) and §4.2 as data plus pure guards. Dev 2 is the only writer of donations.status;
@@ -55,7 +56,7 @@ export type DonationTransition = {
 const hasNote = (c: TransitionContext) => (c.note ?? "").trim().length > 0;
 const collected = (c: TransitionContext) => c.collected_at !== null;
 const nowMs = (c: TransitionContext) => c.now.getTime();
-const cutoffMs = (c: TransitionContext) => (c.effective_cutoff_at === null ? NaN : Date.parse(c.effective_cutoff_at));
+const cutoffMs = (c: TransitionContext) => (c.effective_cutoff_at === null ? NaN : parseUtc(c.effective_cutoff_at));
 // Both comparisons are false for an unknown cutoff, an unparseable time or an invalid `now`: fail closed.
 const beforeCutoff = (c: TransitionContext) => nowMs(c) < cutoffMs(c);
 const atOrAfterCutoff = (c: TransitionContext) => nowMs(c) >= cutoffMs(c);
@@ -148,7 +149,7 @@ export const DONATION_TRANSITIONS: readonly DonationTransition[] = [
       if (c.simulated !== true) return "Handoff must be simulated.";
       // Only an explicit null means "no discard-by"; a missing or unparseable value refuses.
       if (c.discard_by === null) return Number.isFinite(nowMs(c)) ? ok : "Invalid server time.";
-      if (c.discard_by === undefined || !(nowMs(c) < Date.parse(c.discard_by))) {
+      if (c.discard_by === undefined || !(nowMs(c) < parseUtc(c.discard_by))) {
         return "The discard-by time has passed or is unknown; the operator must cancel.";
       }
       return ok;

@@ -6,16 +6,16 @@ import {
   TERMINAL_DONATION_STATUSES,
   canOfferTransition,
   canTransition,
-  createTestClock,
   type OfferTrigger,
   type TransitionContext,
   type TransitionTrigger,
-} from "@/core";
+} from "@/core/state";
+import { createTestClock } from "@/core";
 
 // T-CO-15 (pure part): CONTRACTS §4.1 S-01..S-18 and §4.2 offer transitions as a table with guards.
 // The persistence half (owning functions call the table inside transactions) is added with the store.
 
-const clock = createTestClock("2026-10-17T23:10:00.000Z");
+const clock = createTestClock(new Date("2026-10-17T23:10:00.000Z"));
 const BEFORE = clock.now();
 const CUTOFF = "2026-10-18T01:30:00.000Z";
 const AFTER = new Date("2026-10-18T01:30:00.000Z"); // now == cutoff counts as "reached"

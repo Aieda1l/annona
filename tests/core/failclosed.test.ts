@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { scene1_eligible_facts } from "@/contracts/fixtures/scenes";
-import { canTransition, createTestClock, evaluateEligibility, findCandidates, type MatchInput } from "@/core";
+import { createTestClock, evaluateEligibility, findCandidates } from "@/core";
+import { canTransition } from "@/core/state";
+import type { MatchInput } from "@/core/matching";
 import { DEMO_POLICY, type CourierProfile, type DonorProfile, type RecipientOrg } from "@/core/types";
 
 // Fail-closed regressions: malformed timestamps or coordinates make NaN comparisons return false,
@@ -28,6 +30,7 @@ describe("gate fails closed on unparseable times", () => {
 });
 
 describe("matching fails closed on malformed numbers and times", () => {
+  const junk = [12345, "1", "12345", "2026", "Oct 18 2026", "2026-10-18T05:00:00+02:00", "2026-10-18", {}, true] as const;
   const loc = (lat: number, lng: number) => ({ lat, lng, area_label: "x", address_line: "a" });
   const iso = (min: number) => new Date(NOW.getTime() + min * 60_000).toISOString();
   const recipient: RecipientOrg = {
@@ -48,26 +51,24 @@ describe("matching fails closed on malformed numbers and times", () => {
     policy: DEMO_POLICY,
     now: NOW,
     excluded_courier_ids: [],
-    busy_courier_ids: [],
-    committed_servings: {},
     ...o,
   });
 
   it("control is a candidate", () => expect(findCandidates(base())).toHaveLength(1));
+  it.each(junk)("matching refuses facts with discard_by/donor_pickup_by %j", (v) => {
+    const f = { ...scene1_eligible_facts, donor_pickup_by: iso(300), discard_by: iso(900) };
+    expect(findCandidates(base({ facts: { ...f, discard_by: v } as never }))).toEqual([]);
+    expect(findCandidates(base({ facts: { ...f, donor_pickup_by: v } as never }))).toEqual([]);
+  });
   it("NaN or undefined recipient capacity -> no candidate (M-04)", () => {
     expect(findCandidates(base({ recipients: [{ ...recipient, capacity_servings_available: NaN }] }))).toEqual([]);
     expect(findCandidates(base({ recipients: [{ ...recipient, capacity_servings_available: undefined as never }] }))).toEqual([]);
   });
-  it("NaN servings or NaN commitments -> no candidate (M-04)", () => {
+  it("NaN servings -> no candidate (M-04)", () => {
     expect(findCandidates(base({ facts: { ...scene1_eligible_facts, donor_pickup_by: iso(300), discard_by: iso(900), servings: NaN } }))).toEqual([]);
-    expect(findCandidates(base({ committed_servings: { r1: NaN } }))).toEqual([]);
   });
   it.each(["response_window_seconds", "handoff_buffer_minutes", "max_transit_minutes"] as const)("NaN policy.%s -> no candidate, no throw", (k) => {
     expect(findCandidates(base({ policy: { ...DEMO_POLICY, [k]: NaN } }))).toEqual([]);
-  });
-  it("omitted busy_courier_ids / committed_servings -> no candidate (rules cannot be silently skipped)", () => {
-    expect(findCandidates(base({ busy_courier_ids: undefined as never }))).toEqual([]);
-    expect(findCandidates(base({ committed_servings: undefined as never }))).toEqual([]);
   });
   it("facts missing allergens or cross_contact_allergens -> no candidate, no throw", () => {
     const f = { ...scene1_eligible_facts, donor_pickup_by: iso(300), discard_by: iso(900) };
@@ -125,10 +126,10 @@ describe("state guards fail closed", () => {
 
 describe("test clock", () => {
   it("rejects an unparseable start instead of producing Invalid Date", () => {
-    expect(() => createTestClock("garbage")).toThrow();
+    expect(() => createTestClock(new Date("garbage"))).toThrow();
   });
   it("now() returns a fresh Date each call (callers cannot mutate the clock)", () => {
-    const c = createTestClock("2026-10-17T23:10:00.000Z");
+    const c = createTestClock(new Date("2026-10-17T23:10:00.000Z"));
     c.now().setFullYear(1999);
     expect(c.now().toISOString()).toBe("2026-10-17T23:10:00.000Z");
   });
@@ -165,5 +166,23 @@ describe("gate fails closed on a missing ingredients_text", () => {
     const d = gate({ ingredients_text: undefined });
     expect(d.reasons.map((r) => r.code)).toContain("INGREDIENTS_MISSING");
     expect(d.outcome).not.toBe("eligible");
+  });
+});
+
+describe("times must be UTC ISO strings: Date.parse leniency never passes a rule", () => {
+  const junk = [12345, "1", "12345", "2026", "Oct 18 2026", "2026-10-18T05:00:00+02:00", "2026-10-18", {}, true] as const;
+  it.each(junk)("discard_by %j is treated as missing, never as a future time", (v) => {
+    const d = gate({ discard_by: v });
+    expect(d.reasons.map((r) => r.code)).toContain("DISCARD_BY_MISSING");
+    expect(d.outcome).not.toBe("eligible");
+  });
+  it.each(junk)("donor_pickup_by %j is rejected, never as a usable window", (v) => {
+    const d = gate({ donor_pickup_by: v });
+    expect(d.outcome).toBe("rejected");
+  });
+  it("a junk effective_cutoff_at never lets a cutoff guard pass", () => {
+    const ctx = { now: NOW, effective_cutoff_at: "1", collected_at: null };
+    expect(canTransition({ from: "eligible", to: "expired", trigger: "expireDue", ctx }).ok).toBe(false);
+    expect(canTransition({ from: "offered", to: "eligible", trigger: "expireDue", ctx: { ...ctx, live_offer_count: 0 } }).ok).toBe(false);
   });
 });

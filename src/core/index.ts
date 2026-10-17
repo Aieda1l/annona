@@ -30,20 +30,10 @@ import {
 const OWNER = "Dev 2";
 type Pending = Record<string, unknown>; // contracts-2: replace with the typed entity
 
-// ----- pure -----
+// ----- pure (CONTRACTS §9.3) -----
 export { evaluateEligibility } from "./eligibility";
-export type { EligibilityInput } from "./eligibility";
-export { createTestClock, systemClock } from "./clock";
-export type { TestClock } from "./clock";
-export type { DonorProfile, PolicyConfig } from "./types";
-export { DEMO_POLICY } from "./types";
-
-export { findCandidates, classifyUnmatched } from "./matching";
-export type { MatchInput } from "./matching";
-export type { CourierProfile, RecipientOrg, MatchCandidate, MessagingIdentityLite } from "./types";
-
-export { DONATION_TRANSITIONS, OFFER_TRANSITIONS, TERMINAL_DONATION_STATUSES, canTransition, canOfferTransition } from "./state";
-export type { TransitionContext, TransitionTrigger, TransitionCheck, OfferTrigger } from "./state";
+export { findCandidates } from "./matching";
+export { createTestClock } from "./clock";
 
 // ----- intake (called by Dev 1) -----
 export async function storeDonationImage(_input: { mime: string; bytes: Uint8Array }, _deps?: Deps): Promise<Result<{ image_id: string }>> {
