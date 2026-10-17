@@ -130,3 +130,15 @@ BLOCKERS + SAFETY RISKS: (1) draft_ready uses key draft_ready:<donation_id>:v1, 
 INTEGRATION STEPS: wire createPhotoHandler with Dev 1's createDraftFromImage, core issueVerificationLink and hasOutboundMessage, APP_BASE_URL and the attachment fetcher when the core adapter is written.
 NEXT SMALLEST ACTION: Dev 3 pushes this branch as a PR after #12 merges (or rebases it onto main), then writes the core adapter when 2(b) lands.
 ```
+
+## 2026-10-17 14:37 PDT — Live check of the real send adapter (REAL Photon)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / feat/messaging-photo / this entry (evidence only, no code change)
+DELIVERED: Nothing new in code. First LIVE use of createPhotonGateway (src/integrations/photon/gateway-photon.ts): the unit tests had only used a stubbed fetch.
+EVIDENCE (commands, passed/failed, real vs mock): REAL Photon Beta. One synthetic message to the donor phone (already joined), reply route taken from its real JOIN. send accepted (HTTP 2xx) in 386 ms, provider_message_id pho_msg_61p0ys5ervhtmrk8q3mm0rwgwq. A second send with the same Idempotency-Key returned the SAME provider_message_id (Photon replayed it; no duplicate). Status went dispatched -> delivered, 5.5 s after dispatch (dispatchedAt 21:37:34Z, deliveredAt 21:37:40Z). The donor phone received one message (to be confirmed by the phone's owner).
+CONTRACT CHANGES OR REQUESTS: none.
+BLOCKERS + SAFETY RISKS: This proves the SEND leg of T-MS-13 only. Still NOT run: offer text built by tick, the courier's YES, claimOffer, and the donation reaching claimed (needs Dev 2's 2(b) and the core adapter). The script ran outside the repo and wrote nothing but this evidence.
+INTEGRATION STEPS: none.
+NEXT SMALLEST ACTION: write the core adapter when 2(b) lands, then run the full T-MS-13 round trip with the real couriers.
+```
