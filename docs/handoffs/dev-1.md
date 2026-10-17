@@ -55,3 +55,11 @@ Scripts and raw outputs stayed outside version control (`.spikes-local/`, exclud
 **Run once as a shake-down (not logged in PROMPT_EVAL §11):** fake harness: T-PE-01/02/04 pass, 5 cases not run (fixtures missing). Real model via Vertex ADC on the abstract placeholder drawings, 1 run: T-PE-02 and T-PE-04 pass, T-PE-01 fails on "a question about spreads or fillings" because the drawing is not recognizable as sandwiches. That failure reflects the placeholder image, not the prompt.
 
 **Blocked on:** real synthetic photos for `dessert_bars`, `non_food`, `sushi_tray`, `packaged_label`, `injection_note` (and better `sandwich_platter`, `buffet_ambiguous`, `blurry`), per `fixtures/intake/PROVENANCE.md` rules. No prompt version can pass the release rule until all eight cases run.
+
+## 2026-10-17 — First full eval run, and an image provenance problem
+
+Eight images were supplied (`~/Downloads/annona-images`). They look like web-sourced stock or marketing photos: no camera metadata, no source or license information, `sushi_tray` is a PNG named `.jpg`, and `non_food` shows two people, cars and an identifiable campus street. **They are not committed** because they do not meet the provenance rules (team-taken, or CC0 with a source URL; the repo is public). Resized copies (never upscaled, max 1024 px) live in the git-excluded `.spikes-local/eval-images/`. `pnpm eval:intake --images-dir <dir>` evaluates them locally.
+
+Result (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs per case): 5 pass, 3 fail (T-PE-02, 03, 06). Details and the candidate v2 changes are in `docs/PROMPT_EVAL.md` §11. Not a release run.
+
+**Needs a decision:** (1) get committable images (team-taken or CC0 with source URLs) for all eight cases, including a genuinely cluttered buffet and a desk-objects non-food photo with no people; (2) approve the v2 prompt edits.

@@ -13,11 +13,12 @@ import { createGeminiProvider } from "./gemini";
 //   VISION_PROVIDER=gemini GEMINI_API_KEY=… pnpm eval:intake          real model, API key
 //   VISION_PROVIDER=gemini GOOGLE_CLOUD_PROJECT=<id> pnpm eval:intake real model, Vertex AI with ADC (no key)
 // Options: --runs N (default 3)  --cases T-PE-01,T-PE-03  --out <file> (YAML records; otherwise printed)
+//          --images-dir <dir>  read <fixture>.jpg from another directory (for images that must not be committed)
 // Use synthetic photos only. Credentials are never printed or written; failures are reported by error code.
 
 const PROMPT_VERSION = "v1";
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
-const IMAGES = join(process.cwd(), "fixtures/intake/images");
+const DEFAULT_IMAGES = "fixtures/intake/images";
 
 function arg(name: string): string | undefined {
   const argv = process.argv.slice(2);
@@ -84,14 +85,15 @@ async function main() {
   const cases = wanted ? EVAL_CASES.filter((c) => wanted.includes(c.id)) : EVAL_CASES;
   if (cases.length === 0) fail(`No matching cases. Known: ${EVAL_CASES.map((c) => c.id).join(", ")}`);
 
+  const imagesDir = join(process.cwd(), arg("images-dir") ?? DEFAULT_IMAGES);
   const built = buildProvider();
   const results: CaseResult[] = [];
   const modelsSeen = new Set<string>();
 
   for (const c of cases) {
-    const file = join(IMAGES, `${c.fixture}.jpg`);
+    const file = join(imagesDir, `${c.fixture}.jpg`);
     if (!existsSync(file)) {
-      results.push({ status: "skipped", case: c, reason: `fixtures/intake/images/${c.fixture}.jpg is missing` });
+      results.push({ status: "skipped", case: c, reason: `${c.fixture}.jpg is missing from ${arg("images-dir") ?? DEFAULT_IMAGES}` });
       continue;
     }
     const bytes_base64 = readFileSync(file).toString("base64");
