@@ -89,3 +89,33 @@ BLOCKERS + SAFETY RISKS: handleInbound for a donor photo is a stub (returns igno
 INTEGRATION STEPS: Wire MessagingCore to @/core after Dev 2's sub-PR 2(b). Dev 2 reviews the slice-1 PR; no self-merge.
 NEXT SMALLEST ACTION: Dev 3 commits slice 1 on feat/messaging, runs the secret scan on the staged diff, opens PR "[Dev 3] fake gateway + inbound parser".
 ```
+
+## 2026-10-17 14:13 PDT — After PR #7: tick, delivery, real Photon send adapter, routes, worker (not yet pushed)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / feat/messaging-tick (stacked on main after PR #7 merged) / commits 6c51f01, 8e85eed, cef7740 and the worker commit that follows; not pushed, no PR yet
+DELIVERED: createTicker (tick, dispatchDonation), createDeliveryHandler, createPhotonGateway (real send, stubbed-fetch tested) wired into createMessagingGateway, route handlers (internal tick, dispatch, Photon inbound, simulated phone), identityFromCore, createRelay + pnpm worker (tick loop + poll relay). T-MS-06..T-MS-09, T-MS-10 (send failure, delivery, gateway mapping), T-MS-11, T-MS-14 (route part), T-MS-16, T-MS-17, T-MS-12 worker part.
+EVIDENCE (commands, passed/failed, real vs mock): all FAKE / in-memory / stubbed fetch; no real Photon call in these tests. pnpm test -> 40 files, 1043 passed, 1 todo (another lane's). pnpm typecheck exit 0. pnpm lint exit 0. pnpm build exit 0. Secret scan on each commit: 0 matches. pnpm worker exits 1 with a clear message while ANNONA_INTERNAL_SECRET is unavailable (by design).
+CONTRACT CHANGES OR REQUESTS: docs/requests/messaging-env-names.md (open), messaging-stop-anywhere.md (open), messaging-core-idempotency-lookup.md (open).
+BLOCKERS + SAFETY RISKS: (1) Every messaging function in the real @/core is still a stub, so the barrel's handleInbound / handleDeliveryStatus / tick / dispatchDonation are still NOT_IMPLEMENTED and the app's buttons answer 501; the MessagingCore/DispatchCore/DeliveryCore adapter is the next job once sub-PR 2(b) is on main. (2) env.ts lacks ANNONA_INTERNAL_SECRET, so the internal-secret routes and the worker are closed (safe default) until the captain adds it. (3) Photon webhook signature scheme and Socket.IO are still UNVERIFIED; the inbound route accepts only the internal secret. (4) T-MS-13 (real JOIN -> offer -> YES -> claimed round trip) and T-MS-19 (real photo intake) are not run.
+INTEGRATION STEPS: Captain adds the env names (request above). Dev 2 confirms the idempotency-lookup request and the courier_not_joined reason shape. Dev 3 then writes the core adapter, switches the barrel to it, and runs integration tests on PGlite.
+NEXT SMALLEST ACTION: Dev 3 pushes feat/messaging-tick and opens the PR, then starts the core adapter when 2(b) merges.
+```
+
+## 2026-10-17 14:41 PDT — Response to Dev 2's review of PR #12 (feat/messaging-tick)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / feat/messaging-tick / the commit that adds this entry; not pushed yet
+DELIVERED: Fixes for every MEDIUM and the two LOW code findings in the review of PR #12.
+ - M1 relay.ts: skipped (non-inbound) items now advance the cursor, so 50+ of our own sends after the cursor can no longer hide an inbound message behind a full page.
+ - M2 relay.ts: cursor load/save failures are logged and survived (ten-minute window / dedupe cover them); each run-loop iteration is wrapped so an unexpected error cannot end the worker.
+ - M3 gateway-photon.ts: an ambiguous send outcome (network error, timeout, 202 without an id, 5xx, 409 request-in-progress) is retried ONCE with the same Idempotency-Key before the offer is failed. Safe because Photon replays the key (confirmed live: the same message id came back, no duplicate). Definite outcomes (401, 402, 403, 422, 429) are never retried.
+ - M4 tick.ts: a failed recordOfferProviderMessage is now reported (the send still counts as sent).
+ - LOW relay.ts: every outgoing request has a 10 s timeout. LOW simulated.ts: GET now applies the same identity checks as POST (404 unknown, 403 non-fake).
+ - Not done yet: remove the as-unknown casts for the env names once PR #14 is on main.
+EVIDENCE (commands, passed/failed, real vs mock): pnpm test -> 40 files, 1063 passed, 1 todo (another lane's); typecheck 0, lint 0, build 0. Each fix has a test that failed first. All FAKE / stubbed; the idempotent-replay behavior behind M3 was observed on REAL Photon in the earlier live-send entry.
+CONTRACT CHANGES OR REQUESTS: Captain approved messaging-stop-anywhere (D-039) and, in principle, messaging-env-names (PR #14). Implementing D-039 next, on its own branch.
+BLOCKERS + SAFETY RISKS: M3 residual: if both attempts are ambiguous the offer is still marked send_failed although Photon may have delivered it; first-claim-wins in core still protects the donation, but courier A could hold a closed offer. Dev 2's questions about core (CONFLICT shape, courier_not_joined detail, authoritative dispatchable set) are still unanswered until 2(b).
+INTEGRATION STEPS: none new.
+NEXT SMALLEST ACTION: push these commits to PR #12 and reply to the review; implement D-039 in the grammar.
+```
