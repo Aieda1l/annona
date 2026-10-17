@@ -36,7 +36,8 @@ export const RecipientOrg = z.strictObject({
   is_synthetic: z.literal(true),
   registered_dfdo: z.boolean(),
   serves_highly_susceptible_population: z.boolean(),
-  accepts_handling_modes: z.array(HandlingMode),
+  // `unknown` can never be an accepted mode: it would let food with unknown handling pass M-02.
+  accepts_handling_modes: z.array(HandlingMode.exclude(["unknown"])),
   excluded_allergens: z.array(Allergen),
   capacity_servings_available: z.number().int().min(0),
   receiving_closes_at: UtcString,
@@ -58,7 +59,8 @@ export type CourierProfile = z.infer<typeof CourierProfile>;
 /** Server-side only: carries the full `handle`. Never sent to the UI (the UI sees `IdentitySummary`). */
 export const MessagingIdentity = z.strictObject({
   id: Uuid,
-  actor_role: ActorRole,
+  // P0 identities are courier or donor (recipient is P1); operator and system never message.
+  actor_role: ActorRole.extract(["courier", "donor", "recipient"]),
   actor_id: Uuid,
   provider: z.enum(["photon", "fake"]),
   handle: z.string().min(1),
@@ -73,8 +75,9 @@ export type MessagingIdentity = z.infer<typeof MessagingIdentity>;
 export const PolicyConfig = z.strictObject({
   policy_id: z.string().min(1),
   policy_version: z.string().min(1),
-  allowed_handling_modes: z.array(HandlingMode),
-  allowed_preparation_types: z.array(PreparationType),
+  // `unknown` is excluded for the same reason (G-02, G-03 must fail closed on unknown).
+  allowed_handling_modes: z.array(HandlingMode.exclude(["unknown"])),
+  allowed_preparation_types: z.array(PreparationType.exclude(["unknown"])),
   require_temperature_log: z.boolean(),
   min_pickup_lead_minutes: z.number().int().min(0),
   response_window_seconds: z.number().int().min(1),
@@ -90,8 +93,8 @@ export type PolicyConfig = z.infer<typeof PolicyConfig>;
 export const MatchCandidate = z.strictObject({
   recipient_id: Uuid,
   courier_id: Uuid,
-  eta_to_pickup_minutes: z.number().int(),
-  transit_minutes: z.number().int(),
+  eta_to_pickup_minutes: z.number().int().min(0),
+  transit_minutes: z.number().int().min(0),
   estimated_pickup_at: UtcString,
   estimated_dropoff_at: UtcString,
   slack_minutes: z.number().int(),

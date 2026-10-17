@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   AuditEvent,
+  CLAIM_RESULT_CODES,
+  ClaimResult,
   CourierProfile,
   DONATION_CARD_FIXTURES,
   DONATION_STATUSES,
@@ -216,5 +218,121 @@ describe("PolicyConfig and MatchCandidate (sections 3.12, 3.5)", () => {
   it("sanity: ReasonCode and AuditEvent are still exported", () => {
     expect(ReasonCode.safeParse("NO_ELIGIBLE_MATCH").success).toBe(true);
     expect(AuditEvent).toBeDefined();
+  });
+});
+
+// Hardening from Dev 2's review of PR #10.
+describe("review hardening: unknown can never be an accepted mode", () => {
+  const recipient = {
+    id: U(21),
+    display_name: "Eastlake Community Pantry (synthetic)",
+    approval_status: "approved",
+    location: loc,
+    is_synthetic: true,
+    registered_dfdo: true,
+    serves_highly_susceptible_population: false,
+    accepts_handling_modes: ["refrigerated"],
+    excluded_allergens: [],
+    capacity_servings_available: 10,
+    receiving_closes_at: "2026-10-18T02:00:00.000Z",
+  };
+  const policy = {
+    policy_id: "p",
+    policy_version: "1",
+    allowed_handling_modes: ["refrigerated"],
+    allowed_preparation_types: ["prepared_cold"],
+    require_temperature_log: true,
+    min_pickup_lead_minutes: 15,
+    response_window_seconds: 60,
+    offer_wave_size: 1,
+    handoff_buffer_minutes: 10,
+    max_transit_minutes: 45,
+    average_speed_kmh: 25,
+    max_servings: 500,
+    demo_accelerated: true,
+  };
+  it("RecipientOrg.accepts_handling_modes rejects 'unknown' (M-02 must not pass unknown handling)", () => {
+    expect(RecipientOrg.safeParse(recipient).success).toBe(true);
+    expect(RecipientOrg.safeParse({ ...recipient, accepts_handling_modes: ["refrigerated", "unknown"] }).success).toBe(false);
+  });
+  it("PolicyConfig rejects 'unknown' in allowed handling modes and preparation types (G-02, G-03)", () => {
+    expect(PolicyConfig.safeParse(policy).success).toBe(true);
+    expect(PolicyConfig.safeParse({ ...policy, allowed_handling_modes: ["refrigerated", "unknown"] }).success).toBe(false);
+    expect(PolicyConfig.safeParse({ ...policy, allowed_preparation_types: ["unknown"] }).success).toBe(false);
+  });
+});
+
+describe("review hardening: small schema tightenings", () => {
+  it("MessagingIdentity.actor_role is courier, donor or recipient only", () => {
+    const identity = {
+      id: U(41),
+      actor_role: "courier",
+      actor_id: U(31),
+      provider: "fake",
+      handle: "fake-handle-0001",
+      status: "joined",
+      provider_space_id: null,
+      provider_sender_id: null,
+      joined_at: null,
+      opted_out_at: null,
+    };
+    expect(MessagingIdentity.safeParse(identity).success).toBe(true);
+    expect(MessagingIdentity.safeParse({ ...identity, actor_role: "operator" }).success).toBe(false);
+    expect(MessagingIdentity.safeParse({ ...identity, actor_role: "system" }).success).toBe(false);
+  });
+  it("MatchCandidate minutes cannot be negative (slack still can)", () => {
+    const cand = {
+      recipient_id: U(21),
+      courier_id: U(31),
+      eta_to_pickup_minutes: 5,
+      transit_minutes: 12,
+      estimated_pickup_at: "2026-10-17T23:06:00.000Z",
+      estimated_dropoff_at: "2026-10-17T23:28:00.000Z",
+      slack_minutes: -3,
+      rank: 1,
+    };
+    expect(MatchCandidate.safeParse(cand).success).toBe(true);
+    expect(MatchCandidate.safeParse({ ...cand, eta_to_pickup_minutes: -1 }).success).toBe(false);
+    expect(MatchCandidate.safeParse({ ...cand, transit_minutes: -1 }).success).toBe(false);
+  });
+});
+
+describe("review hardening: ClaimResult.assignment follows the code (section 3.9)", () => {
+  const assignment = {
+    donation_id: U(2),
+    recipient: { display_name: "Eastlake Community Pantry (synthetic)", address_line: "2 Example Ave (synthetic)" },
+    pickup: {
+      display_name: "Rainier Catering (synthetic)",
+      address_line: "1 Example St (synthetic)",
+      pickup_instructions: "Side door (synthetic)",
+      donor_pickup_by: "2026-10-18T01:30:00.000Z",
+    },
+  };
+  const base = { offer_id: U(5), donation_id: U(2), donation_status: "claimed", message_for_actor: "msg" };
+  it("claimed and already_claimed_by_you require an assignment", () => {
+    expect(ClaimResult.safeParse({ ...base, code: "claimed", assignment }).success).toBe(true);
+    expect(ClaimResult.safeParse({ ...base, code: "already_claimed_by_you", assignment }).success).toBe(true);
+    expect(ClaimResult.safeParse({ ...base, code: "claimed", assignment: null }).success).toBe(false);
+  });
+  it("every other code must carry no assignment (no address disclosure)", () => {
+    for (const code of CLAIM_RESULT_CODES.filter((c) => c !== "claimed" && c !== "already_claimed_by_you")) {
+      expect(ClaimResult.safeParse({ ...base, code, assignment: null }).success, code).toBe(true);
+      expect(ClaimResult.safeParse({ ...base, code, assignment }).success, code).toBe(false);
+    }
+  });
+});
+
+describe("review hardening: strictness and disclosure of fixtures", () => {
+  it("DonationCard, VerificationLinkView and DraftReadyView reject unknown keys", () => {
+    expect(DonationCard.safeParse({ ...DONATION_CARD_FIXTURES[0], safe: true }).success).toBe(false);
+    expect(VerificationLinkView.safeParse({ ...verificationLinkViewFixture, courier: "x" }).success).toBe(false);
+    expect(DraftReadyView.safeParse({ ...draftReadyViewFixture, handle: "x" }).success).toBe(false);
+  });
+  it("view fixtures also carry no safety wording", () => {
+    const text = JSON.stringify([verificationLinkViewFixture, draftReadyViewFixture]);
+    expect(text).not.toMatch(/\b(safe|allergen[- ]free|certified|compliant)\b/i);
+  });
+  it("card fixtures never contain a handle or address_line (pickup_instructions is operator-visible VerifiedFacts)", () => {
+    expect(JSON.stringify(DONATION_CARD_FIXTURES)).not.toMatch(/"handle"|address_line/i);
   });
 });

@@ -9,6 +9,7 @@ import type {
   DeliveryStatusEvent,
   DonationCard,
   DraftReadyView,
+  EligibilityDecision,
   InboundMessage,
   InboundResult,
   OfferMessageView,
@@ -18,7 +19,7 @@ import type {
   VisionSuggestion,
 } from "./entities";
 import type { Offer, DonationSource } from "./domain";
-import type { MessagingIdentity } from "./profiles";
+import type { CourierProfile, DonorProfile, MatchCandidate, MessagingIdentity, PolicyConfig, RecipientOrg } from "./profiles";
 import type { ThreadMessage, TickReport } from "./ops";
 import type { Deps } from "./ports";
 import type { Result } from "./result";
@@ -30,7 +31,40 @@ import type { Result } from "./result";
 // NOT typed here because section 9.3 / 9.4 gives no return type (Dev 2 / Dev 3 to propose via
 // docs/requests/): listDispatchableDonations, markOfferSendFailed, recordOfferProviderMessage,
 // recordDeliveryStatus, joinIdentity, optOutIdentity, findOpenOffersForCourier, getIdentity.
-// The pure functions evaluateEligibility and findCandidates take lane-internal input types (Dev 2).
+
+// ----- Dev 2 pure functions (sections 5 and 6, v0.5): input types are shared so callers cannot drift -----
+/** Matching sees no handle: only the fields M-05 needs. `provider` lets the function honor `active_provider`. */
+export type MatchIdentity = Pick<MessagingIdentity, "actor_id" | "actor_role" | "status" | "provider">;
+
+export type EligibilityInput = {
+  facts: VerifiedFacts;
+  donor: DonorProfile;
+  policy: PolicyConfig;
+  /** From the injected Clock. Never a client timestamp. Compare with Date, not string order. */
+  now: Date;
+};
+export type EvaluateEligibilityFn = (input: EligibilityInput) => EligibilityDecision;
+
+export type MatchInput = {
+  /** `donor_location` is `{ lat, lng }` copied from the donor's `DonorProfile.location`. */
+  donation: { id: string; donor_location: { lat: number; lng: number } };
+  facts: VerifiedFacts;
+  recipients: RecipientOrg[];
+  couriers: CourierProfile[];
+  identities: MatchIdentity[];
+  policy: PolicyConfig;
+  now: Date;
+  /** M-08: couriers already offered this donation. */
+  excluded_courier_ids: string[];
+  /** M-09: couriers with a pending_send/open offer or a claimed/collected assignment on any donation. */
+  busy_courier_ids: string[];
+  /** M-04: recipient_id -> servings already committed. A missing key means 0. */
+  committed_servings: Record<string, number>;
+  /** M-05: only identities of this provider count as joined. */
+  active_provider: "photon" | "fake";
+};
+/** Any missing or malformed input returns `[]` (section 6, fail closed). */
+export type FindCandidatesFn = (input: MatchInput) => MatchCandidate[];
 
 // ----- Dev 1 (section 9.2) -----
 export type CreateDraftFromImageFn = (

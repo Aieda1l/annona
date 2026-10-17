@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { Offer, DonationSource, ROUTES, routeFile, type RouteSpec } from "@/contracts";
 import type * as F from "@/contracts";
 
@@ -87,19 +87,23 @@ describe("ROUTES (CONTRACTS section 10)", () => {
   });
 });
 
-describe("function signature types (compile-time)", () => {
-  it("types exist and accept the documented shapes", () => {
-    // These assignments are checked by `pnpm typecheck`; the runtime assertion only keeps vitest happy.
-    const tick: F.TickFn = async () => ({
-      at: "2026-10-17T23:00:00.000Z",
-      expired_offers: 0,
-      expired_donations: 0,
-      offers_created: 0,
-      offers_sent: 0,
-      send_failures: 0,
-    });
-    const getCard: F.GetDonationCardFn = async () => ({ ok: false, error: { code: "NOT_FOUND", message: "x", retryable: false } });
-    const status: F.GetSystemStatusFn = async () => ({ last_tick_at: null, store: "pglite", policy_version: "x" });
-    expect([tick, getCard, status]).toHaveLength(3);
+describe("function signature types (compile-time, checked by pnpm typecheck)", () => {
+  it("pure-function inputs match CONTRACTS section 5 and 6 (v0.5)", () => {
+    expectTypeOf<F.MatchInput["now"]>().toEqualTypeOf<Date>();
+    expectTypeOf<F.EligibilityInput["now"]>().toEqualTypeOf<Date>();
+    expectTypeOf<F.MatchInput["active_provider"]>().toEqualTypeOf<"photon" | "fake">();
+    expectTypeOf<F.MatchInput["committed_servings"]>().toEqualTypeOf<Record<string, number>>();
+    expectTypeOf<F.MatchInput["busy_courier_ids"]>().toEqualTypeOf<string[]>();
+    // Matching never receives a handle.
+    expectTypeOf<keyof F.MatchIdentity>().toEqualTypeOf<"actor_id" | "actor_role" | "status" | "provider">();
+    expectTypeOf<F.FindCandidatesFn>().returns.toEqualTypeOf<F.MatchCandidate[]>();
+    expectTypeOf<F.EvaluateEligibilityFn>().returns.toEqualTypeOf<F.EligibilityDecision>();
+  });
+
+  it("lane function types resolve to the documented results", () => {
+    expectTypeOf<F.TickFn>().returns.resolves.toEqualTypeOf<F.TickReport>();
+    expectTypeOf<F.GetDonationCardFn>().returns.resolves.toEqualTypeOf<F.Result<F.DonationCard>>();
+    expectTypeOf<F.ClaimOfferFn>().returns.resolves.toEqualTypeOf<F.ClaimResult>();
+    expectTypeOf<F.ListMessagesFn>().returns.resolves.toEqualTypeOf<F.ThreadMessage[]>();
   });
 });
