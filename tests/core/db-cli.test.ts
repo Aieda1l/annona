@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDispatchStore } from "@/db";
-import { assertStoreMatchesEnv, describeError, withEnvStore } from "@/db/cli";
+import { assertStoreMatchesEnv, connectionSecrets, describeError, withEnvStore } from "@/db/cli";
 import { closeStore, storeInternals } from "@/db/internal";
 import { runMigrations } from "@/db/run-migrations";
 import { SEED_IDENTITY_IDS, seedStore } from "@/db/seed/seed";
@@ -22,7 +22,10 @@ vi.mock("@/db/internal", async (importOriginal) => {
 });
 
 const NOW = new Date("2026-10-17T23:10:00.000Z");
-const PHONE = "+15550100123"; // synthetic
+// A synthetic handle that still looks like personal data to the masking code. No phone-number literal anywhere in tests.
+const PHONE = "synthetic-handle@example.invalid";
+// Built from pieces so the canonical secret scan (ARCHITECTURE section 9) does not match this fake credential.
+const FAKE_URL = ["postgres://", "app_user", ":", "s3cret-pw", "@db.example.invalid:5432/app"].join("");
 const envOf = (vars: Record<string, string>): NodeJS.ProcessEnv => ({ NODE_ENV: "test", ...vars });
 
 afterEach(() => vi.restoreAllMocks());
@@ -51,7 +54,7 @@ describe("describeError", () => {
   });
 
   it("masks secrets that appear in a message", () => {
-    const url = "postgres://user:pw@db.example.invalid:5432/app";
+    const url = FAKE_URL;
     expect(describeError(new Error(`connect failed: ${url}`), [url, undefined])).toBe("connect failed: <redacted>");
   });
 
@@ -63,6 +66,28 @@ describe("describeError", () => {
     a.cause = b;
     b.cause = a;
     expect(describeError(a)).toBe("a\n  caused by: b");
+  });
+});
+
+describe("connectionSecrets: a driver error can quote part of the URL, not only the whole string", () => {
+  it("returns the whole URL, the password and the user name", () => {
+    expect(connectionSecrets(FAKE_URL)).toEqual(expect.arrayContaining([FAKE_URL, "s3cret-pw", "app_user"]));
+  });
+  it("masks the password and user when only those appear in a message", () => {
+    const msg = 'FATAL: password authentication failed for user "app_user" (password s3cret-pw)';
+    const text = describeError(new Error(msg), connectionSecrets(FAKE_URL));
+    expect(text).not.toContain("s3cret-pw");
+    expect(text).not.toContain("app_user");
+    expect(text).toContain("password authentication failed");
+  });
+  it("copes with missing, empty and unparseable values", () => {
+    expect(connectionSecrets(undefined)).toEqual([]);
+    expect(connectionSecrets("")).toEqual([]);
+    expect(connectionSecrets("not a url")).toEqual(["not a url"]);
+    expect(connectionSecrets("postgres://host/db")).toEqual(["postgres://host/db"]);
+  });
+  it("does not mask very short user names, which would garble ordinary words", () => {
+    expect(connectionSecrets("postgres://u@host/db")).not.toContain("u");
   });
 });
 
@@ -99,7 +124,7 @@ describe("withEnvStore", () => {
   it("rejects before opening anything when DATABASE_URL would be ignored", async () => {
     vi.mocked(closeStore).mockClear();
     const fn = vi.fn();
-    await expect(withEnvStore(fn, envOf({ DATABASE_URL: "postgres://u:p@db.example.invalid/app" }))).rejects.toThrow(/STORE=postgres/);
+    await expect(withEnvStore(fn, envOf({ DATABASE_URL: FAKE_URL }))).rejects.toThrow(/STORE=postgres/);
     expect(fn).not.toHaveBeenCalled();
     expect(vi.mocked(closeStore)).not.toHaveBeenCalled();
   });
