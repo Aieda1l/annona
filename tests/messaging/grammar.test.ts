@@ -81,3 +81,73 @@ describe("T-MS-01 photo", () => {
     expect(parseCommand({ text: "YES K7M3", attachments: [] }).command).toBe("accept");
   });
 });
+
+// D-039 (CONTRACTS §3.10, v0.5): opt-out words are honored anywhere in a short message. A missed opt-out is the worse
+// failure; an accidental opt-out is undone by texting JOIN.
+describe("T-MS-01 opt-out words anywhere in a short message (D-039)", () => {
+  it.each([
+    "please stop messaging me",
+    "I want to stop",
+    "Please, STOP!",
+    "please don't text me anymore, stop",
+    "unsubscribe",
+    "cancel",
+    "end",
+    "quit",
+    "stopall",
+  ])("%j is stop", (input) => {
+    expect(parseCommand(text(input))).toEqual({ command: "stop", short_code: null });
+  });
+
+  it("is not blocked by a leading HELP", () => {
+    expect(parseCommand(text("help me stop")).command).toBe("stop");
+    expect(parseCommand(text("HELP, stop")).command).toBe("stop");
+  });
+
+  it.each([
+    ["yes stop", "accept"],
+    ["ACCEPT K7M3 and stop later", "accept"],
+    ["no stop", "decline"],
+    ["DECLINE then stop", "decline"],
+    ["join and then stop", "join"],
+  ])("%j keeps its first command, because an earlier word blocks the opt-out rule", (input, command) => {
+    expect(parseCommand(text(input)).command).toBe(command);
+  });
+
+  it("honors an opt-out in a message of exactly 8 words but not 9", () => {
+    expect(parseCommand(text("please could you stop sending me these messages")).command).toBe("stop"); // 8 words
+    expect(parseCommand(text("please could you stop sending me these messages now")).command).toBe("unknown"); // 9 words
+  });
+
+  it("keeps the first-token rule for long messages", () => {
+    expect(parseCommand(text("stop sending me these messages right now please thank you")).command).toBe("stop");
+    expect(parseCommand(text("yes K7M3 and I will stop by the pantry later today ok")).command).toBe("accept");
+  });
+
+  it("matches whole words only", () => {
+    for (const input of ["stoppage", "endeavor", "quitting", "cancelled", "ending", "unsubscribed"]) {
+      expect(parseCommand(text(input)).command).toBe("unknown");
+    }
+  });
+});
+
+describe("T-MS-01 opt-out beats a photo (D-039)", () => {
+  const image = { kind: "image" as const, provider_attachment_id: "pho_att_x", mime: null };
+
+  it.each(["STOP", "please stop sending me these", "unsubscribe"])("an image captioned %j opts the sender out, with no photo", (caption) => {
+    expect(parseCommand({ text: caption, attachments: [image] })).toEqual({ command: "stop", short_code: null });
+  });
+
+  it("an ordinary caption word from the opt-out list also wins, as D-039 accepts", () => {
+    expect(parseCommand({ text: "end of day tray", attachments: [image] }).command).toBe("stop");
+  });
+
+  it("a caption blocked by an earlier command word stays a photo", () => {
+    expect(parseCommand({ text: "yes stop", attachments: [image] }).command).toBe("photo");
+  });
+
+  it("an image with no caption, or a caption without an opt-out word, is still a photo", () => {
+    expect(parseCommand({ text: null, attachments: [image] }).command).toBe("photo");
+    expect(parseCommand({ text: "leftover sandwiches", attachments: [image] }).command).toBe("photo");
+  });
+});
