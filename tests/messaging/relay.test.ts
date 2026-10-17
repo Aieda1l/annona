@@ -170,6 +170,86 @@ describe("T-MS-12 poll relay", () => {
   });
 });
 
+describe("T-MS-12 review fixes", () => {
+  it("does not lose inbound messages that sit behind 50 or more of our own sends (M1)", async () => {
+    // 60 outbound records, then one real inbound message. Photon returns at most 50 per page, oldest first.
+    const outbound = Array.from({ length: 60 }, (_, i) =>
+      message(`pho_msg_out_${i}`, new Date(Date.UTC(2026, 9, 17, 21, 55, i)).toISOString(), { status: "delivered", sentBy: { id: "pho_usr_line", handle: "x", kind: "agent" } }),
+    );
+    const inbound = message("pho_msg_in", "2026-10-17T21:57:00.000Z");
+    const all = [...outbound, inbound];
+    const { relay, calls } = setup({
+      routes: (u) => {
+        if (!isPhoton(u)) return json(200, { received: true });
+        const since = new URL(u).searchParams.get("createdSince") as string;
+        return json(200, { items: all.filter((m) => m.createdAt >= since).slice(0, 50) });
+      },
+      cursor: "2026-10-17T21:55:00.000Z",
+    });
+    await relay.pollOnce();
+    await relay.pollOnce();
+    const relayed = calls.filter((c) => c.url === inboundUrl).map((c) => JSON.parse(c.init?.body as string).data.object.id);
+    expect(relayed).toEqual(["pho_msg_in"]);
+  });
+
+  it("keeps working when the cursor cannot be saved (M2)", async () => {
+    const logs: string[] = [];
+    const relay = createRelay({
+      appBaseUrl: APP,
+      internalSecret: SECRET,
+      photon: { projectId: "pho_prj_test", apiKey: API_KEY },
+      fetch: (async (u: string) => (isPhoton(String(u)) ? json(200, { items: [message("pho_msg_1", "2026-10-17T21:59:30.000Z")] }) : json(200, { received: true }))) as unknown as typeof fetch,
+      clock: createClock(NOW),
+      cursor: { load: async () => null, save: async () => { throw new Error("EROFS: read-only file system"); } },
+      log: (line) => void logs.push(line),
+    });
+    await expect(relay.pollOnce()).resolves.toMatchObject({ relayed: 1 });
+    expect(logs.join("\n")).toMatch(/cursor/i);
+  });
+
+  it("falls back to the ten-minute window when the cursor cannot be read (M2)", async () => {
+    const calls: string[] = [];
+    const relay = createRelay({
+      appBaseUrl: APP,
+      internalSecret: SECRET,
+      photon: { projectId: "pho_prj_test", apiKey: API_KEY },
+      fetch: (async (u: string) => { calls.push(String(u)); return json(200, { items: [] }); }) as unknown as typeof fetch,
+      clock: createClock(NOW),
+      cursor: { load: async () => { throw new Error("EACCES"); }, save: async () => undefined },
+      log: () => undefined,
+    });
+    await expect(relay.pollOnce()).resolves.toMatchObject({ relayed: 0 });
+    expect(new URL(calls[0] as string).searchParams.get("createdSince")).toBe("2026-10-17T21:50:00.000Z");
+  });
+
+  it("the run loop survives an unexpected failure in a tick or a poll (M2)", async () => {
+    let n = 0;
+    const relay = createRelay({
+      appBaseUrl: APP,
+      internalSecret: SECRET,
+      photon: { projectId: "pho_prj_test", apiKey: API_KEY },
+      fetch: (async () => { n += 1; throw new Error("unexpected"); }) as unknown as typeof fetch,
+      clock: createClock(NOW),
+      cursor: { load: async () => null, save: async () => undefined },
+      log: () => undefined,
+    });
+    const controller = new AbortController();
+    let sleeps = 0;
+    await expect(
+      relay.run({ tickIntervalMs: 1, signal: controller.signal, sleep: async () => { sleeps += 1; if (sleeps >= 4) controller.abort(); } }),
+    ).resolves.toBeUndefined();
+    expect(n).toBeGreaterThan(1);
+  });
+
+  it("gives every outgoing request a timeout so a hung server cannot stall the loop (LOW)", async () => {
+    const { relay, calls } = setup({ routes: (u) => (isPhoton(u) ? json(200, { items: [message("pho_msg_1", "2026-10-17T21:59:30.000Z")] }) : json(200, { ok: true, data: {} })) });
+    await relay.tickOnce();
+    await relay.pollOnce();
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+    for (const c of calls) expect(c.init?.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
 describe("T-MS-12 run loop", () => {
   it("ticks and polls repeatedly until aborted, then stops", async () => {
     const { relay, calls } = setup({ routes: (u) => (isPhoton(u) ? json(200, { items: [] }) : json(200, { ok: true, data: {} })) });

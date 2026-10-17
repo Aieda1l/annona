@@ -26,11 +26,12 @@ const json = (status: number, body: unknown) =>
 
 function gatewayWith(respond: () => Promise<Response> | Response, lookup = async () => route as typeof route | null) {
   const fetchStub = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => respond());
+  const sleeps: number[] = [];
   const gateway = createPhotonGateway(
     { project_id: PROJECT, api_key: KEY },
-    { lookupRoute: lookup, fetch: fetchStub as unknown as typeof fetch },
+    { lookupRoute: lookup, fetch: fetchStub as unknown as typeof fetch, sleep: async (ms) => void sleeps.push(ms) },
   );
-  return { gateway, fetchStub };
+  return { gateway, fetchStub, sleeps };
 }
 
 describe("T-MS-10 photon gateway request", () => {
@@ -156,5 +157,51 @@ describe("T-MS-10 factory wiring", () => {
     expect(gateway.status).toBe("misconfigured");
     expect(await gateway.send(message())).toMatchObject({ ok: false, error_code: "PROVIDER_UNAVAILABLE" });
     expect(fetchStub).not.toHaveBeenCalled();
+  });
+});
+
+// M3 (review of PR #12): an ambiguous outcome must not be treated as a definite failure, because Photon may already have
+// sent the message and tick would then offer the same food to a second courier. Repeating a send with the SAME
+// Idempotency-Key is safe: verified live, Photon returns the same message id instead of sending a duplicate.
+describe("T-MS-10 ambiguous outcomes are retried once with the same idempotency key", () => {
+  const sequence = (...steps: (() => Promise<Response> | Response)[]) => {
+    let i = 0;
+    return () => (steps[Math.min(i++, steps.length - 1)] as () => Promise<Response> | Response)();
+  };
+  const accepted = () => json(202, { id: "pho_msg_retry" });
+
+  it.each([
+    ["a network error", () => Promise.reject(new TypeError("fetch failed"))],
+    ["a timeout", () => Promise.reject(new DOMException("timed out", "TimeoutError"))],
+    ["a 202 without a message id", () => json(202, {})],
+    ["a 503", () => json(503, { code: "UPSTREAM_UNAVAILABLE" })],
+    ["a 409 request already in progress", () => json(409, { code: "IDEMPOTENCY_REQUEST_IN_PROGRESS" })],
+  ])("retries once after %s, with the same key, and returns the id", async (_name, first) => {
+    const { gateway, fetchStub, sleeps } = gatewayWith(sequence(first, accepted));
+    expect(await gateway.send(message())).toEqual({ ok: true, provider_message_id: "pho_msg_retry", mode: "real" });
+    expect(fetchStub).toHaveBeenCalledTimes(2);
+    const keys = fetchStub.mock.calls.map((c) => new Headers((c[1] as RequestInit).headers).get("idempotency-key"));
+    expect(keys).toEqual(["offer:abc:v1", "offer:abc:v1"]);
+    expect(sleeps).toHaveLength(1);
+  });
+
+  it("retries at most once, then reports the failure", async () => {
+    const { gateway, fetchStub } = gatewayWith(() => Promise.reject(new TypeError("fetch failed")));
+    expect(await gateway.send(message())).toEqual({ ok: false, error_code: "PROVIDER_UNAVAILABLE", retryable: true, mode: "real" });
+    expect(fetchStub).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [403, "SHARED_LINE_INBOUND_REQUIRED"],
+    [422, "SHARED_LINE_GROUP_UNSUPPORTED"],
+    [422, "IDEMPOTENCY_KEY_REUSED"],
+    [429, "RATE_LIMITED"],
+    [401, "NOT_AUTHENTICATED"],
+    [402, "BILLING_SUSPENDED"],
+  ])("does not retry %i %s: that outcome is definite", async (status, code) => {
+    const { gateway, fetchStub, sleeps } = gatewayWith(() => json(status, { code }));
+    await gateway.send(message());
+    expect(fetchStub).toHaveBeenCalledTimes(1);
+    expect(sleeps).toHaveLength(0);
   });
 });

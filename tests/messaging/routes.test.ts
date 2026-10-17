@@ -361,6 +361,18 @@ describe("T-MS-17 simulated phone", () => {
     expect(listMessages).toHaveBeenCalledWith({ identity_id: IDENTITY });
   });
 
+  it("refuses to list the thread of a real Photon identity (LOW)", async () => {
+    const { GET, listMessages } = make({ found: identity("photon") });
+    expect((await GET(thread())).status).toBe(403);
+    expect(listMessages).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 for the thread of an unknown identity (LOW)", async () => {
+    const { GET, listMessages } = make({ found: null });
+    expect((await GET(thread())).status).toBe(404);
+    expect(listMessages).not.toHaveBeenCalled();
+  });
+
   it("answers 400 for a thread request with no identity id", async () => {
     const { GET } = make();
     expect((await GET(new Request("http://localhost/api/messaging/simulated/thread"))).status).toBe(400);

@@ -9,6 +9,7 @@ const POLL_INTERVAL_MS = 2000;
 const DEFAULT_RETRY_AFTER_MS = 5000;
 const BACKFILL_MS = 10 * 60 * 1000; // ASSUMPTION (ARCHITECTURE §6): ten minutes
 const SEEN_CAP = 500;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 export type RelayDeps = {
   appBaseUrl: string;
@@ -30,11 +31,29 @@ export function createRelay(deps: RelayDeps) {
   const seen = new Set<string>();
   const errorName = (error: unknown) => (error instanceof Error ? error.name : "error");
 
+  // The cursor lives in a local file; a read-only or locked directory must degrade the relay, never end the worker.
+  async function loadCursor(): Promise<string | null> {
+    try {
+      return await deps.cursor.load();
+    } catch (error) {
+      log(`[worker] cursor unreadable, using the ten-minute window: ${errorName(error)}`);
+      return null;
+    }
+  }
+  async function saveCursor(iso: string): Promise<void> {
+    try {
+      await deps.cursor.save(iso);
+    } catch (error) {
+      log(`[worker] cursor not saved (the server dedupes the overlap): ${errorName(error)}`);
+    }
+  }
+
   async function tickOnce(): Promise<unknown | null> {
     try {
       const response = await doFetch(`${deps.appBaseUrl}/api/internal/tick`, {
         method: "POST",
         headers: { "x-annona-internal-secret": deps.internalSecret },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), // a hung server must not stall the expiry driver
       });
       if (!response.ok) {
         log(`[worker] tick failed: HTTP ${response.status}`);
@@ -63,6 +82,7 @@ export function createRelay(deps: RelayDeps) {
         method: "POST",
         headers: { "content-type": "application/json", "x-annona-internal-secret": deps.internalSecret },
         body: JSON.stringify(envelope),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!response.ok) log(`[worker] relay rejected: HTTP ${response.status}`);
       return response.ok;
@@ -76,7 +96,7 @@ export function createRelay(deps: RelayDeps) {
     const photon = deps.photon;
     if (!photon) return { relayed: 0, waitMs: POLL_INTERVAL_MS };
 
-    const since = (await deps.cursor.load()) ?? new Date(deps.clock.now().getTime() - BACKFILL_MS).toISOString();
+    const since = (await loadCursor()) ?? new Date(deps.clock.now().getTime() - BACKFILL_MS).toISOString();
     const url = new URL(`${PHOTON_BASE}/v1/projects/${photon.projectId}/messages`);
     url.searchParams.set("platform", "imessage");
     url.searchParams.set("order", "asc");
@@ -85,7 +105,10 @@ export function createRelay(deps: RelayDeps) {
 
     let response: Response;
     try {
-      response = await doFetch(url, { headers: { authorization: `Bearer ${photon.apiKey}` } });
+      response = await doFetch(url, {
+        headers: { authorization: `Bearer ${photon.apiKey}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
     } catch (error) {
       log(`[worker] poll failed: ${errorName(error)}`);
       return { relayed: 0, waitMs: POLL_INTERVAL_MS };
@@ -104,29 +127,45 @@ export function createRelay(deps: RelayDeps) {
     items.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 
     let relayed = 0;
+    let processedUpTo: string | null = null;
     for (const message of items) {
       // Our own sends come back in this list with other statuses; only inbound messages are relayed.
-      if (message.status !== "received" || typeof message.id !== "string" || seen.has(message.id)) continue;
-      if (!(await relayOne(message, photon.projectId))) break; // keep the cursor before it; retry on the next poll
-      seen.add(message.id);
-      if (seen.size > SEEN_CAP) seen.delete(seen.values().next().value as string);
-      relayed += 1;
-      if (typeof message.createdAt === "string") await deps.cursor.save(message.createdAt);
+      const inbound = message.status === "received" && typeof message.id === "string" && !seen.has(message.id);
+      if (inbound) {
+        if (!(await relayOne(message, photon.projectId))) break; // keep the cursor before it; retry on the next poll
+        seen.add(message.id);
+        if (seen.size > SEEN_CAP) seen.delete(seen.values().next().value as string);
+        relayed += 1;
+      }
+      // Skipped items count as processed too. Otherwise 50 or more of our own sends after the cursor would fill the
+      // page forever and hide the real inbound message behind them.
+      if (typeof message.createdAt === "string") processedUpTo = message.createdAt;
     }
+    if (processedUpTo !== null && processedUpTo !== since) await saveCursor(processedUpTo);
     return { relayed, waitMs: POLL_INTERVAL_MS };
   }
 
   async function run(opts: { tickIntervalMs: number; signal: AbortSignal; sleep?: (ms: number) => Promise<void> }): Promise<void> {
     const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    // One bad iteration is logged and the loop carries on: an unhandled rejection here would end the whole worker.
     const tickLoop = async () => {
       while (!opts.signal.aborted) {
-        await tickOnce();
+        try {
+          await tickOnce();
+        } catch (error) {
+          log(`[worker] tick loop error: ${errorName(error)}`);
+        }
         await sleep(opts.tickIntervalMs);
       }
     };
     const pollLoop = async () => {
       while (!opts.signal.aborted) {
-        const { waitMs } = await pollOnce();
+        let waitMs = POLL_INTERVAL_MS;
+        try {
+          waitMs = (await pollOnce()).waitMs;
+        } catch (error) {
+          log(`[worker] poll loop error: ${errorName(error)}`);
+        }
         await sleep(waitMs);
       }
     };

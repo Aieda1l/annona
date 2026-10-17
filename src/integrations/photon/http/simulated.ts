@@ -81,6 +81,10 @@ export function createSimulatedHandlers(deps: {
       if (!identity_id.success) return toResponse(err("VALIDATION_FAILED", "identity_id is required."));
 
       try {
+        // Same rule as POST: the simulated phone only ever shows fake-provider identities, never a real teammate's thread.
+        const identity = await deps.core.getIdentity(identity_id.data);
+        if (identity === null) return toResponse(err("NOT_FOUND", "No such identity."));
+        if (identity.provider !== "fake") return forbidden();
         return toResponse(ok({ messages: await deps.core.listMessages({ identity_id: identity_id.data }) }));
       } catch (error) {
         return failureResponse("GET /api/messaging/simulated/thread", error);

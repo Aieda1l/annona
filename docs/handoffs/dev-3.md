@@ -101,3 +101,21 @@ BLOCKERS + SAFETY RISKS: (1) Every messaging function in the real @/core is stil
 INTEGRATION STEPS: Captain adds the env names (request above). Dev 2 confirms the idempotency-lookup request and the courier_not_joined reason shape. Dev 3 then writes the core adapter, switches the barrel to it, and runs integration tests on PGlite.
 NEXT SMALLEST ACTION: Dev 3 pushes feat/messaging-tick and opens the PR, then starts the core adapter when 2(b) merges.
 ```
+
+## 2026-10-17 14:41 PDT — Response to Dev 2's review of PR #12 (feat/messaging-tick)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / feat/messaging-tick / the commit that adds this entry; not pushed yet
+DELIVERED: Fixes for every MEDIUM and the two LOW code findings in the review of PR #12.
+ - M1 relay.ts: skipped (non-inbound) items now advance the cursor, so 50+ of our own sends after the cursor can no longer hide an inbound message behind a full page.
+ - M2 relay.ts: cursor load/save failures are logged and survived (ten-minute window / dedupe cover them); each run-loop iteration is wrapped so an unexpected error cannot end the worker.
+ - M3 gateway-photon.ts: an ambiguous send outcome (network error, timeout, 202 without an id, 5xx, 409 request-in-progress) is retried ONCE with the same Idempotency-Key before the offer is failed. Safe because Photon replays the key (confirmed live: the same message id came back, no duplicate). Definite outcomes (401, 402, 403, 422, 429) are never retried.
+ - M4 tick.ts: a failed recordOfferProviderMessage is now reported (the send still counts as sent).
+ - LOW relay.ts: every outgoing request has a 10 s timeout. LOW simulated.ts: GET now applies the same identity checks as POST (404 unknown, 403 non-fake).
+ - Not done yet: remove the as-unknown casts for the env names once PR #14 is on main.
+EVIDENCE (commands, passed/failed, real vs mock): pnpm test -> 40 files, 1063 passed, 1 todo (another lane's); typecheck 0, lint 0, build 0. Each fix has a test that failed first. All FAKE / stubbed; the idempotent-replay behavior behind M3 was observed on REAL Photon in the earlier live-send entry.
+CONTRACT CHANGES OR REQUESTS: Captain approved messaging-stop-anywhere (D-039) and, in principle, messaging-env-names (PR #14). Implementing D-039 next, on its own branch.
+BLOCKERS + SAFETY RISKS: M3 residual: if both attempts are ambiguous the offer is still marked send_failed although Photon may have delivered it; first-claim-wins in core still protects the donation, but courier A could hold a closed offer. Dev 2's questions about core (CONFLICT shape, courier_not_joined detail, authoritative dispatchable set) are still unanswered until 2(b).
+INTEGRATION STEPS: none new.
+NEXT SMALLEST ACTION: push these commits to PR #12 and reply to the review; implement D-039 in the grammar.
+```

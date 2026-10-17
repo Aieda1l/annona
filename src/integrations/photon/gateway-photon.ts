@@ -6,6 +6,7 @@ import type { MessagingGateway, OutboundMessage, SendResult } from "@/contracts"
 
 const BASE_URL = "https://api.photon.codes";
 const DEFAULT_TIMEOUT_MS = 10_000; // ASSUMPTION (prompt §6): 10 s
+const RETRY_DELAY_MS = 500;
 
 /** Where to reply: the joined identity's Photon space and the line's sender (CONTRACTS §3.1). */
 export type PhotonRoute = { space_id: string; sender_id: string };
@@ -15,6 +16,7 @@ export type PhotonGatewayOptions = {
   fetch?: typeof fetch;
   timeoutMs?: number;
   baseUrl?: string;
+  sleep?: (ms: number) => Promise<void>;
 };
 
 const failure = (error_code: Extract<SendResult, { ok: false }>["error_code"], retryable: boolean): SendResult => ({
@@ -40,6 +42,7 @@ export function createPhotonGateway(
   const doFetch = options.fetch ?? fetch;
   const url = `${options.baseUrl ?? BASE_URL}/v1/projects/${config.project_id}/messages`;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
   return {
     mode: "real",
@@ -54,34 +57,45 @@ export function createPhotonGateway(
       }
       if (route === null) return failure("NOT_JOINED", false);
 
-      try {
-        const response = await doFetch(url, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${config.api_key}`,
-            "content-type": "application/json",
-            "idempotency-key": message.idempotency_key,
-          },
-          body: JSON.stringify({
-            spaceId: route.space_id,
-            senderId: route.sender_id,
-            content: { type: "text", format: "plain", text: message.text },
-          }),
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        const body: unknown = await response.json().catch(() => null);
-        const record = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
-
-        if (response.status >= 200 && response.status < 300) {
-          // Never invent a provider id: an accepted send without one is reported as a failure to record it.
-          return typeof record.id === "string" && record.id !== ""
-            ? { ok: true, provider_message_id: record.id, mode: "real" }
-            : failure("PROVIDER_UNAVAILABLE", true);
-        }
-        return mapFailure(response.status, typeof record.code === "string" ? record.code : undefined);
-      } catch {
-        return failure("PROVIDER_UNAVAILABLE", true); // network error, abort or timeout
-      }
+      // An ambiguous outcome (Photon may already have sent it) is retried once with the SAME Idempotency-Key. That is
+      // safe: Photon replays the key and returns the same message id instead of sending a duplicate (verified live).
+      // Without it tick would mark the offer failed and offer the same food to a second courier.
+      const first = await attempt(route, message);
+      if (!first.ambiguous) return first.result;
+      await sleep(RETRY_DELAY_MS);
+      return (await attempt(route, message)).result;
     },
   };
+
+  async function attempt(route: PhotonRoute, message: OutboundMessage): Promise<{ result: SendResult; ambiguous: boolean }> {
+    try {
+      const response = await doFetch(url, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.api_key}`,
+          "content-type": "application/json",
+          "idempotency-key": message.idempotency_key,
+        },
+        body: JSON.stringify({
+          spaceId: route.space_id,
+          senderId: route.sender_id,
+          content: { type: "text", format: "plain", text: message.text },
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      const body: unknown = await response.json().catch(() => null);
+      const record = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+
+      if (response.status >= 200 && response.status < 300) {
+        // Never invent a provider id: an accepted send without one is reported as a failure to record it.
+        return typeof record.id === "string" && record.id !== ""
+          ? { result: { ok: true, provider_message_id: record.id, mode: "real" }, ambiguous: false }
+          : { result: failure("PROVIDER_UNAVAILABLE", true), ambiguous: true };
+      }
+      const code = typeof record.code === "string" ? record.code : undefined;
+      return { result: mapFailure(response.status, code), ambiguous: response.status >= 500 || code === "IDEMPOTENCY_REQUEST_IN_PROGRESS" };
+    } catch {
+      return { result: failure("PROVIDER_UNAVAILABLE", true), ambiguous: true }; // network error, abort or timeout
+    }
+  }
 }

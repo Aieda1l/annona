@@ -64,8 +64,10 @@ export function createTicker(deps: { core: TickCore; gateway: MessagingGateway; 
     const result = await send(message);
 
     if (result.ok) {
-      await core.recordOfferProviderMessage({ offer_id, provider_message_id: result.provider_message_id });
-      report.offers_sent += 1;
+      report.offers_sent += 1; // the message went out, whatever happens to the bookkeeping below
+      const recorded = await core.recordOfferProviderMessage({ offer_id, provider_message_id: result.provider_message_id });
+      // Without the id, a later `failed` delivery event cannot be matched to this offer, so surface it.
+      if (!recorded.ok && !lostRace(recorded.error.code)) failures.push(`recordOfferProviderMessage ${offer_id}: ${recorded.error.code}`);
       return;
     }
     // No automatic resend to the same courier in P0 (CONTRACTS §8.3): the next tick offers the next candidate.

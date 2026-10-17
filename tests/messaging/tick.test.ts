@@ -215,6 +215,16 @@ describe("tick bookkeeping and isolation", () => {
     expect(d.lastTicks).toHaveLength(0);
   });
 
+  it("reports a failed provider-id record instead of ignoring it, so delivery events can still be matched (M4)", async () => {
+    const { d, gateway, clock } = setup();
+    const core = {
+      ...d.core,
+      recordOfferProviderMessage: async () => ({ ok: false as const, error: { code: "INTERNAL" as const, message: "store down", retryable: true } }),
+    };
+    await expect(createTicker({ core, gateway, clock }).tick()).rejects.toThrow(/recordOfferProviderMessage/);
+    expect(d.offersFor(D1)[0]?.status).toBe("open"); // the message itself was sent
+  });
+
   it("dispatchDonation offers only the named donation and expires nothing", async () => {
     const { d, sent, ticker } = setup();
     d.seedDonation({ id: D2, cutoff: CUTOFF, candidates: [B] });
