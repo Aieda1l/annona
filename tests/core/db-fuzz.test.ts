@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { eq, inArray } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEMO_ACTORS, OFFER_STATUSES, type DispatchStore } from "@/contracts";
 import { createDispatchStore } from "@/db";
 import { closeStore, storeInternals } from "@/db/internal";
@@ -143,6 +143,13 @@ describe("model-based: unique indexes accept exactly what the rules allow", () =
 // the unique index admits exactly one of ten competing rows; they say nothing about interleaved transactions. Real
 // claim-race safety (T-CO-16 / T-CO-17) needs separate connections to Postgres and is still UNVERIFIED.
 describe("ten competing writes, run serially on one connection: the index lets exactly one through", () => {
+  // Cleanup runs even when an assertion fails, so one failure cannot poison the tests after it.
+  afterEach(async () => {
+    const { db } = storeInternals(store);
+    await db.delete(offers);
+    await db.delete(donations);
+  });
+
   const settle = async <T,>(jobs: Promise<T>[]) => {
     const res = await Promise.allSettled(jobs);
     return { ok: res.filter((x) => x.status === "fulfilled").length, bad: res.filter((x) => x.status === "rejected") as PromiseRejectedResult[] };
@@ -162,8 +169,6 @@ describe("ten competing writes, run serially on one connection: the index lets e
     for (const b of bad) expect(sqlState(b.reason)).toBe("23505");
     const live = await db.select().from(offers).where(eq(offers.courier_id, COURIERS[0]!));
     expect(live.filter((o) => o.status === "open" || o.status === "pending_send")).toHaveLength(1);
-    await db.delete(offers).where(inArray(offers.donation_id, ids));
-    await db.delete(donations).where(inArray(donations.id, ids));
   });
 
   it("10 accepted offers for one donation: exactly one active assignment", async () => {
@@ -178,9 +183,8 @@ describe("ten competing writes, run serially on one connection: the index lets e
     );
     const { ok, bad } = await settle(jobs);
     expect(ok).toBe(1);
+    expect(bad).toHaveLength(9);
     for (const b of bad) expect(sqlState(b.reason)).toBe("23505");
-    await db.delete(offers).where(eq(offers.donation_id, donation));
-    await db.delete(donations).where(eq(donations.id, donation));
   });
 
   it("10 drafts with the same (source, source_ref): exactly one", async () => {
@@ -190,7 +194,7 @@ describe("ten competing writes, run serially on one connection: the index lets e
     );
     const { ok, bad } = await settle(jobs);
     expect(ok).toBe(1);
+    expect(bad).toHaveLength(9);
     for (const b of bad) expect(sqlState(b.reason)).toBe("23505");
-    await db.delete(donations).where(eq(donations.source_ref, "fake:dup-photo"));
   });
 });

@@ -97,6 +97,11 @@ describe("db edge: the injected Clock is the only time source", () => {
     );
     const rows = (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as { table_name: string; column_name: string; column_default: string }[];
     expect(rows).toEqual([]);
+    // Positive control: the same query shape does find timestamp columns when no default filter is applied.
+    const all = await storeInternals(store).db.execute(
+      sql`select column_name from information_schema.columns where table_schema = 'public' and data_type like 'timestamp%'`,
+    );
+    expect((Array.isArray(all) ? all : (all as { rows: unknown[] }).rows).length).toBeGreaterThan(15);
   });
 
   it.each([
@@ -306,20 +311,24 @@ describe("db edge: store lifecycle and refusal paths", () => {
   });
   it("a PGlite directory persists data across close and reopen, and migrations stay a no-op", async () => {
     const dir = mkdtempSync(join(tmpdir(), "annona-pglite-"));
+    const opened: DispatchStore[] = [];
     try {
       const s1 = createDispatchStore({ kind: "pglite", database_url: undefined, pglite_dir: dir });
+      opened.push(s1);
       await runMigrations(s1);
       await seedStore(s1, { now: NOW, messaging_provider: "fake" });
       await storeInternals(s1).db.update(messaging_identities).set({ status: "joined", joined_at: NOW }).where(eq(messaging_identities.id, SEED_IDENTITY_IDS.courier_a));
       await closeStore(s1);
 
       const s2 = createDispatchStore({ kind: "pglite", database_url: undefined, pglite_dir: dir });
+      opened.push(s2);
       await runMigrations(s2);
       await runMigrations(s2);
       const ident = (await storeInternals(s2).db.select().from(messaging_identities).where(eq(messaging_identities.id, SEED_IDENTITY_IDS.courier_a)))[0];
       expect(ident?.status).toBe("joined");
-      await closeStore(s2);
     } finally {
+      // Close first: on Windows an open PGlite directory cannot be deleted, which would hide the real failure.
+      for (const s of opened) await closeStore(s);
       rmSync(dir, { recursive: true, force: true });
     }
   });
