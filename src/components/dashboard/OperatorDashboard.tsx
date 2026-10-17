@@ -27,17 +27,22 @@ export function OperatorDashboard({
           &quot;Eligible&quot; means eligible for dispatch under the prototype operator policy, based on
           donor-attested records.
         </p>
+        {!onAction && <p className="text-sm font-medium text-slate-900">Read-only: operator actions are not wired to the server yet.</p>}
       </header>
       <DonationBoard
         donations={snapshot.donations}
         counts_by_status={snapshot.counts_by_status}
-        renderActions={(card) => (
-          <OperatorActions
-            card={card}
-            onAction={(a, n) => onAction?.(card.id, a, n)}
-            error={actionErrors?.[card.id] || null}
-          />
-        )}
+        renderActions={
+          onAction
+            ? (card) => (
+                <OperatorActions
+                  card={card}
+                  onAction={(a, n) => onAction(card.id, a, n)}
+                  error={actionErrors?.[card.id] || null}
+                />
+              )
+            : undefined
+        }
       />
       <section className="space-y-2">
         <h2 className="text-lg font-semibold text-slate-900">Messaging identities</h2>

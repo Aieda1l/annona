@@ -56,8 +56,10 @@ export function OperatorActions({
 }) {
   const [pending, setPending] = useState<OperatorAction | null>(null);
   const [note, setNote] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const shownError = error ?? localError;
   const actions = availableActions(card);
-  if (actions.length === 0 && !error) return null;
+  if (actions.length === 0 && !shownError) return null;
   const needNote = pending ? noteRequired(card, pending) : false;
   const canConfirm = !busy && (!needNote || note.trim().length > 0);
 
@@ -101,8 +103,13 @@ export function OperatorActions({
               type="button"
               disabled={!canConfirm}
               onClick={async () => {
-                await onAction(pending, note.trim());
-                setPending(null);
+                setLocalError(null);
+                try {
+                  await onAction(pending, note.trim());
+                  setPending(null);
+                } catch (e) {
+                  setLocalError(e instanceof Error ? e.message : "Action failed");
+                }
               }}
               className="rounded border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             >
@@ -119,9 +126,9 @@ export function OperatorActions({
         </div>
       )}
 
-      {error && (
+      {shownError && (
         <p role="alert" className="rounded border border-rose-700 bg-rose-50 px-2 py-1 text-sm text-rose-950">
-          {error}
+          {shownError}
         </p>
       )}
     </div>

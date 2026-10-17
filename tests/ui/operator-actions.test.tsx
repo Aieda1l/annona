@@ -83,4 +83,13 @@ describe("T-UI-03 OperatorActions", () => {
     render(<OperatorActions card={eligibleCard} onAction={vi.fn()} error="INVALID_TRANSITION: window closed" />);
     expect(screen.getByRole("alert")).toHaveTextContent("INVALID_TRANSITION: window closed");
   });
+
+  it("a rejected onAction shows its message and keeps the confirm panel open", async () => {
+    const onAction = vi.fn().mockRejectedValue(new Error("INVALID_TRANSITION: window closed"));
+    render(<OperatorActions card={eligibleCard} onAction={onAction} />);
+    fireEvent.click(screen.getByRole("button", { name: /^cancel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm cancel/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("INVALID_TRANSITION: window closed");
+    expect(screen.getByRole("button", { name: /confirm cancel/i })).toBeInTheDocument();
+  });
 });

@@ -21,14 +21,18 @@ export function ProfilePicker() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const res = await fetch("/api/session", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ actor_id: actorId, passcode }),
-    });
-    const b = await res.json().catch(() => null);
-    if (b?.ok) setSignedIn(b.data.actor.role);
-    else setError(b?.error?.message ?? `Sign-in failed (HTTP ${res.status})`);
+    try {
+      const res = await fetch("/api/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actor_id: actorId, passcode }),
+      });
+      const b = await res.json().catch(() => null);
+      if (b?.ok) setSignedIn(b.data.actor.role);
+      else setError(b?.error?.message ?? `Sign-in failed (HTTP ${res.status})`);
+    } catch {
+      setError("Sign-in failed (server unreachable)");
+    }
   }
 
   return (
