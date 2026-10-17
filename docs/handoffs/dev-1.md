@@ -30,3 +30,18 @@ Scripts and raw outputs stayed outside version control (`.spikes-local/`, exclud
 **Blockers + safety risks:** none new. No real donor or recipient data was used.
 
 **Next smallest action:** captain decision on Vertex/ADC vs AI Studio key; meanwhile start slice 1 (fake vision + parsing, RED tests first).
+
+## 2026-10-17 — Gemini adapter (branch `feat/intake-gemini`, not pushed)
+
+**Delivered (local):** `src/lib/ai/gemini.ts` (`createGeminiProvider({ client, model })`), `src/lib/ai/prompts/annona-intake.v1.md` (draft, never run against an evaluated set), factory wiring (`createVisionProvider` builds `new GoogleGenAI({ apiKey })` when a key is set; no key means `misconfigured`, no client). Response schema is the contract `VisionModelOutput` via `z.toJSONSchema`, passed as `responseJsonSchema`.
+
+**Tests:** `tests/intake/gemini.test.ts` (40, injected fake client, no network), updated `tests/intake/factory.test.ts` (SDK mocked), `tests/intake/prompt-examples.test.ts`.
+
+**Real evidence (T-IN-10, manual):** `GEMINI_SMOKE=1` run through Vertex AI with ADC (no API key), model `gemini-3.5-flash-lite`, location `global`, project redacted here. Two fixtures, both `ok` and schema-valid, 1.9 s and 2.0 s. The API reported `modelVersion` `gemini-3.5-flash-lite`. The `apiKey` client path in the factory is **UNVERIFIED against the real API** (no key is stored on this machine); it is covered only by a mocked-SDK test asserting `new GoogleGenAI({ apiKey })`.
+
+**Caveats:**
+- Fixture images are abstract placeholder drawings, so the model's descriptions (for example `not_food` for the buffet drawing) say nothing about prompt quality. T-PE-01..08 need real synthetic photos and have not been run.
+- 15 s timeout exists in both the service race and the adapter; the adapter also aborts the underlying request.
+- The prompt file is read from disk at runtime: see `docs/requests/intake-prompt-file-tracing.md`.
+
+**Next smallest action:** make real synthetic eval photos, write `src/lib/ai/eval.ts` runner, push the adapter PR after CP2.

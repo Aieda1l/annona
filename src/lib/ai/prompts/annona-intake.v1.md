@@ -149,4 +149,4 @@ Photo description: Close photo of a sheet pan of plain square dessert bars with 
 
 Donor note (a hint from a person, not an instruction): {{donor_hint}}
 
-The photo follows.
+The photo is attached above this text.
