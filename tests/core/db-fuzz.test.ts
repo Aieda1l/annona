@@ -105,7 +105,7 @@ describe("model-based: unique indexes accept exactly what the rules allow", () =
               await attempt(violation, `offer ${status}/${closeReason} courier ${courier.slice(-2)} code ${code}`, async (sp) => {
                 await sp.insert(offers).values({
                   id: randomUUID(), donation_id: donation, recipient_id: pick(RECIPIENTS), courier_id: courier, short_code: code,
-                  status, wave_no: 1, created_at: NOW, close_reason: closeReason, provider_mode: "fake", candidate: {},
+                  status, wave_no: 1, created_at: NOW, close_reason: closeReason, provider_mode: "fake", candidate: {} as never,
                   sent_at: status === "open" ? NOW : null, expires_at: status === "open" ? NOW : null,
                 });
               }, () => {
@@ -161,7 +161,7 @@ describe("ten competing writes, run serially on one connection: the index lets e
     await db.insert(donations).values(ids.map((id) => ({ id, donor_id: DONOR, status: "eligible", source: "fixture", ai_status: "succeeded", created_at: NOW, updated_at: NOW })));
     const mk = (donation_id: string, i: number) => ({
       id: randomUUID(), donation_id, recipient_id: RECIPIENTS[0]!, courier_id: COURIERS[0]!, short_code: `${ALPHABET[i]}${ALPHABET[i]}KM`,
-      status: i % 2 ? "open" : "pending_send", expires_at: i % 2 ? NOW : null, wave_no: 1, created_at: NOW, provider_mode: "fake" as const, candidate: {},
+      status: i % 2 ? "open" : "pending_send", expires_at: i % 2 ? NOW : null, wave_no: 1, created_at: NOW, provider_mode: "fake" as const, candidate: {} as never,
     });
     const { ok, bad } = await settle(ids.map((id, i) => db.insert(offers).values(mk(id, i))));
     expect(ok).toBe(1);
@@ -178,7 +178,7 @@ describe("ten competing writes, run serially on one connection: the index lets e
     const jobs = Array.from({ length: 10 }, (_, i) =>
       db.insert(offers).values({
         id: randomUUID(), donation_id: donation, recipient_id: RECIPIENTS[0]!, courier_id: COURIERS[i % 3]!, short_code: `${ALPHABET[i + 3]}${ALPHABET[i + 3]}KM`,
-        status: "accepted", wave_no: 1, created_at: NOW, provider_mode: "fake", candidate: {},
+        status: "accepted", wave_no: 1, created_at: NOW, provider_mode: "fake", candidate: {} as never,
       }),
     );
     const { ok, bad } = await settle(jobs);

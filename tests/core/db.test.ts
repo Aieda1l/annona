@@ -88,7 +88,7 @@ const offerRow = (donation_id: string, courier_id: string, over: Partial<typeof 
   wave_no: 1,
   created_at: NOW,
   provider_mode: "fake",
-  candidate: {},
+  candidate: {} as never,
   // An open offer always carries a deadline (offers_open_has_deadline_check).
   ...(over.status === "open" ? { sent_at: NOW, expires_at: new Date(NOW.getTime() + 60_000) } : {}),
   ...over,

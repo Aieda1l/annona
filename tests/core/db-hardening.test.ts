@@ -54,7 +54,7 @@ const donationRow = (over: Partial<typeof donations.$inferInsert> = {}): typeof 
 });
 const offerRow = (donation_id: string, over: Partial<typeof offers.$inferInsert> = {}): typeof offers.$inferInsert => ({
   id: randomUUID(), donation_id, recipient_id: EASTLAKE, courier_id: COURIER_A, short_code: "K7M3", status: "pending_send", wave_no: 1,
-  created_at: NOW, provider_mode: "fake", candidate: {}, ...over,
+  created_at: NOW, provider_mode: "fake", candidate: {} as never, ...over,
 });
 
 describe("row-level security (Supabase exposes the public schema through a public anon key)", () => {

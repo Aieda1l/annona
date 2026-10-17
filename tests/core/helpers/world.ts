@@ -92,3 +92,39 @@ export async function insertOffer(db: World["db"], donation_id: string, over: Pa
     .returning();
   return row!;
 }
+
+// ---- scenario helpers built on the public functions ----
+import { eq } from "drizzle-orm";
+import { createDraft, joinIdentity, storeDonationImage, submitVerification } from "@/core";
+import { audit_events, messaging_identities, verification_links } from "@/db/schema";
+
+/** Back to the seeded baseline: no offers, links or donations; seed profiles and policy restored; the demo identities joined. */
+export async function resetWorld(w: World): Promise<void> {
+  await w.db.delete(offers);
+  await w.db.delete(verification_links);
+  await w.db.delete(donations);
+  await w.db.delete(audit_events);
+  await seedStore(w.store, { now: T0, messaging_provider: "fake" });
+  for (const id of [IDENTITY.donor, IDENTITY.courier_a, IDENTITY.courier_b]) {
+    await w.db.update(messaging_identities).set({ status: "joined", joined_at: T0, opted_out_at: null }).where(eq(messaging_identities.id, id));
+  }
+}
+
+export async function joinIdentityNow(w: World, identity_id: string, deps = w.deps()) {
+  return joinIdentity({ identity_id, provider_space_id: null, provider_sender_id: null }, deps);
+}
+
+/** A donation that went draft -> eligible through the real functions, with facts relative to `from`. */
+export async function makeEligibleDonation(w: World, opts: { from?: Date; facts?: Record<string, unknown>; donor?: string } = {}): Promise<string> {
+  const from = opts.from ?? T0;
+  const deps = w.deps(from);
+  const img = await storeDonationImage({ mime: "image/png", bytes: new Uint8Array([1, 2, 3, 4]) }, deps);
+  if (!img.ok) throw new Error("image failed");
+  const actor = { role: "donor" as const, id: opts.donor ?? DONOR };
+  const draft = await createDraft({ actor, image_id: img.data.image_id, source: "web_upload", source_ref: null }, deps);
+  if (!draft.ok) throw new Error(`draft failed: ${draft.error.code}`);
+  const sub = await submitVerification({ auth: { actor }, donation_id: draft.data.id, facts: factsAt(from, opts.facts), edited_from_ai: [] }, deps);
+  if (!sub.ok) throw new Error(`submit failed: ${sub.error.code}`);
+  if (sub.data.card.status !== "eligible") throw new Error(`not eligible: ${sub.data.card.status} ${JSON.stringify(sub.data.card.decision?.reasons.map((r) => r.code))}`);
+  return draft.data.id;
+}

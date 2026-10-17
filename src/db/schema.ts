@@ -23,6 +23,7 @@ import {
   MESSAGING_IDENTITY_STATUSES,
   OFFER_STATUSES,
   PROVIDER_MODES,
+  type MatchCandidate,
 } from "@/contracts";
 
 // ARCHITECTURE §7. text + CHECK constraints instead of PG enums; timestamptz everywhere.
@@ -238,7 +239,7 @@ export const offers = pgTable(
     provider_mode: text("provider_mode").notNull(),
     provider_message_id: text("provider_message_id"),
     delivery_status: text("delivery_status").notNull().default("unknown"),
-    candidate: jsonb("candidate").notNull(),
+    candidate: jsonb("candidate").$type<MatchCandidate>().notNull(),
   },
   (t) => [
     check("offers_status_check", inList(t.status, OFFER_STATUSES)),

@@ -10,7 +10,6 @@ import {
   type Deps,
   type DonationCard,
   type HandoffStep,
-  type OfferMessageView,
   type OperatorAction,
   type Result,
   type StoreKind,
@@ -42,6 +41,17 @@ export {
   recordDeliveryStatus,
 } from "./service/messages";
 
+// ----- dispatch, slice 2(b) -----
+export {
+  createNextOffers,
+  openOfferForSend,
+  markOfferSendFailed,
+  recordOfferProviderMessage,
+  expireDue,
+  listPendingSendOffers,
+  listDispatchableDonations,
+} from "./service/dispatch";
+
 // ----- intake (called by Dev 1), slice 2(a) -----
 export { storeDonationImage, createDraft, attachAiResult, submitVerification } from "./service/intake";
 export { getDonationCard } from "./service/cards";
@@ -69,27 +79,9 @@ export async function getVerificationLinkImage(
 }
 
 // ----- dispatch -----
-export async function createNextOffers(_input: { donation_id: string }, _deps?: Deps): Promise<Result<Pending[]>> {
-  return notImplementedResult(OWNER, "createNextOffers");
-}
 
-export async function openOfferForSend(
-  _input: { offer_id: string },
-  _deps?: Deps,
-): Promise<Result<{ offer: Pending; identity: Pending; message_view: OfferMessageView }>> {
-  return notImplementedResult(OWNER, "openOfferForSend");
-}
 
-export async function markOfferSendFailed(_input: { offer_id: string; reason: string }, _deps?: Deps): Promise<Result<Pending>> {
-  return notImplementedResult(OWNER, "markOfferSendFailed");
-}
 
-export async function recordOfferProviderMessage(
-  _input: { offer_id: string; provider_message_id: string },
-  _deps?: Deps,
-): Promise<Result<Pending>> {
-  return notImplementedResult(OWNER, "recordOfferProviderMessage");
-}
 
 
 
@@ -101,19 +93,8 @@ export async function declineOffer(_command: DeclineCommand, _deps?: Deps): Prom
   throw notImplementedError(OWNER, "declineOffer");
 }
 
-export async function expireDue(
-  _deps?: Deps,
-): Promise<{ expired_offer_ids: string[]; expired_donation_ids: string[]; dispatchable_donation_ids: string[] }> {
-  throw notImplementedError(OWNER, "expireDue");
-}
 
-export async function listPendingSendOffers(_deps?: Deps): Promise<Pending[]> {
-  throw notImplementedError(OWNER, "listPendingSendOffers");
-}
 
-export async function listDispatchableDonations(_deps?: Deps): Promise<Pending[]> {
-  throw notImplementedError(OWNER, "listDispatchableDonations");
-}
 
 // ----- messaging identities and logs -----
 
