@@ -38,7 +38,8 @@ function api(routes: { view?: Route; image?: Route; submit?: Route } = {}) {
       (name === "view"
         ? () => Response.json({ ok: true, data: view() })
         : name === "image"
-          ? () => new Response(new Blob([new Uint8Array([1, 2, 3])], { type: "image/jpeg" }))
+          ? // Bytes, not a jsdom Blob: Node's Response only treats its own Blob class as a Blob, and what it does with a foreign one varies by Node version.
+            () => new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/jpeg" } })
           : () => Response.json({ ok: true, data: eligibleView }));
     return route(body);
   });
