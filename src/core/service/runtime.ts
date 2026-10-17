@@ -34,3 +34,25 @@ export function activeProvider(deps?: Deps): "photon" | "fake" {
 }
 
 export const providerMode = (provider: "photon" | "fake") => (provider === "photon" ? ("real" as const) : ("fake" as const));
+
+const RETRYABLE_SQLSTATES = new Set(["40P01", "40001"]); // deadlock detected, serialization failure
+const sqlState = (e: unknown): string | undefined => {
+  const x = e as { code?: string; cause?: { code?: string } } | null;
+  return x?.code ?? x?.cause?.code;
+};
+
+/**
+ * Runs a whole transaction again when Postgres aborts it for a deadlock or serialization failure. Those are safe to
+ * retry because the aborted transaction wrote nothing; the retry sees the winner's committed state. Anything else is
+ * rethrown at once. PGlite never raises these, but the demo's Postgres can under concurrent ticks.
+ */
+export async function retryOnConflict<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const code = sqlState(e);
+      if (attempt >= retries || code === undefined || !RETRYABLE_SQLSTATES.has(code)) throw e;
+    }
+  }
+}

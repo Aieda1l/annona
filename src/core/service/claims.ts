@@ -23,7 +23,7 @@ import {
   releaseIfIdle,
 } from "./lifecycle";
 import { courierFromRow, donorFromRow, recipientFromRow, type DonationRow, type OfferRow } from "./map";
-import { activeProvider, providerMode, runtime, type Q } from "./runtime";
+import { activeProvider, providerMode, retryOnConflict, runtime, type Q } from "./runtime";
 
 // claimOffer and declineOffer: CONTRACTS section 8.1, steps 1-9 in this order. First valid claim wins. Every
 // outcome is a result, never an error (200). A result for an unknown or foreign offer reveals nothing about it.
@@ -57,6 +57,12 @@ const shapeOf = (offer: OfferRow, donation: DonationRow): Shape => ({ offer_id: 
 const claimResult = (code: ClaimResult["code"], shape: Shape, assignment: Assignment | null = null): ClaimResult => ({ code, ...shape, assignment, message_for_actor: CLAIM_TEXT[code] });
 const declineResult = (code: DeclineResult["code"], shape: Shape): DeclineResult => ({ code, ...shape, assignment: null, message_for_actor: DECLINE_TEXT[code] });
 
+/** The result shape after this transaction's own changes (a lazy expiry may have released the donation). */
+async function freshShape(q: Q, offer: OfferRow, donation: DonationRow): Promise<Shape> {
+  const [after] = await q.select().from(donations).where(eq(donations.id, donation.id));
+  return shapeOf(offer, after ?? donation);
+}
+
 /** Step 1: a short_code resolves to exactly one offer of ANY status, because codes are never reused before resetDemo. */
 async function resolveOffer(q: Q, ref: ClaimCommand["offer_ref"]): Promise<OfferRow | undefined> {
   if (ref && typeof ref === "object" && "offer_id" in ref && typeof ref.offer_id === "string") {
@@ -67,6 +73,9 @@ async function resolveOffer(q: Q, ref: ClaimCommand["offer_ref"]): Promise<Offer
   }
   return undefined;
 }
+
+const isActiveAssignment = (donation: DonationRow, offer: OfferRow) =>
+  offer.status === "accepted" && offer.close_reason === null && donation.claimed_offer_id === offer.id && ["claimed", "collected"].includes(donation.status);
 
 const isTheCourier = (actor: ClaimCommand["actor"], offer: OfferRow) => actor?.role === "courier" && typeof actor.id === "string" && actor.id === offer.courier_id;
 
@@ -113,14 +122,16 @@ export async function claimOffer(command: ClaimCommand, deps?: Deps): Promise<Cl
       if (!isTheCourier(command.actor, peek)) return claimResult("not_authorized", NO_SHAPE);
 
       // 2. the donation lock serializes every claim, decline and expiry for it (then the recipient lock, always in this order).
-      const [donation] = await tx.select().from(donations).where(eq(donations.id, peek.donation_id)).for("update");
+      const [donation] = await tx.select().from(donations).where(eq(donations.id, peek.donation_id)).for("no key update");
       const [offer] = await tx.select().from(offers).where(eq(offers.id, peek.id));
       if (!donation || !offer) return claimResult("offer_not_found", NO_SHAPE);
       const shape = shapeOf(offer, donation);
       const now = clock.now();
 
       // 3. replay by the winner: idempotent, no writes.
-      if (offer.status === "accepted" && donation.claimed_offer_id === offer.id) {
+      // Only an ACTIVE assignment is replayed: accepted, not closed (close_reason null) and the donation still claimed or collected.
+      // An ended one (no-show expiry, cancel, delivered) falls through to donation_unavailable and discloses no address.
+      if (isActiveAssignment(donation, offer)) {
         return claimResult("already_claimed_by_you", shape, await buildAssignment(tx, donation, offer));
       }
       // 4. somebody else holds the assignment.
@@ -133,13 +144,13 @@ export async function claimOffer(command: ClaimCommand, deps?: Deps): Promise<Cl
       if (timeIsUp(donation, offer, now)) {
         const cutoff = offer.expires_at === null || now.getTime() < offer.expires_at.getTime();
         await expireOfferLazily(tx, donation, offer, now, cutoff ? "cutoff_reached" : "offer_expired");
-        return claimResult("offer_expired", shape);
+        return claimResult("offer_expired", await freshShape(tx, offer, donation));
       }
       // 7.
       if (offer.status !== "open") return claimResult("offer_closed", shape);
 
       // 8. lock the recipient, then re-check everything with current rows.
-      const [recipient] = await tx.select().from(recipients).where(eq(recipients.id, offer.recipient_id)).for("update");
+      const [recipient] = await tx.select().from(recipients).where(eq(recipients.id, offer.recipient_id)).for("no key update");
       const failed = await recheck(tx, donation, offer, recipient, provider, now);
       if (failed) {
         await tx.update(offers).set({ status: "canceled", close_reason: "recheck_failed", responded_at: now }).where(and(eq(offers.id, offer.id), eq(offers.status, "open")));
@@ -171,7 +182,7 @@ export async function claimOffer(command: ClaimCommand, deps?: Deps): Promise<Cl
     });
 
   try {
-    return await attempt();
+    return await retryOnConflict(attempt);
   } catch (e) {
     // The partial unique index (one active assignment per donation) is the backstop: a violation means someone else won.
     if (isUniqueViolation(e) || e instanceof ClaimRaceError) return resolveAfterRace(command, deps);
@@ -192,7 +203,7 @@ async function resolveAfterRace(command: ClaimCommand, deps?: Deps): Promise<Cla
   if (!offer || !isTheCourier(command.actor, offer)) return claimResult("offer_not_found", NO_SHAPE);
   const [donation] = await db.select().from(donations).where(eq(donations.id, offer.donation_id));
   if (!donation) return claimResult("offer_not_found", NO_SHAPE);
-  if (donation.claimed_offer_id === offer.id && offer.status === "accepted") return claimResult("already_claimed_by_you", shapeOf(offer, donation), await buildAssignment(db, donation, offer));
+  if (isActiveAssignment(donation, offer)) return claimResult("already_claimed_by_you", shapeOf(offer, donation), await buildAssignment(db, donation, offer));
   return claimResult(["claimed", "collected", "delivered"].includes(donation.status) ? "already_claimed" : "donation_unavailable", shapeOf(offer, donation));
 }
 
@@ -236,12 +247,12 @@ async function recheck(tx: Q, donation: DonationRow, offer: OfferRow, recipient:
 
 export async function declineOffer(command: DeclineCommand, deps?: Deps): Promise<DeclineResult> {
   const { db, clock } = await runtime(deps);
-  return db.transaction(async (tx): Promise<DeclineResult> => {
+  return retryOnConflict(() => db.transaction(async (tx): Promise<DeclineResult> => {
     const peek = await resolveOffer(tx, command?.offer_ref);
     if (!peek) return declineResult("offer_not_found", NO_SHAPE);
     if (!isTheCourier(command.actor, peek)) return declineResult("not_authorized", NO_SHAPE);
 
-    const [donation] = await tx.select().from(donations).where(eq(donations.id, peek.donation_id)).for("update");
+    const [donation] = await tx.select().from(donations).where(eq(donations.id, peek.donation_id)).for("no key update");
     const [offer] = await tx.select().from(offers).where(eq(offers.id, peek.id));
     if (!donation || !offer) return declineResult("offer_not_found", NO_SHAPE);
     const shape = shapeOf(offer, donation);
@@ -253,7 +264,7 @@ export async function declineOffer(command: DeclineCommand, deps?: Deps): Promis
     if (timeIsUp(donation, offer, now)) {
       const deadlineHit = offer.expires_at !== null && now.getTime() >= offer.expires_at.getTime();
       await expireOfferLazily(tx, donation, offer, now, deadlineHit ? "offer_expired" : "cutoff_reached");
-      return declineResult("offer_expired", shape);
+      return declineResult("offer_expired", await freshShape(tx, offer, donation));
     }
 
     const [declined] = await tx.update(offers).set({ status: "declined", responded_at: now }).where(and(eq(offers.id, offer.id), eq(offers.status, "open"))).returning();
@@ -262,6 +273,6 @@ export async function declineOffer(command: DeclineCommand, deps?: Deps): Promis
     await releaseIfIdle(tx, donation, now); // S-06 when this was the last open offer
     const [after] = await tx.select().from(donations).where(eq(donations.id, donation.id));
     return declineResult("declined", shapeOf(declined, after ?? donation));
-  });
+  }));
 }
 

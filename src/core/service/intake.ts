@@ -103,7 +103,7 @@ export async function attachAiResult(
 ): Promise<Result<DonationCard>> {
   const { db, clock } = await runtime(deps);
   return db.transaction(async (tx): Promise<Result<DonationCard>> => {
-    const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("update");
+    const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("no key update");
     if (!row) return err("NOT_FOUND", "Donation not found.");
     if (row.status !== "draft") return err("INVALID_TRANSITION", "The AI result can only be attached to a draft.");
     // The suggestion is an immutable snapshot: a repeat call after success changes nothing.
@@ -154,7 +154,7 @@ export async function submitVerification(
 
   const { db, clock } = await runtime(deps);
   return db.transaction(async (tx): Promise<Result<{ card: DonationCard; resubmit_token: string | null }>> => {
-    const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("update");
+    const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("no key update");
     if (!row) return err("NOT_FOUND", "Donation not found.");
     if (actor?.role !== "donor" || actor.id === null || actor.id !== row.donor_id) {
       return err("NOT_AUTHORIZED", "Only the donor who owns this donation can verify it.");

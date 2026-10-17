@@ -56,6 +56,17 @@ export async function activePolicy(q: Q): Promise<PolicyConfig | null> {
   return row ? policyFromRow(row) : null;
 }
 
+/**
+ * The active policy row, locked. Dispatch (createNextOffers) takes it right after the donation lock, so two dispatch
+ * rounds run one at a time: they can no longer insert offers for the same couriers in opposite orders and deadlock on
+ * the one-live-offer-per-courier index, and the second round sees the first one's committed offers. Nothing else
+ * takes this lock, and nothing waits on a donation while holding it, so it cannot form a cycle.
+ */
+export async function lockedPolicy(q: Q): Promise<PolicyConfig | null> {
+  const [row] = await q.select().from(policy_config).where(eq(policy_config.active, true)).for("update");
+  return row ? policyFromRow(row) : null;
+}
+
 export async function liveOfferCount(q: Q, donation_id: string): Promise<number> {
   const rows = await q
     .select({ id: offers.id })

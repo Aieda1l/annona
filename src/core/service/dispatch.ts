@@ -21,6 +21,7 @@ import { writeAudit, SYSTEM_ACTOR } from "./audit";
 import {
   activePolicy,
   busyCourierIds,
+  lockedPolicy,
   checkTransition,
   committedServings,
   decisionWithReason,
@@ -31,7 +32,7 @@ import {
   LIVE_OFFER_STATUSES,
 } from "./lifecycle";
 import { identityFromRow, offerFromRow } from "./map";
-import { activeProvider, providerMode, runtime } from "./runtime";
+import { activeProvider, providerMode, retryOnConflict, runtime } from "./runtime";
 
 // Slice 2(b), part 2: dispatch. createNextOffers (S-04, S-05, S-18), openOfferForSend, markOfferSendFailed,
 // recordOfferProviderMessage, expireDue (S-06, S-08, S-16) and the lists tick() drives. Every step is a conditional
@@ -63,8 +64,8 @@ export async function listPendingSendOffers(deps?: Deps): Promise<Offer[]> {
 export async function createNextOffers(input: { donation_id: string }, deps?: Deps): Promise<Result<Offer[]>> {
   const { db, clock } = await runtime(deps);
   const provider = activeProvider(deps);
-  return db.transaction(async (tx): Promise<Result<Offer[]>> => {
-    const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("update");
+  return retryOnConflict(() => db.transaction(async (tx): Promise<Result<Offer[]>> => {
+    const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("no key update");
     if (!row) return err("NOT_FOUND", "Donation not found.");
     // S-04 is conditional on `eligible`: a donation that is already offered or has moved on is left alone.
     if (row.status !== "eligible") return err("INVALID_TRANSITION", `A ${row.status} donation cannot be offered.`);
@@ -72,7 +73,8 @@ export async function createNextOffers(input: { donation_id: string }, deps?: De
     const now = clock.now();
     const facts = VerifiedFacts.safeParse(row.verified_facts);
     const donor = await loadDonor(tx, row.donor_id);
-    const policy = await activePolicy(tx);
+    // Dispatch rounds run one at a time (see lockedPolicy), so the busy and committed sets below are the committed truth.
+    const policy = await lockedPolicy(tx);
     if (!facts.success || !donor || !policy) return err("INTERNAL", "The stored facts, donor or policy are missing.");
 
     // The gate re-runs with the current time. A result other than eligible applies S-18 and creates no offer.
@@ -186,7 +188,7 @@ export async function createNextOffers(input: { donation_id: string }, deps?: De
       await writeAudit(tx, { at: now, type: "offer.created", actor: SYSTEM_ACTOR, donation_id: row.id, offer_id: o.id, mode: { messaging: providerMode(provider) }, data: { wave_no, rank: o.candidate.rank } });
     }
     return ok(created);
-  });
+  }));
 }
 
 export async function openOfferForSend(
@@ -195,11 +197,11 @@ export async function openOfferForSend(
 ): Promise<Result<{ offer: Offer; identity: MessagingIdentity; message_view: OfferMessageView }>> {
   const { db, clock } = await runtime(deps);
   const provider = activeProvider(deps);
-  return db.transaction(async (tx) => {
+  return retryOnConflict(() => db.transaction(async (tx) => {
     const [peek] = await tx.select({ donation_id: offers.donation_id }).from(offers).where(eq(offers.id, input.offer_id));
     if (!peek) return err("NOT_FOUND", "Offer not found.");
     // Lock order: the donation first, then re-read the offer under the lock.
-    const [row] = await tx.select().from(donations).where(eq(donations.id, peek.donation_id)).for("update");
+    const [row] = await tx.select().from(donations).where(eq(donations.id, peek.donation_id)).for("no key update");
     const [offer] = await tx.select().from(offers).where(eq(offers.id, input.offer_id));
     if (!row || !offer) return err("NOT_FOUND", "Offer not found.");
     // Conditional on pending_send: a second call (a retried tick) can never open or send an offer twice.
@@ -231,6 +233,12 @@ export async function openOfferForSend(
       await closeOffer("send_failed", "courier_not_joined", "offer.send_failed");
       await releaseIfIdle(tx, row, now);
       return err("CONFLICT", "The courier has not joined messaging.", { details: { reason: "courier_not_joined", offer_id: offer.id } });
+    }
+
+    // The effective cutoff is min(pickup, discard-by): if it has been reached (the sweeper has not run yet), nothing goes out.
+    if (checkTransition(row, "expired", "expireDue", now).ok) {
+      await closeOffer("expired", "cutoff_reached", "offer.expired");
+      return err("CONFLICT", "The pickup cutoff has been reached.", { details: { reason: "cutoff_reached", offer_id: offer.id } });
     }
 
     // CONTRACTS section 3.8: min(sent_at + response window, donor_pickup_by - eta_to_pickup).
@@ -265,15 +273,15 @@ export async function openOfferForSend(
       demo_mode: policy.demo_accelerated,
     };
     return ok({ offer: offerFromRow(opened), identity: identityFromRow(identityRow), message_view });
-  });
+  }));
 }
 
 export async function markOfferSendFailed(input: { offer_id: string; reason: string }, deps?: Deps): Promise<Result<Offer>> {
   const { db, clock } = await runtime(deps);
-  return db.transaction(async (tx): Promise<Result<Offer>> => {
+  return retryOnConflict(() => db.transaction(async (tx): Promise<Result<Offer>> => {
     const [peek] = await tx.select({ donation_id: offers.donation_id }).from(offers).where(eq(offers.id, input.offer_id));
     if (!peek) return err("NOT_FOUND", "Offer not found.");
-    const [row] = await tx.select().from(donations).where(eq(donations.id, peek.donation_id)).for("update");
+    const [row] = await tx.select().from(donations).where(eq(donations.id, peek.donation_id)).for("no key update");
     const [offer] = await tx.select().from(offers).where(eq(offers.id, input.offer_id));
     if (!row || !offer) return err("NOT_FOUND", "Offer not found.");
     if (offer.status === "send_failed") return ok(offerFromRow(offer)); // idempotent
@@ -291,7 +299,7 @@ export async function markOfferSendFailed(input: { offer_id: string; reason: str
     await writeAudit(tx, { at: now, type: "offer.send_failed", actor: SYSTEM_ACTOR, donation_id: row.id, offer_id: offer.id, mode: { messaging: offer.provider_mode as "real" | "fake" }, data: { reason } });
     await releaseIfIdle(tx, row, now); // S-06
     return ok(offerFromRow(failed));
-  });
+  }));
 }
 
 export async function recordOfferProviderMessage(input: { offer_id: string; provider_message_id: string }, deps?: Deps): Promise<Result<Offer>> {
@@ -325,7 +333,7 @@ export async function expireDue(deps?: Deps): Promise<{ expired_offer_ids: strin
     .where(inArray(donations.status, ["eligible", "unmatched", "offered", "needs_review", "claimed"]));
   for (const { id } of candidates) {
     await db.transaction(async (tx) => {
-      const [row] = await tx.select().from(donations).where(eq(donations.id, id)).for("update", { skipLocked: true });
+      const [row] = await tx.select().from(donations).where(eq(donations.id, id)).for("no key update", { skipLocked: true });
       if (!row) return; // locked by a concurrent claim, decline or tick: leave it for the next sweep
       const now = clock.now();
       const to = "expired";
@@ -379,7 +387,7 @@ export async function expireDue(deps?: Deps): Promise<{ expired_offer_ids: strin
     .where(and(eq(offers.status, "open"), lte(offers.expires_at, clock.now())));
   for (const { id, donation_id } of due) {
     await db.transaction(async (tx) => {
-      const [row] = await tx.select().from(donations).where(eq(donations.id, donation_id)).for("update", { skipLocked: true });
+      const [row] = await tx.select().from(donations).where(eq(donations.id, donation_id)).for("no key update", { skipLocked: true });
       if (!row) return;
       const now = clock.now();
       const [gone] = await tx
@@ -398,7 +406,7 @@ export async function expireDue(deps?: Deps): Promise<{ expired_offer_ids: strin
   const idle = await db.select({ id: donations.id }).from(donations).where(eq(donations.status, "offered"));
   for (const { id } of idle) {
     await db.transaction(async (tx) => {
-      const [row] = await tx.select().from(donations).where(eq(donations.id, id)).for("update", { skipLocked: true });
+      const [row] = await tx.select().from(donations).where(eq(donations.id, id)).for("no key update", { skipLocked: true });
       if (row && (await releaseIfIdle(tx, row, clock.now()))) dispatchable.add(row.id);
     });
   }

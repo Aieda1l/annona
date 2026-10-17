@@ -168,7 +168,7 @@ describe("claimOffer: refusals in the order of CONTRACTS 8.1", () => {
   it("offer_expired for a late claim even though no sweeper ever ran; the offer is marked expired and the donation released", async () => {
     const { id, offers: [o] } = await openOffers(); // 60 s window
     const late = await claimOffer(cmd(o!.id), w.deps(new Date(T0.getTime() + 60_000)));
-    expect(late).toMatchObject({ code: "offer_expired", donation_status: "offered", assignment: null });
+    expect(late).toMatchObject({ code: "offer_expired", donation_status: "eligible", assignment: null }); // reported after the S-06 release
     expect(await offerRow(o!.id)).toMatchObject({ status: "expired", close_reason: "offer_expired" });
     expect((await donationRow(id)).status).toBe("eligible"); // S-06: ready for the next courier
     expect(await claimOffer(cmd(o!.id), w.deps(at(2)))).toMatchObject({ code: "donation_unavailable" }); // and a repeat is just unavailable
