@@ -4,6 +4,7 @@ import type {
   ClaimResult,
   DeclineCommand,
   DeclineResult,
+  DeliveryStatusEvent,
   InboundIgnoreReason,
   InboundResult,
   MessagingIdentityStatus,
@@ -79,4 +80,14 @@ export type DispatchCore = {
   markOfferSendFailed(input: { offer_id: string; reason: string }): Promise<Result<unknown>>;
   recordOfferProviderMessage(input: { offer_id: string; provider_message_id: string }): Promise<Result<unknown>>;
   setLastTick(at: string): Promise<void>;
+};
+
+/** Delivery-status side of core (CONTRACTS §9.3): dedupe by provider_event_id, then update the matching offer. */
+export type DeliveryCore = {
+  recordStatusEvent(evt: DeliveryStatusEvent): Promise<"first" | "duplicate">;
+  /** Updates the offer whose provider_message_id matches; offer_id is null for messages that are not offers. */
+  recordDeliveryStatus(
+    evt: DeliveryStatusEvent,
+  ): Promise<Result<{ offer_id: string | null; offer_status: string | null }>>;
+  markOfferSendFailed(input: { offer_id: string; reason: string }): Promise<Result<unknown>>;
 };

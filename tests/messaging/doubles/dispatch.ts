@@ -1,5 +1,5 @@
-import type { Clock, OfferMessageView, Result } from "@/contracts";
-import type { DispatchCore, IdentityView, MessagingCore } from "@/workflows/core-port";
+import type { Clock, DeliveryStatusEvent, OfferMessageView, Result } from "@/contracts";
+import type { DeliveryCore, DispatchCore, IdentityView, MessagingCore } from "@/workflows/core-port";
 import { createCoreDouble } from "./core";
 
 // In-memory model of the dispatch side of core (offers + donations) for tick() tests, until sub-PR 2(b) is wired.
@@ -28,6 +28,7 @@ type Offer = {
   expires_at: number | null;
   provider_message_id: string | null;
   failure: string | null;
+  delivery_status: string | null;
 };
 type Donation = {
   id: string;
@@ -50,6 +51,8 @@ export function createDispatchDouble(clock: TestClock, base = createCoreDouble()
   const offers = new Map<string, Offer>();
   const broken = new Set<string>();
   const lastTicks: string[] = [];
+  const statusEvents = new Set<string>();
+  const statusCalls: DeliveryStatusEvent[] = [];
   let sequence = 0;
 
   const active = (donationId: string) =>
@@ -127,6 +130,7 @@ export function createDispatchDouble(clock: TestClock, base = createCoreDouble()
         expires_at: null,
         provider_message_id: null,
         failure: null,
+        delivery_status: null,
       };
       offers.set(offer.offer_id, offer);
       d.offered.add(next);
@@ -172,12 +176,28 @@ export function createDispatchDouble(clock: TestClock, base = createCoreDouble()
     },
   };
 
-  const core: MessagingCore & DispatchCore = { ...base.core, ...dispatch };
+  const delivery: Pick<DeliveryCore, "recordStatusEvent" | "recordDeliveryStatus"> = {
+    async recordStatusEvent(evt) {
+      if (statusEvents.has(evt.provider_event_id)) return "duplicate";
+      statusEvents.add(evt.provider_event_id);
+      return "first";
+    },
+    async recordDeliveryStatus(evt) {
+      statusCalls.push(evt);
+      const o = [...offers.values()].find((x) => x.provider_message_id === evt.provider_message_id);
+      if (!o) return { ok: true, data: { offer_id: null, offer_status: null } };
+      o.delivery_status = evt.status;
+      return { ok: true, data: { offer_id: o.offer_id, offer_status: o.status } };
+    },
+  };
+
+  const core: MessagingCore & DispatchCore & DeliveryCore = { ...base.core, ...dispatch, ...delivery };
 
   return {
     core,
     base,
     lastTicks,
+    statusCalls,
     seedDonation(input: { id: string; cutoff: Date; candidates: string[] }) {
       donations.set(input.id, {
         id: input.id,
