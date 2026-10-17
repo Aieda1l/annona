@@ -1,0 +1,91 @@
+# Dev 3 handoffs — Photon messaging + timed workflows (`feat/messaging`)
+
+Append-only. Providers are labeled **real** or **fake**. No handles, phone numbers, keys, or project/org IDs in this file (the repo is public).
+
+## 2026-10-17 13:12 PDT — Kickoff spikes SP-1, SP-14, SP-3 (partial), SP-2 (partial)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / feat/messaging / f750162 (baseline; spikes ran outside the repo, no repo code)
+DELIVERED: Real Photon Beta (api.photon.codes/v1, plain fetch, no SDK) findings below. Answers to the prompt's spike questions (a)-(d).
+EVIDENCE (commands, passed/failed, real vs mock): all REAL Photon unless stated.
+CONTRACT CHANGES OR REQUESTS: none filed yet. One proposal to raise with the captain: STOP matched anywhere in a short message (see BLOCKERS).
+BLOCKERS + SAFETY RISKS: see below
+INTEGRATION STEPS: see below
+NEXT SMALLEST ACTION: Dev 3 builds slice 1 (grammar done; normalizePhotonEvent next).
+```
+
+### SP-1 — setup and JOIN round trip: VERIFIED (real)
+
+Beta org, project and a project API key were created through the Beta API (device login, then `POST /organizations/{org}/projects`, `POST /projects/{id}/api-keys`). Shared iMessage line, 25-assignment cap. Assignments were created for three phones (donor, courier A, courier B); each gets its own assigned line number.
+
+| Phone | Inbound JOIN (`provider_message_id`) | Reply (`provider_message_id`) | Result |
+|---|---|---|---|
+| donor | `pho_msg_079ga3bt79g8v8ndxgahm96meh` | `pho_msg_3adx0zc8k5h6zvyfgdn2572w9q` | send 202 in 411 ms; delivered 4.1 s after dispatch |
+| courier B | `pho_msg_1b2grby8jtgqv8y4b1tj41fx83` | `pho_msg_75n4fzwmcfht2vb728b469sn4c` | send 202 in 260 ms; delivered |
+| courier A | `pho_msg_4zc58jg1q5h3q9z9jgygggcmbg` | `pho_msg_20rewn2qjehtmv31pyx2kz90ay` | send 202 in 295 ms; delivered 0.8 s after dispatch |
+
+Observed API facts (from real calls):
+- `Idempotency-Key` is required on **every** POST (a missing key returns 400 `IDEMPOTENCY_KEY_REQUIRED`), not only on sends.
+- Send body: `{ spaceId, senderId, content: { type: "text", format: "plain", text } }`. `spaceId` and `senderId` come from the inbound message (`space.id`, `receivedBy.id`). The 202 body is the message record, so `provider_message_id` = its `id` (`pho_msg_...`).
+- `202` is accepted, not delivered. Delivery shows later as `status: "delivered"` with `timestamps.deliveredAt` on `GET /messages`.
+- Inbound message record: `{ id, status: "received", content, sentBy{handle,kind:"human"}, receivedBy{id,handle,kind:"agent"}, space{id,kind:"direct"}, timestamps.receivedAt, platform:"imessage" }`. `GET /messages?direction=...` rejects unknown values with 422; use only documented values.
+- Not verified on a phone: whether each recipient saw the reply as a blue iMessage bubble (API status only).
+
+### SP-14 — photo intake: GO on the Photon side (real)
+
+| | JPEG | HEIC |
+|---|---|---|
+| Message | `pho_msg_0y74xrjqnghwzr5n9h0p47tvrc` | `pho_msg_24q018n0kvg3n9n8r2rshzftap` |
+| Attachment | `pho_att_62ghkwgc13ht5rfbc6wm89jzfa` | `pho_att_7878c3qk79gq6ts8b8jv39xqvq` |
+| Photon MIME (metadata and header) | `image/jpeg` | `image/heic` (Photon did **not** convert) |
+| Bytes (matches reported size) | 41,497 | 1,456,484 |
+| sha256 | `99db7d97b70ac3ee2889067a008304036f7ea31bc973bda755c42a10dcdb444f` | `4f72bffbdf473ebda647305e65c01d34f6c75d2b922cd7910cdafb241a332922` |
+| Download | 1 attempt, 0 `ATTACHMENT_NOT_READY`, 226 ms | 1 attempt, 0 `ATTACHMENT_NOT_READY`, 230 ms |
+
+- An inbound photo is a message with `content: { type: "attachment", attachmentId }` (no MIME on the message). MIME, size and filename come from `GET /attachments/{id}`; bytes from `GET /attachments/{id}/content` (the endpoint holds up to 10 s, then 409 `ATTACHMENT_NOT_READY` with `Retry-After: 5`).
+- Gemini accepted the HEIC (reported by Dev 1; not observed by Dev 3).
+- Sample: 2 downloads, one donor, idle system. Retry behavior under load is untested.
+
+### SP-3 — send permission after JOIN: PARTIAL (real)
+
+- An unsolicited offer-style text with no inbound since JOIN was accepted (202) and delivered to courier B at 40.2 min after JOIN and courier A at 37.9 min after JOIN.
+- UNVERIFIED: any longer window; messaging a never-joined identity (no spare handle to test); the donor (excluded because photo messages refreshed their window).
+- Operational note: still re-send JOIN from each courier phone shortly before each judge demo (prompt §11).
+
+### SP-2 — inbound transport and signatures
+
+- (a) Unprompted offer after JOIN: works at 38-40 min (see SP-3).
+- (b) Webhook signature: **UNVERIFIED**. `POST /projects/{id}/webhooks/destinations` returns a one-time `signingSecret`, but the OpenAPI spec names no signature header or algorithm. No destination was created (needs a public HTTPS URL from Dev 4). Do not guess the scheme.
+- (c) Inbound mode in use for the spike: **poll** (`GET /messages`, VERIFIED). Webhook and Socket.IO are UNVERIFIED (Socket.IO is not in the OpenAPI spec).
+- (d) Socket cursor replay after restart: UNVERIFIED.
+
+### Billing
+
+- Org wallet shows a $100.00 welcome credit. No plan purchase, checkout or payment-method endpoint was called. Project billing could not be read (503 once, then 403 for a project key), so the project's plan is UNVERIFIED.
+
+### Deviations from the prompt
+
+- The project API key lives in the macOS Keychain, not `.env.local`. For real mode, put it in `.env.local` only at that point (server-only, never `NEXT_PUBLIC_*`). It expires 2026-10-20 00:00 UTC.
+- Spike scripts and downloaded attachments are outside the repo. The earlier Spectrum/Stable project (`app.photon.codes`) created before kickoff is not used by Annona.
+
+### BLOCKERS + SAFETY RISKS
+
+- **STOP matching (needs captain decision).** CONTRACTS §3.10 says the first token decides, so "please stop" is `unknown` and does not opt out. Proposal: also treat STOP, STOPALL, UNSUBSCRIBE, CANCEL, END, QUIT anywhere in a short message as `stop`. Template wording will also tell users to text STOP.
+- Webhook signature scheme unknown, so inbound auth cannot be webhook-only. Use the relay worker with the internal secret.
+
+### INTEGRATION STEPS
+
+- Captain: a deployed HTTPS URL is needed to test webhook delivery and signing (SP-2 b).
+- Env names (no values): `MESSAGING_PROVIDER`, `PHOTON_PROJECT_ID`, `PHOTON_API_KEY`, `PHOTON_WEBHOOK_SECRET`, `ANNONA_INTERNAL_SECRET`, `PHOTON_INBOUND_MODE`. Courier handles go to the captain by DM only.
+
+## 2026-10-17 13:35 PDT — Slice 1 build (steps 1-6), uncommitted
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / feat/messaging / working tree on f750162 (baseline), NOT committed or pushed yet; no PR yet
+DELIVERED: Command grammar (parseCommand), normalizePhotonEvent, fake + misconfigured gateway, offer/draft-ready/fixed-reply templates, claim-reply formatter, joined-only outbound sender, createInboundHandler (dedupe, unknown/non-joined senders, JOIN, STOP, HELP, accept/decline). Lane-private MessagingCore port + in-memory test double. Covers T-MS-01, T-MS-02, T-MS-03, T-MS-04, T-MS-05, T-MS-10 (gateway part), T-MS-14 (normalize part), T-MS-15 (joined-only, JOIN/STOP).
+EVIDENCE (commands, passed/failed, real vs mock): all FAKE/in-memory, no network. pnpm test -> 8 files, 172 tests passed. pnpm typecheck exit 0. pnpm lint exit 0. pnpm build exit 0. Canonical secret scan (ARCHITECTURE section 9) over 20 changed paths: exit 1 (clean). Each behavior was written test-first and seen failing before implementation.
+CONTRACT CHANGES OR REQUESTS: none filed. To raise with the captain: (1) STOP anywhere in a short message (see earlier entry); (2) core needs a way to ask whether outbound_messages already holds an idempotency key (MessagingCore.hasOutboundMessage; real adapter can use listMessages); (3) typed MessagingIdentity for core (contracts-2).
+BLOCKERS + SAFETY RISKS: handleInbound for a donor photo is a stub (returns ignored, no reply) until slice 2 (T-MS-18). Core join/opt-out failures throw, so the delivery is retried rather than acknowledged. Cross-contact "unknown" renders as "unknown", never "none known to donor" (wording not in the spec; confirm). The workflows barrel handleInbound is still NOT_IMPLEMENTED: the adapter over @/core is not written (needs contracts-2 types).
+INTEGRATION STEPS: Wire MessagingCore to @/core after Dev 2's sub-PR 2(b). Dev 2 reviews the slice-1 PR; no self-merge.
+NEXT SMALLEST ACTION: Dev 3 commits slice 1 on feat/messaging, runs the secret scan on the staged diff, opens PR "[Dev 3] fake gateway + inbound parser".
+```
