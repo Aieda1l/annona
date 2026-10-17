@@ -1,10 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import type { DashboardSnapshot, OperatorAction } from "@/contracts";
+import type { Outcome } from "./api";
+import { DemoControls } from "./DemoControls";
+import { DispatchNowButton, DispatchResult, type DispatchState } from "./DispatchNowButton";
 import { DonationBoard } from "./DonationBoard";
 import { IdentityList } from "./IdentityList";
 import { OperatorActions } from "./OperatorActions";
 import { formatPacific } from "./format";
+
+export type DemoHandlers = {
+  onReset: () => Promise<Outcome>;
+  onTick: () => Promise<Outcome>;
+  onDispatch: (donationId: string) => Promise<Outcome>;
+};
 
 /** Renders one DashboardSnapshot exactly as given. No status, eligibility or deadline is computed here. */
 export function OperatorDashboard({
@@ -12,12 +22,38 @@ export function OperatorDashboard({
   sourceLabel,
   onAction,
   actionErrors,
+  demo,
 }: {
   snapshot: DashboardSnapshot;
   sourceLabel: string;
   onAction?: (donationId: string, action: OperatorAction, note: string) => void | Promise<void>;
   actionErrors?: Record<string, string>;
+  demo?: DemoHandlers;
 }) {
+  const [dispatch, setDispatch] = useState<Record<string, DispatchState>>({});
+  const [inflight, setInflight] = useState(0);
+  const locked = inflight > 0;
+
+  async function track(fn: () => Promise<Outcome>): Promise<Outcome> {
+    setInflight((n) => n + 1);
+    try {
+      return await fn();
+    } finally {
+      setInflight((n) => n - 1);
+    }
+  }
+  async function dispatchNow(id: string) {
+    if (!demo) return;
+    setDispatch((d) => ({ ...d, [id]: { busy: true, result: null } }));
+    let result: Outcome;
+    try {
+      result = await track(() => demo.onDispatch(id));
+    } catch {
+      result = { ok: false, error: "UNREACHABLE: The server could not be reached." };
+    }
+    setDispatch((d) => ({ ...d, [id]: { busy: false, result } }));
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-4">
       <header className="space-y-1">
@@ -27,19 +63,43 @@ export function OperatorDashboard({
           &quot;Eligible&quot; means eligible for dispatch under the prototype operator policy, based on
           donor-attested records.
         </p>
-        {!onAction && <p className="text-sm font-medium text-slate-900">Read-only: operator actions are not wired to the server yet.</p>}
+        {!onAction && (
+          <p className="text-sm font-medium text-slate-900">Read-only: operator actions are not wired to the server yet.</p>
+        )}
       </header>
+      {demo && (
+        <DemoControls
+          locked={locked}
+          onTick={() => track(demo.onTick)}
+          onReset={async () => {
+            const out = await track(demo.onReset);
+            setDispatch({});
+            return out;
+          }}
+        />
+      )}
       <DonationBoard
         donations={snapshot.donations}
         counts_by_status={snapshot.counts_by_status}
         renderActions={
-          onAction
+          onAction || demo
             ? (card) => (
-                <OperatorActions
-                  card={card}
-                  onAction={(a, n) => onAction(card.id, a, n)}
-                  error={actionErrors?.[card.id] || null}
-                />
+                <>
+                  {onAction && (
+                    <OperatorActions
+                      card={card}
+                      onAction={(a, n) => onAction(card.id, a, n)}
+                      error={actionErrors?.[card.id] || null}
+                    />
+                  )}
+                  {demo && card.status === "eligible" && (
+                    <DispatchNowButton
+                      disabled={locked || dispatch[card.id]?.busy === true}
+                      onDispatch={() => void dispatchNow(card.id)}
+                    />
+                  )}
+                  {demo && dispatch[card.id]?.result && <DispatchResult result={dispatch[card.id]!.result!} />}
+                </>
               )
             : undefined
         }
