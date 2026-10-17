@@ -11,10 +11,12 @@ export function OperatorDashboard({
   snapshot,
   sourceLabel,
   onAction,
+  actionErrors,
 }: {
   snapshot: DashboardSnapshot;
   sourceLabel: string;
   onAction?: (donationId: string, action: OperatorAction, note: string) => void | Promise<void>;
+  actionErrors?: Record<string, string>;
 }) {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-4">
@@ -29,7 +31,13 @@ export function OperatorDashboard({
       <DonationBoard
         donations={snapshot.donations}
         counts_by_status={snapshot.counts_by_status}
-        renderActions={(card) => <OperatorActions card={card} onAction={(a, n) => onAction?.(card.id, a, n)} />}
+        renderActions={(card) => (
+          <OperatorActions
+            card={card}
+            onAction={(a, n) => onAction?.(card.id, a, n)}
+            error={actionErrors?.[card.id] || null}
+          />
+        )}
       />
       <section className="space-y-2">
         <h2 className="text-lg font-semibold text-slate-900">Messaging identities</h2>
