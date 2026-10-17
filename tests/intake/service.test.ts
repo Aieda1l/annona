@@ -62,11 +62,24 @@ describe("createDraftFromImage", () => {
 
   describe("T-IN-09: validation happens before any store or AI call", () => {
     const bytes = (n: number) => Buffer.alloc(n, 1).toString("base64");
+    it("HEIC from messaging is accepted by validation (SP-14) and reaches core with its original MIME", async () => {
+      const { core } = setup();
+      const { provider, analyzeFoodImage } = spyVision(async () => err("PROVIDER_UNAVAILABLE", "stub"));
+      const s = createIntakeService({ core, vision: provider });
+      await s.createDraftFromImage({
+        actor: DONOR,
+        image: { mime: "image/heic", bytes_base64: bytes(100) },
+        source: "messaging",
+        source_ref: "fake:heic-1",
+      });
+      expect(core.storeDonationImage.mock.calls[0]![0]).toMatchObject({ mime: "image/heic" });
+      expect(analyzeFoodImage.mock.calls[0]![0].image.mime).toBe("image/heic");
+    });
+
     it.each([
       ["text/plain upload", { mime: "text/plain", bytes_base64: bytes(100) }, "web_upload"],
       ["2 MB JPEG on web_upload", { mime: "image/jpeg", bytes_base64: bytes(2 * 1024 * 1024) }, "web_upload"],
       ["6 MB JPEG on messaging", { mime: "image/jpeg", bytes_base64: bytes(6 * 1024 * 1024) }, "messaging"],
-      ["HEIC while HEIC_ACCEPTED is false", { mime: "image/heic", bytes_base64: bytes(100) }, "messaging"],
       ["HEIC on web_upload", { mime: "image/heic", bytes_base64: bytes(100) }, "web_upload"],
     ] as const)("rejects %s", async (_label, image, source) => {
       const { core } = setup();

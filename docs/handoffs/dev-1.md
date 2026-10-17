@@ -30,3 +30,7 @@ Scripts and raw outputs stayed outside version control (`.spikes-local/`, exclud
 **Blockers + safety risks:** none new. No real donor or recipient data was used.
 
 **Next smallest action:** captain decision on Vertex/ADC vs AI Studio key; meanwhile start slice 1 (fake vision + parsing, RED tests first).
+
+## 2026-10-17 evening: HEIC_ACCEPTED = true (feat/intake-heic)
+
+Flipped per CONTRACTS §9.3 on the SP-14 result above (real Photon-downloaded HEIC, 1,456,484 B, parsed by `gemini-3.5-flash-lite`). Intake now accepts `image/heic|heif` from `messaging` only, 5 MB cap. **Not yet end to end:** core `storeDonationImage` still refuses HEIC (request: `docs/requests/intake-heic-core-allowlist.md`), and the stored HEIC may not render in non-Safari browsers. Dev 3's `photo.ts` passes Photon's content-type through unfiltered and does not sniff.
