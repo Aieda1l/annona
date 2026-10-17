@@ -57,7 +57,6 @@ function violations(s: Snapshot, capacity: number, prevVersions: Map<string, num
     const live = s.offers.filter((o) => o.donation_id === d.id && LIVE.includes(o.status));
     if (TERMINAL.includes(d.status) && live.length > 0) bad.push(`${d.status} donation ${d.id.slice(0, 4)} still has ${live.length} live offers`);
     if (d.status === "eligible" && live.length > 0) bad.push(`eligible donation ${d.id.slice(0, 4)} still has live offers`);
-    if (d.status === "offered" && live.some((o) => o.status === "pending_send" && false)) bad.push("unreachable");
     const prev = prevVersions.get(d.id);
     if (prev !== undefined && d.version < prev) bad.push(`donation ${d.id.slice(0, 4)} version went backwards`);
     prevVersions.set(d.id, d.version);

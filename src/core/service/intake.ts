@@ -41,7 +41,8 @@ export async function storeDonationImage(input: { mime: string; bytes: Uint8Arra
   if (!(input.bytes instanceof Uint8Array) || input.bytes.length === 0) return err("VALIDATION_FAILED", "The photo is empty.");
   if (input.bytes.length > MAX_IMAGE_BYTES) return err("VALIDATION_FAILED", "The photo is larger than 5 MB.");
 
-  // The declared type must match the first bytes, so an HTML page or program cannot be stored as a photo.
+  // The declared type must match the first bytes (a prefix check only, not proof of a valid image), so an HTML page or program
+  // cannot be stored as a photo. Whoever serves the image must send the stored mime and X-Content-Type-Options: nosniff.
   if (!looksLike(input.mime, input.bytes)) return err("VALIDATION_FAILED", "That file is not a valid photo of the type it claims to be.");
 
   const { db, clock } = await runtime(deps);

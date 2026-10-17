@@ -134,9 +134,12 @@ export async function claimOffer(command: ClaimCommand, deps?: Deps): Promise<Cl
 
       // 3. replay by the winner: idempotent, no writes.
       // Only an ACTIVE assignment is replayed: accepted, not closed (close_reason null) and the donation still claimed or collected.
-      // An ended one (no-show expiry, cancel, delivered) falls through to donation_unavailable and discloses no address.
+      // An ended one (no-show expiry, cancel, delivered) falls through the later steps (donation_unavailable, or offer_closed /
+      // offer_expired / already_claimed if the donation moved on) and never discloses an address.
       if (isActiveAssignment(donation, offer)) {
-        return claimResult("already_claimed_by_you", shape, await buildAssignment(tx, donation, offer));
+        const assignment = await buildAssignment(tx, donation, offer);
+        // Never a success without the details (the result schema requires them): unreadable data answers "unavailable".
+        return assignment ? claimResult("already_claimed_by_you", shape, assignment) : claimResult("donation_unavailable", shape);
       }
       // 4. somebody else holds the assignment.
       if (["claimed", "collected", "delivered"].includes(donation.status) && donation.claimed_offer_id !== offer.id) {
@@ -164,6 +167,10 @@ export async function claimOffer(command: ClaimCommand, deps?: Deps): Promise<Cl
         return claimResult("ineligible", shapeOf(offer, after ?? donation));
       }
 
+      // The courier must be able to get the details of what they claim: build them first, and claim nothing if they cannot be read.
+      const assignment = await buildAssignment(tx, donation, offer);
+      if (!assignment) throw new Error("claimOffer: the pickup details could not be read");
+
       // 9. conditional updates that must each affect exactly one row.
       const accepted = await tx.update(offers).set({ status: "accepted", responded_at: now }).where(and(eq(offers.id, offer.id), eq(offers.status, "open"))).returning();
       const claimed = await tx
@@ -182,22 +189,25 @@ export async function claimOffer(command: ClaimCommand, deps?: Deps): Promise<Cl
         await writeAudit(tx, { at: now, type: "offer.superseded", actor: command.actor, donation_id: donation.id, offer_id: s.id, mode: { messaging: s.provider_mode as "real" | "fake" }, data: { by_offer_id: offer.id } });
       }
       await writeAudit(tx, { at: now, type: "claim.accepted", actor: command.actor, donation_id: donation.id, offer_id: offer.id, mode: { messaging: providerMode(provider) }, data: { source: command.source === "simulated_messaging" ? "simulated_messaging" : "messaging", source_event_id: plainToken(command.source_event_id) } });
-      return claimResult("claimed", shapeOf(accepted[0]!, claimed[0]!), await buildAssignment(tx, claimed[0]!, accepted[0]!));
+      return claimResult("claimed", shapeOf(accepted[0]!, claimed[0]!), assignment);
     });
 
   try {
     return await retryOnConflict(attempt);
   } catch (e) {
     // The partial unique index (one active assignment per donation) is the backstop: a violation means someone else won.
-    if (isUniqueViolation(e) || e instanceof ClaimRaceError) return resolveAfterRace(command, deps);
+    if (isActiveAssignmentViolation(e) || e instanceof ClaimRaceError) return resolveAfterRace(command, deps);
     throw e;
   }
 }
 
 class ClaimRaceError extends Error {}
-const isUniqueViolation = (e: unknown) => {
-  const c = e as { code?: string; cause?: { code?: string } };
-  return (c?.code ?? c?.cause?.code) === "23505";
+/** Only a violation of the one-active-assignment index means "someone else won"; any other unique violation is a real fault. */
+const isActiveAssignmentViolation = (e: unknown) => {
+  const c = e as { code?: string; constraint?: string; constraint_name?: string; cause?: { code?: string; constraint?: string; constraint_name?: string } };
+  const code = c?.code ?? c?.cause?.code;
+  const constraint = c?.constraint ?? c?.constraint_name ?? c?.cause?.constraint ?? c?.cause?.constraint_name;
+  return code === "23505" && constraint === "offers_one_active_assignment_uq";
 };
 
 /** After losing a race the transaction is gone; read the truth again and answer from it (already_claimed or by_you). */
@@ -207,7 +217,10 @@ async function resolveAfterRace(command: ClaimCommand, deps?: Deps): Promise<Cla
   if (!offer || !isTheCourier(command.actor, offer)) return claimResult("offer_not_found", NO_SHAPE);
   const [donation] = await db.select().from(donations).where(eq(donations.id, offer.donation_id));
   if (!donation) return claimResult("offer_not_found", NO_SHAPE);
-  if (isActiveAssignment(donation, offer)) return claimResult("already_claimed_by_you", shapeOf(offer, donation), await buildAssignment(db, donation, offer));
+  if (isActiveAssignment(donation, offer)) {
+    const assignment = await buildAssignment(db, donation, offer);
+    if (assignment) return claimResult("already_claimed_by_you", shapeOf(offer, donation), assignment);
+  }
   return claimResult(["claimed", "collected", "delivered"].includes(donation.status) ? "already_claimed" : "donation_unavailable", shapeOf(offer, donation));
 }
 
@@ -221,15 +234,14 @@ async function recheck(tx: Q, donation: DonationRow, offer: OfferRow, recipient:
   const [donorRow] = await tx.select().from(donors).where(eq(donors.id, donation.donor_id));
   const [courierRow] = await tx.select().from(couriers).where(eq(couriers.id, offer.courier_id));
   const policy = await activePolicy(tx);
-  if (!facts.success || !donorRow || !recipient || !courierRow || !policy) return ["data_missing"];
+  // Missing or unreadable rows are a system fault, not an ineligible pickup: fail the call (nothing is cancelled, nobody is told no).
+  if (!facts.success || !donorRow || !recipient || !courierRow || !policy) {
+    throw new Error("claimOffer: the donation, donor, recipient, courier or policy could not be read");
+  }
 
   const donor = donorFromRow(donorRow);
-  let decision;
-  try {
-    decision = evaluateEligibility({ facts: facts.data, donor, policy, now });
-  } catch {
-    return ["gate_error"];
-  }
+  // An exception from the gate is a bug or a broken policy; it fails the call rather than cancelling the offer.
+  const decision = evaluateEligibility({ facts: facts.data, donor, policy, now });
   if (decision.outcome !== "eligible") return decision.reasons.map((r) => r.code);
 
   // Only this courier's identities matter for the pair check; no need to read every table while holding the recipient lock.

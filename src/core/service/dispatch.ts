@@ -36,7 +36,8 @@ import { activeProvider, providerMode, retryOnConflict, runtime } from "./runtim
 
 // Slice 2(b), part 2: dispatch. createNextOffers (S-04, S-05, S-18), openOfferForSend, markOfferSendFailed,
 // recordOfferProviderMessage, expireDue (S-06, S-08, S-16) and the lists tick() drives. Every step is a conditional
-// update under the donation row lock, so tick is idempotent and safe to run concurrently (CONTRACTS section 7).
+// update under the donation row lock, so tick is designed to be idempotent and safe to run concurrently (CONTRACTS section 7). That design is UNVERIFIED on real
+// Postgres until T-CO-17 passes (D-033); the tests here interleave calls on one PGlite connection, which is not concurrency evidence.
 
 // Short codes are random, 4 characters from SHORT_CODE_ALPHABET, unique across all offers until resetDemo.
 let codeRandom: (n: number) => number = (n) => randomInt(n);

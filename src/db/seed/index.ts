@@ -1,6 +1,6 @@
 import { runCli, withEnvStore } from "../cli";
 import { runMigrations } from "../run-migrations";
-import { seedStore } from "./seed";
+import { describeStaleIdentity, seedStore } from "./seed";
 
 // `pnpm db:seed`. Handles are personal data: read from env only, never written to git, never printed (CONTRACTS §12).
 // The handles come from getEnv() (the captain added the DEMO_*_HANDLE names). Blank values count as unset (resolveHandles trims them).
@@ -18,8 +18,7 @@ runCli(() =>
     });
     console.log(`seeded (${store.kind}, messaging ${env.messaging_provider})`);
     for (const s of report.stale_identities) {
-      const what = [s.provider_differs ? "provider" : "", s.handle_differs ? "handle" : ""].filter(Boolean).join(" and ");
-      console.warn(`WARNING: ${s.actor_role} identity ${s.id} is '${s.status}', so its ${what} was NOT updated to match this seed. Reset that identity (resetDemo / un-join) before the demo.`);
+      console.warn(`WARNING: ${describeStaleIdentity(s)}`);
     }
   }),
 );

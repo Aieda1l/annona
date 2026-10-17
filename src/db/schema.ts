@@ -167,7 +167,7 @@ export const donations = pgTable(
     latest_decision: jsonb("latest_decision"),
     effective_cutoff_at: tstz("effective_cutoff_at"),
     // Set only by a successful claim (§8). No FK: offers.donation_id already points back (circular), and
-    // only the claim transaction writes it.
+    // only the claim transaction sets it; optOutIdentity clears it (S-15, S-17).
     claimed_offer_id: uuid("claimed_offer_id"),
     collected_at: tstz("collected_at"),
     created_at: tstz("created_at").notNull(),

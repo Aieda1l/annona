@@ -5,8 +5,8 @@ import { writeAudit } from "./audit";
 import { identityFromRow, isUuid, offerFromRow } from "./map";
 import { runtime } from "./runtime";
 
-// Messaging identities (CONTRACTS section 3.1, 8, 11). Full handles stay inside core; callers outside the operator
-// view only ever get a masked handle. STOP handling (S-15, S-16, S-17) lives in ./opt-out.
+// Messaging identities (CONTRACTS section 3.1, 8, 11). These functions return the FULL handle (a MessagingIdentity) to
+// server-side callers; a route must never send one to a client. Only the operator's IdentitySummary shows a masked handle. STOP handling (S-15, S-16, S-17) lives in ./opt-out.
 
 const PROVIDERS = new Set(["photon", "fake"]);
 

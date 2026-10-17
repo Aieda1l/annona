@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
@@ -27,7 +29,9 @@ export function openDb(config: DispatchStoreConfig): OpenedDb {
     const client = postgres(config.database_url, { prepare: false });
     return { kind: "postgres", db: drizzlePostgres(client, { schema }) as unknown as Db, close: () => client.end() };
   }
-  // pglite_dir undefined = in-memory (tests). A directory persists between runs.
+  // pglite_dir undefined = in-memory (tests). A directory persists between runs. PGlite creates the folder itself but not
+  // its parents, so a fresh checkout (no `.data/` yet) would fail without this.
+  if (config.pglite_dir) mkdirSync(dirname(resolve(config.pglite_dir)), { recursive: true });
   const client = new PGlite(config.pglite_dir);
   return {
     kind: "pglite",

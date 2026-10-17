@@ -3,8 +3,9 @@ import { audit_events } from "@/db/schema";
 import type { Q } from "./runtime";
 
 // Append-only audit trail (CONTRACTS section 3.11). `data` never contains a full handle, message text, address_line,
-// pickup_instructions or a verification token. The guard below turns a mistake into a thrown error instead of a leak:
-// it refuses suspicious key names (any spelling or case, at any depth) and suspicious string values.
+// pickup_instructions or a verification token. The guard below is a tripwire, not a general leak guard: it refuses suspicious
+// key names (any spelling or case, at any depth) and string values that look like a handle, a phone number or free text.
+// It cannot know what a value means, so callers still choose what goes in `data`.
 
 const BANNED_KEY_PARTS = ["handle", "address", "instruction", "token", "phone", "email", "sender", "body", "payload", "password", "secret"];
 const BANNED_KEYS = new Set(["text", "message", "url", "content"]);

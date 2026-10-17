@@ -17,7 +17,8 @@ import { isUuid, maskHandle } from "./map";
 import { activeProvider, runtime } from "./runtime";
 
 // Inbound and outbound message ledger, delivery status, and the simulated-phone thread (CONTRACTS sections 8.2, 8.3,
-// 3.10, 11). Handles are personal data: an unknown sender's handle and text are never stored.
+// 3.10, 11). Handles are personal data: an unknown sender's full handle and text are never stored (only the last 4 characters,
+// handle_masked, are kept for the log).
 
 const PROVIDERS = new Set(["photon", "fake"]);
 const SAFE_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;

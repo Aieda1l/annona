@@ -51,9 +51,19 @@ export function decisionWithReason(
   };
 }
 
+/** The stored policy must satisfy the contract. A missing or unreadable one is null, which callers treat as a system fault. */
+function readPolicy(row: typeof policy_config.$inferSelect | undefined): PolicyConfig | null {
+  if (!row) return null;
+  try {
+    return policyFromRow(row);
+  } catch {
+    return null;
+  }
+}
+
 export async function activePolicy(q: Q): Promise<PolicyConfig | null> {
   const [row] = await q.select().from(policy_config).where(eq(policy_config.active, true));
-  return row ? policyFromRow(row) : null;
+  return readPolicy(row);
 }
 
 /**
@@ -64,7 +74,7 @@ export async function activePolicy(q: Q): Promise<PolicyConfig | null> {
  */
 export async function lockedPolicy(q: Q): Promise<PolicyConfig | null> {
   const [row] = await q.select().from(policy_config).where(eq(policy_config.active, true)).for("update");
-  return row ? policyFromRow(row) : null;
+  return readPolicy(row);
 }
 
 export async function liveOfferCount(q: Q, donation_id: string): Promise<number> {

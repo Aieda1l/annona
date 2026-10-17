@@ -3,6 +3,7 @@ import type { ActorRole, DonationStatus, EligibilityOutcome, OfferStatus, Reason
 
 // CONTRACTS §4.1 (S-01..S-18) and §4.2 as data plus pure guards. Dev 2 is the only writer of donations.status;
 // persistence calls canTransition inside its transaction. Guards use the server Clock value `now` only.
+// Not every write goes through it: claimOffer's S-07 relies on its own step checks and conditional UPDATEs (CONTRACTS 8.1).
 
 export const TERMINAL_DONATION_STATUSES: readonly DonationStatus[] = ["delivered", "rejected", "canceled", "expired"];
 
