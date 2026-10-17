@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { DashboardSnapshot, OperatorAction } from "@/contracts";
-import { OperatorDashboard } from "./OperatorDashboard";
+import { postJson, type Outcome } from "./api";
+import { OperatorDashboard, type DemoHandlers } from "./OperatorDashboard";
 import { formatPacific } from "./format";
 
 const POLL_MS = 2000;
@@ -75,6 +76,17 @@ export function LiveOperatorDashboard() {
     }
   }
 
+  const refreshAfter = async (o: Promise<Outcome>): Promise<Outcome> => {
+    const out = await o;
+    await load();
+    return out;
+  };
+  const demo: DemoHandlers = {
+    onTick: () => refreshAfter(postJson("/api/internal/tick")),
+    onReset: () => refreshAfter(postJson("/api/demo/reset", { keep_identities: true })),
+    onDispatch: (id) => refreshAfter(postJson(`/api/donations/${id}/dispatch`)),
+  };
+
   return (
     <>
       {failure && (
@@ -90,6 +102,7 @@ export function LiveOperatorDashboard() {
           sourceLabel={failure ? "STALE server state" : "Live server state"}
           onAction={onAction}
           actionErrors={actionErrors}
+          demo={snapshot.modes.demo_accelerated ? demo : undefined}
         />
       ) : (
         !failure && <p className="p-4 text-sm">Loading dashboard…</p>

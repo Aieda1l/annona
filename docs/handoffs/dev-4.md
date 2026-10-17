@@ -25,3 +25,13 @@ BLOCKERS + SAFETY RISKS:
 INTEGRATION STEPS: merge PR #1 (ui-kit) first if desired, then rebase this branch on `main`.
 
 NEXT SMALLEST ACTION: Slice 2 item 2: poll `GET /api/dashboard` every 2 s on `/operator` with a stale-data error panel.
+
+## Slice 2a — polling + demo controls (feat/dashboard, PR after #2)
+
+DELIVERED: PR #1 (ui-kit) and #2 (slice 1 + polling) merged. `/operator` polls `GET /api/dashboard` every 2 s (pauses while hidden, stale/error panel, never fabricates). Demo controls (Run tick now, Reset demo with confirm, per-card Dispatch now on `eligible` cards only) appear only when `modes.demo_accelerated` is true. `/operator?fixture=1` renders labeled fixtures.
+
+EVIDENCE: `pnpm test` 121 tests (11 files) passed, typecheck/lint/build exit 0, secret scan clean. Everything above is tested against mocked `fetch` only. UNVERIFIED against the real routes (`/api/internal/tick`, `/api/demo/reset`, `/api/donations/:id/dispatch`, `/api/dashboard`), which are still 501 stubs on main.
+
+CONTRACT CHANGES OR REQUESTS: `TickReport` is not in `@/contracts` yet (planned for chore/integration-contracts-2). `postJson` summarizes the numeric fields of whatever the server returns; switch to the typed `TickReport` once it lands.
+
+NEXT SMALLEST ACTION: simulated phone page `/operator/phone` (Slice 2 item 6), then operator detail page.

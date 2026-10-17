@@ -89,4 +89,33 @@ describe("LiveOperatorDashboard", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("shows demo controls only in demo mode, and Run tick now posts to the tick route", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push(`${init?.method ?? "GET"} ${url}`);
+        if (url === "/api/internal/tick") return json({ ok: true, data: { at: "x", offers_sent: 1 } });
+        return json(okBody());
+      }),
+    );
+    render(<LiveOperatorDashboard />);
+    await flush();
+    await act(async () => {
+      screen.getByRole("button", { name: /run tick now/i }).click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calls).toContain("POST /api/internal/tick");
+    expect(screen.getByRole("status", { name: /demo control result/i })).toHaveTextContent("offers sent: 1");
+  });
+
+  it("hides demo controls when the server is not in demo mode", async () => {
+    const snap = fixtureSnapshot();
+    snap.modes.demo_accelerated = false;
+    vi.stubGlobal("fetch", vi.fn(() => json({ ok: true, data: snap })));
+    render(<LiveOperatorDashboard />);
+    await flush();
+    expect(screen.queryByRole("button", { name: /run tick now|reset demo|dispatch now/i })).toBeNull();
+  });
 });
