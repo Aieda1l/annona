@@ -42,6 +42,9 @@ export { findCandidates, classifyUnmatched } from "./matching";
 export type { MatchInput } from "./matching";
 export type { CourierProfile, RecipientOrg, MatchCandidate, MessagingIdentityLite } from "./types";
 
+export { DONATION_TRANSITIONS, OFFER_TRANSITIONS, TERMINAL_DONATION_STATUSES, canTransition, canOfferTransition } from "./state";
+export type { TransitionContext, TransitionTrigger, TransitionCheck, OfferTrigger } from "./state";
+
 // ----- intake (called by Dev 1) -----
 export async function storeDonationImage(_input: { mime: string; bytes: Uint8Array }, _deps?: Deps): Promise<Result<{ image_id: string }>> {
   return notImplementedResult(OWNER, "storeDonationImage");
