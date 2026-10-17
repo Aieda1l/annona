@@ -125,6 +125,16 @@ export async function busyCourierIds(q: Q): Promise<string[]> {
   return [...new Set([...live, ...assigned].map((r) => r.id))];
 }
 
+/** Couriers holding an active assignment (an accepted offer with no close_reason on a claimed or collected donation). */
+export async function assignedCourierIds(q: Q, exceptDonationId?: string): Promise<string[]> {
+  const rows = await q
+    .select({ id: offers.courier_id, donation_id: offers.donation_id })
+    .from(offers)
+    .innerJoin(donations, eq(offers.donation_id, donations.id))
+    .where(and(eq(offers.status, "accepted"), isNull(offers.close_reason), inArray(donations.status, ["claimed", "collected"])));
+  return [...new Set(rows.filter((r) => r.donation_id !== exceptDonationId).map((r) => r.id))];
+}
+
 /**
  * M-04: servings already promised per recipient = the sum over donations that are claimed, collected or delivered,
  * counted through their active accepted offer. Derived every time, never decremented.

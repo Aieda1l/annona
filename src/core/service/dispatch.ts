@@ -394,6 +394,15 @@ export async function expireDue(deps?: Deps): Promise<{ expired_offer_ids: strin
     });
   }
 
+  // C. Offered donations with no live offer left (a lazy expiry inside claim/decline, a STOP): back to eligible (S-06).
+  const idle = await db.select({ id: donations.id }).from(donations).where(eq(donations.status, "offered"));
+  for (const { id } of idle) {
+    await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(donations).where(eq(donations.id, id)).for("update", { skipLocked: true });
+      if (row && (await releaseIfIdle(tx, row, clock.now()))) dispatchable.add(row.id);
+    });
+  }
+
   return { expired_offer_ids, expired_donation_ids, dispatchable_donation_ids: [...dispatchable] };
 }
 

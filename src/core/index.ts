@@ -2,11 +2,7 @@ import {
   notImplementedError,
   notImplementedResult,
   type Actor,
-  type ClaimCommand,
-  type ClaimResult,
   type DashboardSnapshot,
-  type DeclineCommand,
-  type DeclineResult,
   type Deps,
   type DonationCard,
   type HandoffStep,
@@ -21,7 +17,6 @@ import {
 // Shapes marked "contracts-2" are lane-internal until the captain's follow-up PR types them.
 
 const OWNER = "Dev 2";
-type Pending = Record<string, unknown>; // contracts-2: replace with the typed entity
 
 // ----- pure (CONTRACTS §9.3) -----
 export { evaluateEligibility } from "./eligibility";
@@ -40,6 +35,10 @@ export {
   recordStatusEvent,
   recordDeliveryStatus,
 } from "./service/messages";
+
+// ----- claim, decline, STOP, slice 2(b) -----
+export { claimOffer, declineOffer } from "./service/claims";
+export { optOutIdentity } from "./service/opt-out";
 
 // ----- dispatch, slice 2(b) -----
 export {
@@ -85,13 +84,7 @@ export async function getVerificationLinkImage(
 
 
 
-export async function claimOffer(_command: ClaimCommand, _deps?: Deps): Promise<ClaimResult> {
-  throw notImplementedError(OWNER, "claimOffer");
-}
 
-export async function declineOffer(_command: DeclineCommand, _deps?: Deps): Promise<DeclineResult> {
-  throw notImplementedError(OWNER, "declineOffer");
-}
 
 
 
@@ -100,9 +93,6 @@ export async function declineOffer(_command: DeclineCommand, _deps?: Deps): Prom
 
 
 
-export async function optOutIdentity(_input: { identity_id: string }, _deps?: Deps): Promise<Result<Pending>> {
-  return notImplementedResult(OWNER, "optOutIdentity");
-}
 
 
 
