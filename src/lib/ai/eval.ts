@@ -13,7 +13,7 @@ import { createGeminiProvider } from "./gemini";
 //   VISION_PROVIDER=gemini GEMINI_API_KEY=… pnpm eval:intake          real model, API key
 //   VISION_PROVIDER=gemini GOOGLE_CLOUD_PROJECT=<id> pnpm eval:intake real model, Vertex AI with ADC (no key)
 // Options: --runs N (default 3)  --cases T-PE-01,T-PE-03  --out <file> (YAML records; otherwise printed)
-//          --images-dir <dir>  read <fixture>.jpg from another directory (for images that must not be committed)
+//          Cases with several fixtures run --runs times per image. --images-dir <dir>  read <fixture>.jpg from another directory (for images that must not be committed)
 // Use synthetic photos only. Credentials are never printed or written; failures are reported by error code.
 
 const PROMPT_VERSION = "v1";
@@ -91,19 +91,22 @@ async function main() {
   const modelsSeen = new Set<string>();
 
   for (const c of cases) {
-    const file = join(imagesDir, `${c.fixture}.jpg`);
-    if (!existsSync(file)) {
-      results.push({ status: "skipped", case: c, reason: `${c.fixture}.jpg is missing from ${arg("images-dir") ?? DEFAULT_IMAGES}` });
+    const missing = c.fixtures.filter((f) => !existsSync(join(imagesDir, `${f}.jpg`)));
+    if (missing.length > 0) {
+      const where = arg("images-dir") ?? DEFAULT_IMAGES;
+      results.push({ status: "skipped", case: c, reason: `${missing.map((f) => `${f}.jpg`).join(", ")} missing from ${where}` });
       continue;
     }
-    const bytes_base64 = readFileSync(file).toString("base64");
     const scores: RunScore[] = [];
-    for (let i = 0; i < runs; i++) {
-      const started = performance.now();
-      const outcome = await built.provider.analyzeFoodImage({ image: { mime: "image/jpeg", bytes_base64 } });
-      const score = scoreRun(c, outcome, Math.round(performance.now() - started));
-      if (score.suggestion?.model) modelsSeen.add(score.suggestion.model);
-      scores.push(score);
+    for (const fixture of c.fixtures) {
+      const bytes_base64 = readFileSync(join(imagesDir, `${fixture}.jpg`)).toString("base64");
+      for (let i = 0; i < runs; i++) {
+        const started = performance.now();
+        const outcome = await built.provider.analyzeFoodImage({ image: { mime: "image/jpeg", bytes_base64 } });
+        const score = scoreRun(c, outcome, Math.round(performance.now() - started), fixture);
+        if (score.suggestion?.model) modelsSeen.add(score.suggestion.model);
+        scores.push(score);
+      }
     }
     results.push({ status: "ran", case: c, scores, summary: summarizeCase(c, scores) });
   }

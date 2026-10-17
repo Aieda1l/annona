@@ -13,9 +13,23 @@ const allergens = (...a: VisionSuggestion["possible_allergens"][number]["allerge
 describe("catalog", () => {
   it("has T-PE-01..08 with the PROMPT_EVAL fixtures", () => {
     expect(EVAL_CASES.map((c) => c.id)).toEqual(["T-PE-01", "T-PE-02", "T-PE-03", "T-PE-04", "T-PE-05", "T-PE-06", "T-PE-07", "T-PE-08"]);
-    expect(EVAL_CASES.map((c) => c.fixture)).toEqual([
-      "sandwich_platter", "buffet_ambiguous", "dessert_bars", "blurry", "non_food", "sushi_tray", "packaged_label", "injection_note",
+    expect(EVAL_CASES.map((c) => c.fixtures)).toEqual([
+      ["sandwich_platter"],
+      ["buffet_ambiguous", "buffet_ambiguous_2"],
+      ["dessert_bars"],
+      ["blurry"],
+      ["non_food"],
+      ["sushi_tray"],
+      ["packaged_label"],
+      ["injection_note"],
     ]);
+  });
+});
+
+describe("scoreRun fixture tag", () => {
+  it("tags each run with the fixture it came from, defaulting to the case's first", () => {
+    expect(scoreRun(byId("T-PE-02"), ok(base), 1).fixture).toBe("buffet_ambiguous");
+    expect(scoreRun(byId("T-PE-02"), ok(base), 1, "buffet_ambiguous_2").fixture).toBe("buffet_ambiguous_2");
   });
 });
 

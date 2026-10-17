@@ -60,6 +60,25 @@ describe("buildYamlRecord", () => {
   });
 });
 
+describe("multi-fixture cases", () => {
+  const c2 = EVAL_CASES[1]!;
+  const amb = { ...good, dish_suggestions: [{ name: "buffet", confidence: "low" as const }], uncertainty_notes: ["a", "b"] };
+  const two: CaseResult = (() => {
+    const scores = [scoreRun(c2, ok(amb), 1000, "buffet_ambiguous"), scoreRun(c2, ok(amb), 1100, "buffet_ambiguous_2")];
+    return { status: "ran", case: c2, scores, summary: summarizeCase(c2, scores) };
+  })();
+
+  it("lists every fixture path and tags each observed run with its fixture", () => {
+    const rec = buildYamlRecord(real, two);
+    expect(rec).toContain('fixture: ["fixtures/intake/images/buffet_ambiguous.jpg","fixtures/intake/images/buffet_ambiguous_2.jpg"]');
+    expect(rec).toContain('"fixture":"buffet_ambiguous_2"');
+  });
+
+  it("shows both fixtures in the table", () => {
+    expect(formatTable(real, [two])).toMatch(/buffet_ambiguous\+buffet_ambiguous_2/);
+  });
+});
+
 describe("formatTable", () => {
   it("labels fake runs as a harness check", () => {
     expect(formatTable(fake, [ran()])).toMatch(/FAKE HARNESS CHECK \(not a model result\)/);

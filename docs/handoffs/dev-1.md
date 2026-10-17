@@ -71,3 +71,11 @@ Dev 1 chose to use web-sourced images despite the provenance rule. All eight eva
 Full eval on the committed fixtures (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs per case): **6 pass, 2 fail**. T-PE-02 fails on a fixture mismatch (the buffet photo is tidy) plus a prompt false positive (the "text instructions were ignored" note fires on benign table signs). T-PE-06 fails on one run with no shellfish listed or noted for sushi. Details in `docs/PROMPT_EVAL.md` §11. One of nine T-PE-03 runs timed out at 15 s; it did not recur.
 
 **Next smallest action:** draft `annona-intake.v2.md` (narrow the injection-note rule; add nuts and shellfish rules), rerun all eight, then open the adapter PR after CP2.
+
+## 2026-10-17 — Second buffet image, multi-image cases, and a latency finding
+
+`buffet_ambiguous.jpg` is now a crop of the buffet photo (covered and opaque dishes); `buffet_ambiguous_2.jpg` (steam-table line) was added. The eval runner supports several images per case (`EvalCase.fixtures`), so T-PE-02 keeps its ID and runs both. Result: T-PE-02 1/6, T-PE-06 1/3, the other six cases pass 3/3.
+
+**Decisions needed:** (1) T-PE-02: neither image is truly unidentifiable, and "every dish low confidence" fails whenever anything is identifiable. Pick: a genuinely unidentifiable photo, v2 guidance on what `confidence` means, or (deliberately) a different criterion. (2) Latency: occasional stalls (24 s, one no response in 60 s; about 5 of 100 calls over 15 s) cost drafts via the 15 s timeout. Consider a shorter timeout with one retry; the contract and D-012 would need to agree.
+
+**Next smallest action:** draft `annona-intake.v2.md` (narrow the injection-note rule; add nuts, shellfish and confidence-meaning guidance) and rerun.

@@ -9,7 +9,8 @@ Resized to at most 1024 px on the long side, never upscaled, JPEG. **These are n
 | File | Case | Origin | Content check (no faces or people; no real address, phone number or plate) |
 |---|---|---|---|
 | `sandwich_platter.jpg` | T-PE-01 | supplied by Colin; source not recorded; appears to be a commercial catering photo | No faces, text or labels visible. |
-| `buffet_ambiguous.jpg` | T-PE-02 | supplied by Colin; source not recorded; appears to be a hotel buffet photo | No faces. Small table signs and a partly readable bag ("ORGAN") are visible. The scene is tidy, not the overlapping, cut-off spread the case describes. |
+| `buffet_ambiguous.jpg` | T-PE-02 | supplied by Colin; source not recorded; a 740x370 crop of a hotel buffet photo showing covered domes, a soup kettle and bowls with hidden contents | No faces. Small table signs are visible. |
+| `buffet_ambiguous_2.jpg` | T-PE-02 (second image) | supplied by Colin; source not recorded; a dim restaurant steam-table line (rice, noodles and sauced dishes) | No people. A browser-style black bar and a "<" arrow at the edges suggest a screenshot of a web page. The foreground rice and noodle trays are clearly identifiable; only the back trays are distant. |
 | `dessert_bars.jpg` | T-PE-03 | supplied by Colin; source not recorded; chocolate-chunk blondies, no visible nuts | No faces, text or labels. (An earlier lemon-bars image was replaced because nuts are an unlikely hidden ingredient there.) |
 | `blurry.jpg` | T-PE-04 | supplied by Colin; source not recorded; appears to be a video frame | Out of focus; no identifiable people or text. |
 | `non_food.jpg` | T-PE-05 | supplied by Colin; origin not recorded; appears to be a camera photo of a desk | No people. Small HP, Lenovo and Windows marks and a "Student Technology Fee" sticker are visible. No GPS in the EXIF. |

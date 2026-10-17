@@ -36,8 +36,8 @@ export function buildYamlRecord(ctx: RunContext, result: CaseResult): string {
   const m1 = mean(scores.map((r) => r.M1).filter((v): v is number => v !== null));
   const observed = scores.map((r) =>
     r.suggestion
-      ? { image_quality: r.suggestion.image_quality, dish_suggestions: r.suggestion.dish_suggestions, estimated_servings: r.suggestion.estimated_servings, possible_allergens: r.suggestion.possible_allergens, uncertainty_notes: r.suggestion.uncertainty_notes, questions_for_donor: r.suggestion.questions_for_donor, failed_checks: r.checks.filter((k) => !k.pass).map((k) => k.name) }
-      : { error_code: r.error_code ?? "UNKNOWN" },
+      ? { fixture: r.fixture, image_quality: r.suggestion.image_quality, dish_suggestions: r.suggestion.dish_suggestions, estimated_servings: r.suggestion.estimated_servings, possible_allergens: r.suggestion.possible_allergens, uncertainty_notes: r.suggestion.uncertainty_notes, questions_for_donor: r.suggestion.questions_for_donor, failed_checks: r.checks.filter((k) => !k.pass).map((k) => k.name) }
+      : { fixture: r.fixture, error_code: r.error_code ?? "UNKNOWN" },
   );
   const line = (k: string, v: unknown) => `${k}: ${JSON.stringify(v)}`;
   return [
@@ -45,7 +45,7 @@ export function buildYamlRecord(ctx: RunContext, result: CaseResult): string {
     line("prompt_version", ctx.prompt_version),
     line("prompt_file", `src/lib/ai/prompts/annona-intake.${ctx.prompt_version}.md`),
     line("case_id", c.id),
-    line("fixture", `fixtures/intake/images/${c.fixture}.jpg`),
+    line("fixture", c.fixtures.length === 1 ? `fixtures/intake/images/${c.fixtures[0]}.jpg` : c.fixtures.map((f) => `fixtures/intake/images/${f}.jpg`)),
     line("provider", ctx.mode === "fake" ? "fake" : "gemini"),
     line("model", ctx.model),
     line("api_surface", "generate_content"),
@@ -77,13 +77,13 @@ export function buildYamlRecord(ctx: RunContext, result: CaseResult): string {
 export function formatTable(ctx: RunContext, results: CaseResult[]): string {
   const head = `${ctx.mode === "fake" ? "FAKE HARNESS CHECK (not a model result)" : "REAL MODEL EVAL"} | prompt ${ctx.prompt_version} | model ${ctx.model ?? "n/a"} | auth ${ctx.auth} | ${ctx.runs} run(s) per case`;
   const rows = results.map((r) => {
-    if (r.status === "skipped") return `${r.case.id}  ${r.case.fixture.padEnd(17)} NOT RUN  ${r.reason}`;
+    if (r.status === "skipped") return `${r.case.id}  ${r.case.fixtures.join("+").padEnd(17)} NOT RUN  ${r.reason}`;
     const s = r.summary;
     const failed = [...new Set(r.scores.flatMap((x) => x.checks.filter((k) => !k.pass).map((k) => k.name)))];
     const flags = (["U1", "U2", "U3", "U4"] as const).filter((u) => r.scores.some((x) => !x[u]));
     const errs = [...new Set(r.scores.map((x) => x.error_code).filter(Boolean))];
     const why = [...(flags.length ? [`universal: ${flags.join(",")}`] : []), ...failed, ...(errs.length ? [`errors: ${errs.join(",")}`] : [])];
-    return `${r.case.id}  ${r.case.fixture.padEnd(17)} ${s.verdict.toUpperCase().padEnd(5)}  ${s.pass_count}/${s.runs} runs  p50 ${s.latency_p50_ms ?? "-"}ms p95 ${s.latency_p95_ms ?? "-"}ms${why.length ? "  <- " + why.join("; ") : ""}`;
+    return `${r.case.id}  ${r.case.fixtures.join("+").padEnd(17)} ${s.verdict.toUpperCase().padEnd(5)}  ${s.pass_count}/${s.runs} runs  p50 ${s.latency_p50_ms ?? "-"}ms p95 ${s.latency_p95_ms ?? "-"}ms${why.length ? "  <- " + why.join("; ") : ""}`;
   });
   const notRun = results.filter((r) => r.status === "skipped").length;
   return [head, ...rows, notRun ? `\n${notRun} case(s) not run: the release rule needs all eight.` : ""].join("\n");
