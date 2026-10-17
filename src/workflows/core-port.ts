@@ -7,6 +7,7 @@ import type {
   InboundIgnoreReason,
   InboundResult,
   MessagingIdentityStatus,
+  OfferMessageView,
   OutboundMessage,
   Result,
 } from "@/contracts";
@@ -58,4 +59,24 @@ export type MessagingCore = {
   recordOutboundMessage(input: { message: OutboundMessage; provider_message_id: string | null }): Promise<void>;
   /** True when outbound_messages already holds this idempotency key (makes reprocessing a reclaimed row safe). */
   hasOutboundMessage(idempotency_key: string): Promise<boolean>;
+};
+
+/** The dispatch side of core that tick() drives (CONTRACTS §7, §9.3). Every step is a conditional update in core. */
+export type DispatchCore = {
+  expireDue(): Promise<{
+    expired_offer_ids: string[];
+    expired_donation_ids: string[];
+    dispatchable_donation_ids: string[];
+  }>;
+  listDispatchableDonations(): Promise<{ donation_id: string }[]>;
+  /** Creates the next wave of offers for an eligible donation (S-04), or marks it unmatched (S-05). */
+  createNextOffers(input: { donation_id: string }): Promise<Result<{ offer_id: string }[]>>;
+  listPendingSendOffers(): Promise<{ offer_id: string }[]>;
+  /** Commits the offer as `open` with its deadline before any send; returns what the message is built from. */
+  openOfferForSend(input: {
+    offer_id: string;
+  }): Promise<Result<{ offer_id: string; identity: IdentityView; message_view: OfferMessageView }>>;
+  markOfferSendFailed(input: { offer_id: string; reason: string }): Promise<Result<unknown>>;
+  recordOfferProviderMessage(input: { offer_id: string; provider_message_id: string }): Promise<Result<unknown>>;
+  setLastTick(at: string): Promise<void>;
 };

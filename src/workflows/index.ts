@@ -10,14 +10,8 @@ import {
 
 const OWNER = "Dev 3";
 
-export type TickReport = {
-  at: string;
-  expired_offers: number;
-  expired_donations: number;
-  offers_created: number;
-  offers_sent: number;
-  send_failures: number;
-};
+export type { TickReport } from "./tick";
+import type { TickReport } from "./tick";
 
 /** Same path for real Photon messages and simulated-phone messages, including donor photos. */
 export async function handleInbound(_msg: InboundMessage, _deps?: Deps): Promise<InboundResult> {
