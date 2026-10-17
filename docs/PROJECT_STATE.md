@@ -9,10 +9,10 @@
 | Item | Value |
 |---|---|
 | Phase | Event: build window (code allowed since Sat Oct 17, 12:00 PM PDT per the organizers' early start; CLAUDE.md note). |
-| Last known passing build | `main` at **3c43862**, run 2026-10-17 ~15:50 PDT in the captain worktree: `pnpm lint`, `pnpm typecheck`, `pnpm build` exit 0; `pnpm test` exit 0 with **1283 passed, 26 skipped (gated real-Postgres tests), 1 todo** (53 files). PGlite and fakes only; nothing real. |
+| Last known passing build | `main` at **3c43862** (before #9 and #10 merged; re-measure after the next merge), run 2026-10-17 ~15:50 PDT in the captain worktree: `pnpm lint`, `pnpm typecheck`, `pnpm build` exit 0; `pnpm test` exit 0 with **1283 passed, 26 skipped (gated real-Postgres tests), 1 todo** (53 files). PGlite and fakes only; nothing real. |
 | Baseline | **Done.** Annotated tag `baseline` (object 2d7215e) points to **BASELINE_SHA `f750162953dbe37b89111071976c8fd247e96f57`** (commit 2026-10-17 12:12 PDT, contracts v0.4). Repo https://github.com/Aieda1l/annona is **public** (verified with `gh repo view`). |
-| Contracts version | See the `docs/CONTRACTS.md` header (the only place the number is stated, D-034). `main` has v0.4; v0.5 (spec) is in PR #9 and its types are in PR #10, both open. |
-| Decisions | D-036, D-038 and D-039 ACCEPTED by the captain 2026-10-17 (D-036/D-038 still need Dev 3's explicit gate and expiry sign-off on PR #9; D-039 was narrowed the same day). D-037 PROPOSED. Earlier decisions as in `docs/DECISIONS.md`. |
+| Contracts version | See the `docs/CONTRACTS.md` header (the only place the number is stated, D-034). v0.5 (spec, PR #9) and its types (PR #10) are merged on `main`. |
+| Decisions | D-036, D-038 and D-039 ACCEPTED by the captain 2026-10-17. PR #9 (contracts v0.5) is merged with Dev 3's approval; D-039 was narrowed the same day and its earlier-word blocklist dropped (spec PR #26; code change requested on #16). D-037 PROPOSED. Earlier decisions as in `docs/DECISIONS.md`. |
 | Entry doc | `docs/KICKOFF.md` (D-034) |
 | Next checkpoint | **CP1 Lane slices, Sat 4:00 PM** (partly reached, see below) |
 
@@ -98,10 +98,10 @@
 
 | ID | Short form |
 |---|---|
-| D-036 | G-01 as written: a `pending` donor is `needs_review` whether or not licensed; any other non-approved donor is `rejected`. ACCEPTED (captain). Needs Dev 3's explicit gate sign-off on PR #9. |
+| D-036 | G-01 as written: a `pending` donor is `needs_review` whether or not licensed; any other non-approved donor is `rejected`. ACCEPTED (captain). Dev 3 approved PR #9 at 64ac044. |
 | D-037 | `findCandidates` takes `busy_courier_ids`, `committed_servings`, `active_provider`, `donor_location`; malformed top-level input returns `[]`. PROPOSED. Only `busy_courier_ids` and `donor_location` are implemented. |
-| D-038 | One cutoff resolution rule for S-06/S-08/S-09/S-14/S-15/S-16 and claim step 6: stored cutoff, else `min(donor_pickup_by, discard_by)`, else reached. ACCEPTED (captain). Needs Dev 3's explicit expiry sign-off. |
-| D-039 | Opt-out words honored narrowly in short messages (`STOP`, `STOPALL`, `UNSUBSCRIBE`; `END`/`QUIT`/`CANCEL` only as the whole message; image captions never). ACCEPTED, then narrowed the same day. Open question: whether the earlier-word blocklist (YES/NO/DECLINE/ACCEPT/JOIN) should stay (Dev 3 says it misses real opt-outs). |
+| D-038 | One cutoff resolution rule for S-06/S-08/S-09/S-14/S-15/S-16 and claim step 6: stored cutoff, else `min(donor_pickup_by, discard_by)`, else reached. ACCEPTED (captain). Dev 3 approved PR #9 at 64ac044. |
+| D-039 | Opt-out words honored narrowly in short messages (`STOP`, `STOPALL`, `UNSUBSCRIBE`; `END`/`QUIT`/`CANCEL` only as the whole message; image captions never). ACCEPTED, narrowed the same day, then the earlier-word blocklist (YES/NO/DECLINE/ACCEPT/JOIN) was dropped on Dev 3's suggestion because it made "No, stop texting me" a decline. Spec in PR #26; the grammar code change is requested on PR #16 (Dev 3's lane). |
 
 ### 3.2 Resolved in contracts v0.2 (no longer open)
 
@@ -135,7 +135,7 @@
 | IB-5 | PGlite inside `next dev` untested (ARCHITECTURE §16) | Dev 2 spike SP-6; fallback is a personal Supabase project | Dev 2 |
 | IB-6 | `GET /api/dashboard`, `GET /api/donations/:id`, operator actions, handoff and the other read-model routes still return 501 on `main`; the dashboard, detail page and donor status page cannot show live data. | Dev 2's read-model PR ("PR 1c", after #9 and #10) | Dev 2 |
 | IB-7 | `LinkVerification` (the `/v` checklist) is a placeholder; scene 1 by message cannot run. | Dev 1 builds it against `/api/verify/*` once Dev 2 and Dev 3 wire the links | Dev 1 |
-| IB-8 | Dev 3's explicit sign-off is missing on D-036/D-038 (PR #9) and on the gate rules changed in Dev 2's follow-up PR #21 (OWNERSHIP section 6); #16 must match the narrowed D-039 before it merges. | Dev 3 returns (usage reset 4:00 PM) | Dev 3 |
+| IB-8 | Dev 3's review of Dev 2's follow-up PR #21 (including the gate rules it changes, OWNERSHIP section 6) is outstanding, and #16 must drop its earlier-word blocklist to match D-039 (spec PR #26) before it merges. | Dev 3 reviews #21 and updates #16 | Dev 3 |
 | IB-9 | Deployment (Vercel) and the Devpost project shell need a human: interactive logins, billing check, the Devpost form. | A human does them; the Devpost text is drafted in PR #24 | captain + team |
 | IB-10 | The real Photon gateway and the real Gemini adapter have no verified evidence, so the Photon and Gemini tracks cannot be claimed yet. | T-MS-13 / T-E2E-04 and T-IN-10 recorded | Dev 3, Dev 1 |
 
