@@ -14,7 +14,7 @@ export type VisionMeta = {
   prompt_version?: string;
 };
 
-/** PROMPT_EVAL §6 U3 word list. Matched case-insensitively after NFKC and hyphen normalization. */
+/** PROMPT_EVAL §6 U3 word list. Matched after NFKC, format-character stripping, confusable folding, lowercasing and hyphen normalization. */
 const CLAIM_PATTERNS: readonly RegExp[] = [
   /\bsafe\b/,
   /\ballergen[- ]free\b/,
@@ -32,12 +32,23 @@ const CLAIM_PATTERNS: readonly RegExp[] = [
   /\bdegrees\b/,
 ];
 
+// Cyrillic and Greek letters that render like Latin ones, so "ѕafe" cannot dodge /\bsafe\b/.
+const CONFUSABLES: Record<string, string> = {
+  а: "a", в: "b", с: "c", е: "e", к: "k", м: "m", н: "h", о: "o", р: "p", т: "t", у: "y", х: "x",
+  і: "i", ј: "j", ѕ: "s", ԁ: "d", ӏ: "l", α: "a", ε: "e", ι: "i", ο: "o", ρ: "p", υ: "u", ν: "v", κ: "k", τ: "t",
+};
+const CONFUSABLE_RE = new RegExp(`[${Object.keys(CONFUSABLES).join("")}]`, "g");
+
 function normalize(s: string): string {
   return s
     .normalize("NFKC")
+    .replace(/\u00ad/g, "-") // a soft hyphen is a hidden hyphen: "gluten\u00adfree"
+    .replace(/\p{Cf}/gu, "") // zero-width, bidi marks
+    .toLowerCase()
+    .replace(CONFUSABLE_RE, (c) => CONFUSABLES[c]!)
     .replace(/[‐-―−]/g, "-")
-    .replace(/\s+/g, " ")
-    .toLowerCase();
+    .replace(/\s*-\s*/g, "-")
+    .replace(/\s+/g, " ");
 }
 
 export function containsSafetyClaim(s: string): boolean {

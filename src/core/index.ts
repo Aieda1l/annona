@@ -10,7 +10,6 @@ import {
   type Deps,
   type DeliveryStatusEvent,
   type DonationCard,
-  type EligibilityDecision,
   type HandoffStep,
   type InboundIgnoreReason,
   type InboundResult,
@@ -19,7 +18,6 @@ import {
   type OutboundMessage,
   type Result,
   type StoreKind,
-  type Clock,
   type VerificationLinkView,
   type VerifiedFacts,
   type VisionSuggestion,
@@ -32,19 +30,10 @@ import {
 const OWNER = "Dev 2";
 type Pending = Record<string, unknown>; // contracts-2: replace with the typed entity
 
-// ----- pure -----
-export function evaluateEligibility(_input: {
-  facts: VerifiedFacts;
-  donor: Pending;
-  policy: Pending;
-  now: Date;
-}): EligibilityDecision {
-  throw notImplementedError(OWNER, "evaluateEligibility");
-}
-
-export function findCandidates(_input: Pending): Pending[] {
-  throw notImplementedError(OWNER, "findCandidates");
-}
+// ----- pure (CONTRACTS §9.3) -----
+export { evaluateEligibility } from "./eligibility";
+export { findCandidates } from "./matching";
+export { createTestClock } from "./clock";
 
 // ----- intake (called by Dev 1) -----
 export async function storeDonationImage(_input: { mime: string; bytes: Uint8Array }, _deps?: Deps): Promise<Result<{ image_id: string }>> {
@@ -239,8 +228,4 @@ export async function getSystemStatus(
 
 export async function resetDemo(_input: { keep_identities: true }, _deps?: Deps): Promise<Result<{ reset_at: string }>> {
   return notImplementedResult(OWNER, "resetDemo");
-}
-
-export function createTestClock(_start: Date): Clock & { advance(ms: number): void } {
-  throw notImplementedError(OWNER, "createTestClock");
 }

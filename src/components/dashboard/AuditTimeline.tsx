@@ -8,6 +8,9 @@ export function AuditTimeline({ events }: { events: readonly AuditEvent[] }) {
       {events.map((e) => (
         <li key={e.id}>
           <span className="font-mono">{formatPacific(e.at)}</span> · {e.type} · {e.actor.role}
+          {e.mode.vision || e.mode.messaging
+            ? ` · ${[e.mode.vision && `AI ${e.mode.vision}`, e.mode.messaging && `messaging ${e.mode.messaging}`].filter(Boolean).join(", ")}`
+            : ""}
         </li>
       ))}
     </ol>

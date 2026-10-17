@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DashboardSnapshot, OperatorAction } from "@/contracts";
-import { OperatorDashboard } from "./OperatorDashboard";
+import { postJson, type Outcome } from "./api";
+import { OperatorDashboard, type DemoHandlers } from "./OperatorDashboard";
 import { formatPacific } from "./format";
 
 const POLL_MS = 2000;
@@ -24,21 +25,28 @@ export function LiveOperatorDashboard() {
   const [failure, setFailure] = useState<Failure | null>(null);
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
 
+  // Only the most recently started load may apply its result, so a slow older poll cannot overwrite newer state.
+  const loadSeq = useRef(0);
+
   const load = useCallback(async () => {
     if (document.hidden) return;
+    const seq = ++loadSeq.current;
+    const latest = () => seq === loadSeq.current;
     try {
       const res = await fetch("/api/dashboard", { cache: "no-store" });
       if (!res.ok) {
-        setFailure(await readFailure(res));
+        const f = await readFailure(res);
+        if (latest()) setFailure(f);
         return;
       }
       const body = await res.json();
+      if (!latest()) return;
       if (body?.ok) {
         setSnapshot(body.data);
         setFailure(null);
       } else setFailure({ code: body?.error?.code ?? "INTERNAL", message: body?.error?.message ?? "Request failed." });
     } catch {
-      setFailure({ code: "UNREACHABLE", message: "The server could not be reached." });
+      if (latest()) setFailure({ code: "UNREACHABLE", message: "The server could not be reached." });
     }
   }, []);
 
@@ -75,6 +83,17 @@ export function LiveOperatorDashboard() {
     }
   }
 
+  const refreshAfter = async (o: Promise<Outcome>): Promise<Outcome> => {
+    const out = await o;
+    await load();
+    return out;
+  };
+  const demo: DemoHandlers = {
+    onTick: () => refreshAfter(postJson("/api/internal/tick")),
+    onReset: () => refreshAfter(postJson("/api/demo/reset")),
+    onDispatch: (id) => refreshAfter(postJson(`/api/donations/${id}/dispatch`)),
+  };
+
   return (
     <>
       {failure && (
@@ -90,6 +109,8 @@ export function LiveOperatorDashboard() {
           sourceLabel={failure ? "STALE server state" : "Live server state"}
           onAction={onAction}
           actionErrors={actionErrors}
+          // Demo controls are hidden while the snapshot is stale: the last-seen mode may no longer match the server.
+          demo={snapshot.modes.demo_accelerated && !failure ? demo : undefined}
         />
       ) : (
         !failure && <p className="p-4 text-sm">Loading dashboard…</p>

@@ -86,6 +86,15 @@ describe("defaults (T-IN-12)", () => {
 });
 
 describe("submitting", () => {
+  it("shows an error and re-enables submit when onSubmit rejects", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error("boom"));
+    render(<VerificationForm suggestion={scene1_vision_suggestion} onSubmit={onSubmit} />);
+    fillRequired();
+    fireEvent.click(screen.getByRole("button", { name: /submit for review/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not be submitted/i);
+    expect(screen.getByRole("button", { name: /submit for review/i })).toBeEnabled();
+  });
+
   it("with only the required fields filled, everything else is submitted as unknown", () => {
     const { onSubmit } = renderForm();
     fillRequired();

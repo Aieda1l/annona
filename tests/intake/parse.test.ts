@@ -91,6 +91,13 @@ const CLAIMS = [
   "kept at 5 °C",
   "stored at 40 degrees",
   "NUT-FREE",
+  // Invisible or confusable characters must not defeat the guard (PR #5 review).
+  "sa\u200bfe to eat",
+  "allergen\u200b-free",
+  "gluten\u00adfree",
+  "gluten - free",
+  "gluten \u2013 free",
+  "\u0455afe",
 ];
 
 type FieldCase = { field: string; patch: (s: string) => Record<string, unknown> };
