@@ -150,7 +150,7 @@ describe("LiveOperatorDashboard", () => {
     expect(screen.getAllByTestId("donation-card").length).toBeGreaterThan(0);
   });
 
-  it("Reset demo posts to /api/demo/reset with no body (CONTRACTS §10 lists none)", async () => {
+  it("Reset demo posts to /api/demo/reset with no body (CONTRACTS section 10 lists none)", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     vi.stubGlobal(
       "fetch",
