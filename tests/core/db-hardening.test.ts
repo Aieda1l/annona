@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEMO_ACTORS, type DispatchStore } from "@/contracts";
@@ -130,5 +133,55 @@ describe("indexes for the queries the claim, sibling-supersede and dashboard pat
   it("exist", async () => {
     const names = (rowsOf(await storeInternals(store).db.execute(sql`select indexname from pg_indexes where schemaname = 'public'`)) as { indexname: string }[]).map((r) => r.indexname);
     expect(names).toEqual(expect.arrayContaining(["offers_donation_status_idx", "donations_donor_idx"]));
+  });
+});
+
+describe("upgrading a database that already ran migration 0000 (what every dev's local PGlite folder has)", () => {
+  /** A migrations folder holding only the first migration, so a database can be built at the pre-hardening version. */
+  function folderWithFirstMigrationOnly(): string {
+    const src = join(process.cwd(), "src", "db", "migrations");
+    const journal = JSON.parse(readFileSync(join(src, "meta", "_journal.json"), "utf8")) as { entries: Array<{ tag: string }> };
+    expect(journal.entries.length).toBeGreaterThanOrEqual(2); // 0000 and the hardening migration
+    const dir = mkdtempSync(join(tmpdir(), "annona-mig0-"));
+    mkdirSync(join(dir, "meta"));
+    const first = journal.entries[0]!;
+    copyFileSync(join(src, `${first.tag}.sql`), join(dir, `${first.tag}.sql`));
+    writeFileSync(join(dir, "meta", "_journal.json"), JSON.stringify({ ...journal, entries: [first] }));
+    return dir;
+  }
+  const count = async (s: DispatchStore, table: string) =>
+    Number((rowsOf(await storeInternals(s).db.execute(sql.raw(`select count(*)::int as n from ${table}`))) as { n: number }[])[0]!.n);
+
+  it("keeps the data, turns RLS on and adds the new constraints, without touching 0000", async () => {
+    const old = folderWithFirstMigrationOnly();
+    const s = createDispatchStore({ kind: "pglite", database_url: undefined, pglite_dir: undefined });
+    try {
+      await runMigrations(s, old);
+      // Control: at 0000 the protections are not there yet, so the later assertions can really fail.
+      const before = rowsOf(await storeInternals(s).db.execute(sql`select relrowsecurity from pg_class where relname = 'donors'`)) as { relrowsecurity: boolean }[];
+      expect(before[0]!.relrowsecurity).toBe(false);
+
+      await seedStore(s, { now: NOW, messaging_provider: "fake" });
+      const d = donationRow();
+      await storeInternals(s).db.insert(donations).values(d);
+      await storeInternals(s).db.insert(offers).values(offerRow(d.id!, { status: "open", sent_at: NOW, expires_at: new Date(NOW.getTime() + 60_000) }));
+      const counts = { donors: await count(s, "donors"), donations: await count(s, "donations"), offers: await count(s, "offers"), identities: await count(s, "messaging_identities") };
+
+      await runMigrations(s); // applies only the hardening migration
+      await runMigrations(s); // and is safe to run again
+
+      expect({ donors: await count(s, "donors"), donations: await count(s, "donations"), offers: await count(s, "offers"), identities: await count(s, "messaging_identities") }).toEqual(counts);
+      const after = rowsOf(await storeInternals(s).db.execute(sql`select relname, relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r'`)) as { relname: string; relrowsecurity: boolean }[];
+      expect(after.filter((r) => !r.relrowsecurity).map((r) => r.relname)).toEqual([]);
+      const bad = await storeInternals(s).db.transaction(async (tx) => {
+        const d2 = donationRow();
+        await tx.insert(donations).values(d2);
+        await tx.insert(offers).values(offerRow(d2.id!, { short_code: "H4M9", status: "open", sent_at: NOW, expires_at: null }));
+      }).catch((e: unknown) => e);
+      expect(constraintOf(bad)).toBe("offers_open_has_deadline_check");
+    } finally {
+      await closeStore(s);
+      rmSync(old, { recursive: true, force: true });
+    }
   });
 });

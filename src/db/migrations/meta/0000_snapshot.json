@@ -1,5 +1,5 @@
 {
-  "id": "b4e14425-4434-443a-a871-b6cb94e298d0",
+  "id": "18b28d9f-437d-4453-9b2b-681afde866c7",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -99,7 +99,7 @@
           "value": "\"actor_role\" in ('donor', 'recipient', 'courier', 'operator', 'system')"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.couriers": {
       "name": "couriers",
@@ -171,7 +171,7 @@
           "value": "\"couriers\".\"is_synthetic\" = true"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.donation_images": {
       "name": "donation_images",
@@ -220,7 +220,7 @@
           "value": "octet_length(\"donation_images\".\"bytes\") <= 5242880"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.donations": {
       "name": "donations",
@@ -355,21 +355,6 @@
           "method": "btree",
           "with": {}
         },
-        "donations_donor_idx": {
-          "name": "donations_donor_idx",
-          "columns": [
-            {
-              "expression": "donor_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "donations_source_ref_uq": {
           "name": "donations_source_ref_uq",
           "columns": [
@@ -441,16 +426,12 @@
           "name": "donations_version_check",
           "value": "\"donations\".\"version\" >= 1"
         },
-        "donations_claim_linked_check": {
-          "name": "donations_claim_linked_check",
-          "value": "\"donations\".\"status\" not in ('claimed', 'collected') or \"donations\".\"claimed_offer_id\" is not null"
-        },
         "donations_synthetic_check": {
           "name": "donations_synthetic_check",
           "value": "\"donations\".\"is_synthetic\" = true"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.donors": {
       "name": "donors",
@@ -520,7 +501,7 @@
           "value": "\"donors\".\"is_synthetic\" = true"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.inbound_messages": {
       "name": "inbound_messages",
@@ -627,7 +608,7 @@
           "value": "\"provider\" in ('photon', 'fake')"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.messaging_identities": {
       "name": "messaging_identities",
@@ -736,7 +717,7 @@
           "value": "\"status\" in ('awaiting_join', 'joined', 'opted_out')"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.offers": {
       "name": "offers",
@@ -930,27 +911,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "offers_donation_status_idx": {
-          "name": "offers_donation_status_idx",
-          "columns": [
-            {
-              "expression": "donation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1014,16 +974,12 @@
           "name": "offers_wave_no_check",
           "value": "\"offers\".\"wave_no\" >= 1"
         },
-        "offers_open_has_deadline_check": {
-          "name": "offers_open_has_deadline_check",
-          "value": "\"offers\".\"status\" <> 'open' or \"offers\".\"expires_at\" is not null"
-        },
         "offers_short_code_check": {
           "name": "offers_short_code_check",
           "value": "\"offers\".\"short_code\" ~ '^[ACDEFHJKMNPRTUVWXY3479]{4}$'"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.outbound_messages": {
       "name": "outbound_messages",
@@ -1136,7 +1092,7 @@
           "value": "\"provider_mode\" in ('real', 'fake')"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.policy_config": {
       "name": "policy_config",
@@ -1212,7 +1168,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.provider_status_events": {
       "name": "provider_status_events",
@@ -1295,7 +1251,7 @@
           "value": "\"provider\" in ('photon', 'fake')"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.recipients": {
       "name": "recipients",
@@ -1397,7 +1353,7 @@
           "value": "\"recipients\".\"is_synthetic\" = true"
         }
       },
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.system_status": {
       "name": "system_status",
@@ -1428,7 +1384,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": true
+      "isRLSEnabled": false
     },
     "public.verification_links": {
       "name": "verification_links",
@@ -1548,13 +1504,8 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "verification_links_token_hash_hex_check": {
-          "name": "verification_links_token_hash_hex_check",
-          "value": "\"verification_links\".\"token_hash\" ~ '^[0-9a-f]{64}$'"
-        }
-      },
-      "isRLSEnabled": true
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
   "enums": {},
