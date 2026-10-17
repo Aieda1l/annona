@@ -119,3 +119,53 @@ describe("T-MS-18 not ready, missing and unusable attachments", () => {
     expect(JSON.stringify(await fetcher.fetchImage(ID))).not.toContain(KEY);
   });
 });
+
+// Review of PR #19 (items 1 to 3): bound the download even when Photon omits sizeBytes, re-check the MIME type of what
+// was actually served, and cap Retry-After so a webhook handler can never be parked for an hour.
+describe("T-MS-18 hardening", () => {
+  const MB = 1024 * 1024;
+  const noSize = () => meta({ sizeBytes: undefined });
+  const withLength = (length: number | null, bytes = BYTES, type: string | null = "image/jpeg") =>
+    new Response(bytes as unknown as BodyInit, {
+      status: 200,
+      headers: { ...(type ? { "content-type": type } : {}), ...(length === null ? {} : { "content-length": String(length) }) },
+    });
+
+  it("refuses by Content-Length, without reading the body, when the metadata has no size and the file is over 5 MB", async () => {
+    const unreadable = new Response(
+      new ReadableStream({
+        pull() {
+          throw new Error("the body must not be read");
+        },
+      }),
+      { status: 200, headers: { "content-type": "image/jpeg", "content-length": String(6 * MB) } },
+    );
+    const { fetcher } = setup((u) => (u === META ? noSize() : unreadable));
+    expect(await fetcher.fetchImage(ID)).toEqual({ ok: false, reason: "too_large" });
+  });
+
+  it("will not buffer a body it cannot bound: no metadata size and no Content-Length means unavailable", async () => {
+    const { fetcher } = setup((u) => (u === META ? noSize() : withLength(null)));
+    expect(await fetcher.fetchImage(ID)).toEqual({ ok: false, reason: "unavailable" });
+  });
+
+  it("accepts a file within the limit when Content-Length vouches for it", async () => {
+    const { fetcher } = setup((u) => (u === META ? noSize() : withLength(BYTES.length)));
+    expect(await fetcher.fetchImage(ID)).toMatchObject({ ok: true, image: { mime: "image/jpeg" } });
+  });
+
+  it.each(["application/octet-stream", "text/html", "application/pdf"])(
+    "rejects content served as %s even though the metadata said image",
+    async (type) => {
+      const { fetcher } = setup((u) => (u === META ? meta() : bytesResponse(BYTES, type)));
+      expect(await fetcher.fetchImage(ID)).toEqual({ ok: false, reason: "not_image" });
+    },
+  );
+
+  it("caps Retry-After at 10 seconds", async () => {
+    const huge = () => new Response("{}", { status: 409, headers: { "retry-after": "3600" } });
+    const { fetcher, sleeps } = setup((u, n) => (u === META ? meta() : n === 1 ? huge() : bytesResponse(BYTES)));
+    expect(await fetcher.fetchImage(ID)).toMatchObject({ ok: true });
+    expect(sleeps).toEqual([10_000]);
+  });
+});

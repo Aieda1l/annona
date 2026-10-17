@@ -11,6 +11,8 @@ export type FixtureId = (typeof FIXTURE_IDS)[number];
 
 export const isFixtureId = (value: string): value is FixtureId => (FIXTURE_IDS as readonly string[]).includes(value);
 
+// NOTE (deployment): resolved against process.cwd(). That is right for `pnpm start` / `pnpm dev` on the demo laptop, but
+// fragile under a Next standalone or serverless build, where the images would have to be traced into the bundle.
 const DEFAULT_DIR = () => join(process.cwd(), "fixtures/intake/images");
 
 export async function readFixtureImage(id: string, dir: string = DEFAULT_DIR()): Promise<FetchImageResult> {

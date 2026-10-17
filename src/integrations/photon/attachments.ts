@@ -7,6 +7,7 @@ const BASE_URL = "https://api.photon.codes";
 const MAX_BYTES = 5 * 1024 * 1024; // message photos <= 5 MB (donation_images CHECK)
 const MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_MS = 5000; // Photon documents Retry-After: 5
+const MAX_RETRY_MS = 10_000; // a huge Retry-After must never park an inbound request
 // ASSUMPTION: the content endpoint may hold a request up to ~10 s before answering NOT_READY (OpenAPI), so a
 // per-attempt timeout shorter than that would cut off the very answer we are waiting for.
 const ATTEMPT_TIMEOUT_MS = 12_000;
@@ -34,7 +35,7 @@ export function createAttachmentFetcher(config: { project_id: string; api_key: s
 
   const retryAfterMs = (response: Response): number => {
     const seconds = Number(response.headers.get("retry-after"));
-    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : DEFAULT_RETRY_MS;
+    return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, MAX_RETRY_MS) : DEFAULT_RETRY_MS;
   };
 
   return {
@@ -60,10 +61,19 @@ export function createAttachmentFetcher(config: { project_id: string; api_key: s
           }
           if (!response.ok) return fail("unavailable");
 
+          // Bound the download before buffering it. Metadata usually carries the size; when it does not, the body must
+          // vouch for itself with a Content-Length, otherwise it cannot be bounded and is refused.
+          const lengthHeader = response.headers.get("content-length");
+          const declaredLength = lengthHeader === null ? Number.NaN : Number(lengthHeader);
+          if (Number.isFinite(declaredLength) && declaredLength > MAX_BYTES) return fail("too_large");
+          if (size === null && !Number.isFinite(declaredLength)) return fail("unavailable");
+
           const bytes = new Uint8Array(await response.arrayBuffer());
           if (bytes.length > MAX_BYTES) return fail("too_large");
           if (size !== null && bytes.length !== size) return fail("unavailable"); // truncated or wrong file
           const mime = (response.headers.get("content-type") ?? declaredType).split(";")[0]?.trim().toLowerCase() ?? declaredType;
+          // The metadata said image; re-check what was actually served, which is what intake will be handed.
+          if (!mime.startsWith("image/")) return fail("not_image");
           return { ok: true, image: { mime, bytes } };
         }
         return fail("not_ready");

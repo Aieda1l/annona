@@ -37,7 +37,11 @@ const REFUSALS = new Set(["VALIDATION_FAILED", "NOT_AUTHORIZED"]);
 export function createPhotoHandler(deps: PhotoDeps) {
   return async function handlePhoto(identity: IdentityView, msg: InboundMessage): Promise<PhotoReply> {
     const base = deps.appBaseUrl()?.replace(/\/+$/, "");
-    if (!base) throw new Error("APP_BASE_URL is not set, so a checklist link cannot be built");
+    if (!base) {
+      // Every donor photo retries until this is fixed, so make the cause obvious to whoever is watching the logs.
+      console.error("[photo] APP_BASE_URL is not set: donor photos cannot be given a checklist link until it is");
+      throw new Error("APP_BASE_URL is not set, so a checklist link cannot be built");
+    }
 
     const failed: PhotoReply = {
       purpose: "intake_failed",

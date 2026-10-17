@@ -178,15 +178,40 @@ describe("T-MS-18 failures before a draft exists", () => {
     await expect(handle(DONOR, msg(image()))).rejects.toThrow(/issueVerificationLink/);
   });
 
-  it("does no work at all when the app's public URL is not configured", async () => {
+  it("does no work at all when the app's public URL is not configured, and says so loudly for the operator", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { handle, fetchImage, createDraft } = setup({ appBaseUrl: undefined });
     await expect(handle(DONOR, msg(image()))).rejects.toThrow(/APP_BASE_URL/);
     expect(fetchImage).not.toHaveBeenCalled();
     expect(createDraft).not.toHaveBeenCalled();
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("APP_BASE_URL"));
+    logged.mockRestore();
   });
 });
 
 describe("T-MS-18 reprocessing", () => {
+  it("on a redelivery re-asks intake for the same source_ref (idempotent there) but issues one link and sends one reply", async () => {
+    let announced = false;
+    const base = setup();
+    const handle = createPhotoHandler({
+      fetchImage: base.fetchImage as never,
+      createDraft: base.createDraft as never,
+      issueLink: base.issueLink as never,
+      hasOutboundMessage: async () => announced,
+      appBaseUrl: () => "https://app.example.invalid",
+      demoMode: () => true,
+    });
+    const first = await handle(DONOR, msg(image()));
+    announced = first !== null; // the inbound handler records the reply it sends
+    const second = await handle(DONOR, msg(image()));
+    expect(first).not.toBeNull();
+    expect(second).toBeNull();
+    expect(base.createDraft).toHaveBeenCalledTimes(2);
+    const refs = base.createDraft.mock.calls.map((c) => ((c as unknown[])[0] as { source_ref: string }).source_ref);
+    expect(refs).toEqual(["photon:pho_msg_photo1", "photon:pho_msg_photo1"]);
+    expect(base.issueLink).toHaveBeenCalledTimes(1);
+  });
+
   it("sends nothing and issues no second link when this draft's message was already sent", async () => {
     const { handle, issueLink, hasOutboundMessage } = setup({ sent: true });
     expect(await handle(DONOR, msg(image()))).toBeNull();
