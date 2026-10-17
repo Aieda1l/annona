@@ -18,20 +18,51 @@ const COMMAND_WORDS: Record<string, InboundCommand> = {
 // Trim whitespace and punctuation (including curly quotes) from both ends of a token.
 const EDGE_PUNCTUATION = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
 
+// NFKC first, so full-width or otherwise decorated letters (for example "ＳＴＯＰ") match the plain words.
 function tokens(text: string | null): string[] {
   return (text ?? "")
+    .normalize("NFKC")
     .split(/\s+/)
     .map((token) => token.replace(EDGE_PUNCTUATION, ""))
     .filter((token) => token.length > 0);
 }
 
-/** An image wins over any text (first image used by the photo path); otherwise the first token decides. */
+// D-039 (CONTRACTS §3.10, narrowed; the earlier-word blocklist was dropped): in a message of 8 words or fewer, STOP,
+// STOPALL and UNSUBSCRIBE opt the sender out wherever they appear, whatever comes before them. A missed opt-out is the
+// worse failure; an accidental one is undone by texting JOIN (stop_ack says so). A STOP that is part of
+// "stop by / at / in / off / over" is ordinary phrasing. END, QUIT and CANCEL are common words, so they count only as the
+// whole message. Longer messages keep the first-token rule.
+const OPT_OUT_WORDS = new Set(["stop", "stopall", "unsubscribe"]);
+const WHOLE_MESSAGE_OPT_OUT_WORDS = new Set(["cancel", "end", "quit"]);
+const STOP_PHRASE_FOLLOWERS = new Set(["by", "at", "in", "off", "over"]);
+const SHORT_MESSAGE_WORDS = 8;
+
+function isOptOut(words: string[]): boolean {
+  if (words.length > SHORT_MESSAGE_WORDS) return false;
+  const lowered = words.map((word) => word.toLowerCase());
+  if (lowered.length === 1 && WHOLE_MESSAGE_OPT_OUT_WORDS.has(lowered[0]!)) return true;
+  for (const [index, word] of lowered.entries()) {
+    if (!OPT_OUT_WORDS.has(word)) continue;
+    if (word === "stop" && STOP_PHRASE_FOLLOWERS.has(lowered[index + 1] ?? "")) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * A message that carries an image is a `photo`: its text is never read as an opt-out or any other command (D-039; a
+ * caption such as "end of day, 20 portions" is a caption). Otherwise the opt-out rule applies first, then the first
+ * token decides.
+ */
 export function parseCommand(msg: Pick<InboundMessage, "text" | "attachments">): ParsedCommand {
   if (msg.attachments.some((attachment) => attachment.kind === "image")) {
     return { command: "photo", short_code: null };
   }
 
-  const [first, second] = tokens(msg.text);
+  const words = tokens(msg.text);
+  if (isOptOut(words)) return { command: "stop", short_code: null };
+
+  const [first, second] = words;
   const command = first === undefined ? undefined : COMMAND_WORDS[first.toLowerCase()];
   if (command === undefined) return { command: "unknown", short_code: null };
 

@@ -58,3 +58,17 @@ NOTES: `next dev` generates an untracked `AGENTS.md` in the repo root; it must n
 CONTRACT CHANGES OR REQUESTS: none. Tests derive any missing status card from the 3 baseline fixtures until contracts-2 (#10) lands.
 
 NEXT SMALLEST ACTION: `/v` page mounting Dev 1's `LinkVerification` (needs no session, no-referrer + no-store headers, T-UI-07), then `/donor/new` and the donor status page.
+
+## Slice 2d - /v, donor pages, response headers, demo script (merged: #17, #20, #18; open: #22)
+
+DELIVERED: `/v` donor checklist page (no session, noindex, no-referrer metadata, never cached; mounts Dev 1's `LinkVerification`, still a placeholder). `/donor/new` web upload (`DonorIntake`: PhotoUpload -> DraftReview -> `POST /api/donations/:id/verification` -> status page; never calls dispatch). `/donor/donations/[id]` (`LiveDonorDonation`/`DonorDonationView`: plain-language status, reasons verbatim, what is still missing, offers only as status/sent/expiry, no controls). `useServerResource` polling hook (pause while hidden, one request at a time with a 10 s timeout, server `Date` header for "stale since"). `next.config` headers for `/v` (`Referrer-Policy: no-referrer`, `Cache-Control: no-store`). `docs/demo/DEMO_SCRIPT.md` draft (PR #22).
+
+EVIDENCE: on current `main` plus each PR: lint, typecheck and build exit 0; `pnpm test` 1283 passed, 26 skipped (gated real-Postgres tests), 1 todo. Real servers: `next dev` smoke for `/donor/new`, `/donor/donations/:id`, `/v` (200, no server errors); production check with `pnpm build && pnpm start`: `/v` is dynamic and served with `Referrer-Policy: no-referrer` and `Cache-Control: no-store`. Dev 1 reviewed #15, #17, #20 and pushed fixes (encoded ids, offer keys without ids, poll timeout).
+
+UNVERIFIED: the live flow end to end (`/api/dashboard` and the other read models are still 501 stubs on main; `LinkVerification` is a placeholder), 375 px layout (no Chrome on this machine), Vercel edge behavior of the `/v` headers (re-check in T-E2E-05), and the demo script (never rehearsed).
+
+CONTRACT CHANGES OR REQUESTS: none. Follow-up: the three older live components (dashboard, detail, phone) still carry their own copy of the polling pattern; move them onto `useServerResource`.
+
+NOTES: `next dev` writes an untracked `AGENTS.md` at the repo root; do not commit it (CLAUDE.md). A captain config follow-up (`agentRules: false`) would stop it.
+
+NEXT SMALLEST ACTION: rehearse the demo script once the read models and `LinkVerification` land; then T-UI-06 screenshots (needs a browser) and `docs/submission/DEVPOST.md`.

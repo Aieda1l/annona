@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   Assignment,
   ClaimResult,
@@ -63,7 +63,11 @@ const inbound = (text: string | null, over: Partial<InboundMessage> = {}): Inbou
   ...over,
 });
 
-function setup(status: MessagingIdentityStatus | null = "joined", provider: "photon" | "fake" = "photon") {
+function setup(
+  status: MessagingIdentityStatus | null = "joined",
+  provider: "photon" | "fake" = "photon",
+  photo?: Parameters<typeof createInboundHandler>[0]["photo"],
+) {
   const double = createCoreDouble();
   if (status) double.seedIdentity({ id: IDENTITY_ID, handle: HANDLE, actor_id: ACTOR_ID, status, provider });
   const sent: OutboundMessage[] = [];
@@ -75,7 +79,7 @@ function setup(status: MessagingIdentityStatus | null = "joined", provider: "pho
       return base.send(m);
     },
   };
-  return { double, sent, handle: createInboundHandler({ core: double.core, gateway }) };
+  return { double, sent, handle: createInboundHandler({ core: double.core, gateway, photo }) };
 }
 
 describe("T-MS-02 accept and decline", () => {
@@ -287,6 +291,27 @@ describe("T-MS-15 JOIN, STOP and help", () => {
     expect(double.identity(IDENTITY_ID)?.status).toBe("opted_out");
   });
 
+  it("opts a courier out when STOP is inside a short sentence (D-039)", async () => {
+    const { double, sent, handle } = setup();
+    const result = await handle(inbound("please stop messaging me"));
+    expect(double.calls.optOuts).toEqual([IDENTITY_ID]);
+    expect(result).toMatchObject({ outcome: "processed", command: "stop" });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ purpose: "stop_ack" });
+  });
+
+  it.each(["Running late, will stop by at 5", "can you cancel the other offer", "end of day, 20 portions"])(
+    "does not opt a courier out for ordinary phrasing: %j (D-039)",
+    async (text) => {
+      const { double, sent, handle } = setup();
+      const result = await handle(inbound(text));
+      expect(double.calls.optOuts).toEqual([]);
+      expect(result).toMatchObject({ outcome: "processed", command: "unknown" });
+      expect(sent[0]).toMatchObject({ purpose: "help" });
+      expect(double.identity(IDENTITY_ID)?.status).toBe("joined");
+    },
+  );
+
   it("does not send stop_ack when core failed to opt the identity out; the error propagates so the delivery is retried", async () => {
     const { double, sent, handle } = setup();
     double.failures.optOut = true;
@@ -334,5 +359,113 @@ describe("T-MS-15 JOIN, STOP and help", () => {
     const result = await handle(inbound(null, { attachments: image }));
     expect(result).toEqual({ outcome: "ignored", command: "photo", reply: null });
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("T-MS-18 photo routing", () => {
+  const image = [{ kind: "image" as const, provider_attachment_id: "pho_att_1", mime: null }];
+  const asDonor = (double: ReturnType<typeof setup>["double"], status: MessagingIdentityStatus = "joined") =>
+    double.seedIdentity({ id: IDENTITY_ID, handle: HANDLE, actor_id: ACTOR_ID, actor_role: "donor", status });
+
+  it("hands a joined donor's photo to the photo handler and sends the reply it plans", async () => {
+    const photo = vi.fn(async () => ({ purpose: "draft_ready" as const, text: "AI guess ... link", idempotency_key: "draft_ready:d1:v1" }));
+    const { double, sent, handle } = setup("joined", "photon", photo);
+    asDonor(double);
+    const result = await handle(inbound(null, { attachments: image }));
+    expect(photo).toHaveBeenCalledTimes(1);
+    expect((photo.mock.calls[0] as unknown[])[0]).toMatchObject({ id: IDENTITY_ID, actor_role: "donor" });
+    expect(result).toMatchObject({ outcome: "processed", command: "photo" });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      to_identity_id: IDENTITY_ID,
+      purpose: "draft_ready",
+      text: "AI guess ... link",
+      idempotency_key: "draft_ready:d1:v1",
+    });
+  });
+
+  it("sends the intake_failed reply the photo handler plans", async () => {
+    const photo = vi.fn(async () => ({ purpose: "intake_failed" as const, text: "couldn't use that photo", idempotency_key: "reply:pho_msg_1:v1" }));
+    const { double, sent, handle } = setup("joined", "photon", photo);
+    asDonor(double);
+    await handle(inbound(null, { attachments: image }));
+    expect(sent[0]).toMatchObject({ purpose: "intake_failed", idempotency_key: "reply:pho_msg_1:v1" });
+  });
+
+  it("sends nothing when the photo handler says this draft was already announced", async () => {
+    const photo = vi.fn(async () => null);
+    const { double, sent, handle } = setup("joined", "photon", photo);
+    asDonor(double);
+    expect(await handle(inbound(null, { attachments: image }))).toEqual({ outcome: "processed", command: "photo", reply: null });
+    expect(sent).toHaveLength(0);
+  });
+
+  // D-039 (narrowed): the text of a message that carries an image is never an opt-out.
+  it.each(["STOP", "please stop sending me these", "unsubscribe", "end of day, 20 portions"])(
+    "a joined donor's photo captioned %j is still a photo: the handler runs and nobody is opted out",
+    async (caption) => {
+      const photo = vi.fn(async () => ({ purpose: "draft_ready" as const, text: "AI guess ... link", idempotency_key: "draft_ready:d1:v1" }));
+      const { double, sent, handle } = setup("joined", "photon", photo);
+      asDonor(double);
+      const result = await handle(inbound(caption, { attachments: image }));
+      expect(photo).toHaveBeenCalledTimes(1);
+      expect(double.calls.optOuts).toEqual([]);
+      expect(double.identity(IDENTITY_ID)?.status).toBe("joined");
+      expect(result).toMatchObject({ outcome: "processed", command: "photo" });
+      expect(sent).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ purpose: "draft_ready" });
+    },
+  );
+
+  it("the same donor texting STOP without a photo is opted out and the handler is not called", async () => {
+    const photo = vi.fn(async () => null);
+    const { double, sent, handle } = setup("joined", "photon", photo);
+    asDonor(double);
+    const result = await handle(inbound("please stop messaging me"));
+    expect(photo).not.toHaveBeenCalled();
+    expect(double.calls.optOuts).toEqual([IDENTITY_ID]);
+    expect(result).toMatchObject({ outcome: "processed", command: "stop" });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ purpose: "stop_ack" });
+  });
+
+  it("never downloads or drafts for an unknown sender", async () => {
+    const photo = vi.fn(async () => null);
+    const { double, sent, handle } = setup(null, "photon", photo);
+    const result = await handle(inbound(null, { attachments: image, sender_handle: "stranger@example.invalid" }));
+    expect(result).toMatchObject({ outcome: "ignored", reply: null });
+    expect(photo).not.toHaveBeenCalled();
+    expect(sent).toHaveLength(0);
+    expect(double.calls.ignored).toHaveLength(1);
+  });
+
+  it.each(["awaiting_join", "opted_out"] as const)("never downloads or drafts for a %s donor", async (status) => {
+    const photo = vi.fn(async () => null);
+    const { double, sent, handle } = setup(status, "photon", photo);
+    asDonor(double, status);
+    const result = await handle(inbound(null, { attachments: image }));
+    expect(result).toMatchObject({ outcome: "rejected", reply: null });
+    expect(photo).not.toHaveBeenCalled();
+    expect(sent).toHaveLength(0);
+  });
+
+  it("treats a courier's image as unknown and does not call the photo handler", async () => {
+    const photo = vi.fn(async () => null);
+    const { sent, handle } = setup("joined", "photon", photo);
+    const result = await handle(inbound(null, { attachments: image }));
+    expect(result).toMatchObject({ outcome: "processed", command: "unknown" });
+    expect(photo).not.toHaveBeenCalled();
+    expect(sent[0]).toMatchObject({ purpose: "help" });
+  });
+
+  it("lets a photo failure propagate so the delivery is retried, saving no result and sending nothing", async () => {
+    const photo = vi.fn(async () => {
+      throw new Error("createDraftFromImage failed: INTERNAL");
+    });
+    const { double, sent, handle } = setup("joined", "photon", photo);
+    asDonor(double);
+    await expect(handle(inbound(null, { attachments: image }))).rejects.toThrow(/INTERNAL/);
+    expect(sent).toHaveLength(0);
+    expect(double.calls.saved).toHaveLength(0);
   });
 });
