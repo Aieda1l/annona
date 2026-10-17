@@ -1,10 +1,14 @@
+import * as core from "@/core";
 import {
   notImplementedResult,
   type Actor,
+  type Deps,
   type DonationCard,
   type Result,
   type VerificationLinkView,
 } from "@/contracts";
+import { getServices } from "@/server/container";
+import { createIntakeService } from "./service";
 
 // Server-side barrel owned by Dev 1 after the baseline (keep exported names stable). CONTRACTS §9.2.
 // UI components live in ./components (client-safe barrel) and are imported by Dev 4 only from there.
@@ -13,23 +17,26 @@ const OWNER = "Dev 1";
 
 export type ImageInput = { mime: string; bytes_base64: string };
 
-export async function createDraftFromImage(_input: {
-  actor: Actor;
-  image: ImageInput;
-  source: "web_upload" | "messaging" | "fixture";
-  source_ref?: string;
-}): Promise<Result<DonationCard>> {
-  return notImplementedResult(OWNER, "createDraftFromImage");
+// Bound to the real core and the composition root's vision provider. Core functions are stubs until
+// Dev 2's sub-PR 2(a) merges, so these return NOT_IMPLEMENTED from core until then.
+function service(deps?: Deps) {
+  return createIntakeService({ core, vision: deps?.vision ?? getServices().vision });
+}
+
+export async function createDraftFromImage(
+  input: { actor: Actor; image: ImageInput; source: "web_upload" | "messaging" | "fixture"; source_ref?: string },
+  deps?: Deps,
+): Promise<Result<DonationCard>> {
+  return service(deps).createDraftFromImage(input, deps);
 }
 
 export { parseVerifiedFacts } from "./verified-facts";
 
-export async function submitDonorVerification(_input: {
-  actor: Actor;
-  donation_id: string;
-  raw: unknown;
-}): Promise<Result<DonationCard>> {
-  return notImplementedResult(OWNER, "submitDonorVerification");
+export async function submitDonorVerification(
+  input: { actor: Actor; donation_id: string; raw: unknown },
+  deps?: Deps,
+): Promise<Result<DonationCard>> {
+  return service(deps).submitDonorVerification(input, deps);
 }
 
 export async function getLinkVerification(_input: { token: string }): Promise<Result<VerificationLinkView>> {
