@@ -13,6 +13,8 @@ export type RunContext = {
   commit_sha: string;
   command: string;
   runs: number;
+  /** The escalation model, or "off". */
+  escalation?: string;
 };
 
 export type CaseResult =
@@ -36,8 +38,8 @@ export function buildYamlRecord(ctx: RunContext, result: CaseResult): string {
   const m1 = mean(scores.map((r) => r.M1).filter((v): v is number => v !== null));
   const observed = scores.map((r) =>
     r.suggestion
-      ? { fixture: r.fixture, ...(r.attempts ? { attempts: r.attempts } : {}), image_quality: r.suggestion.image_quality, dish_suggestions: r.suggestion.dish_suggestions, estimated_servings: r.suggestion.estimated_servings, possible_allergens: r.suggestion.possible_allergens, uncertainty_notes: r.suggestion.uncertainty_notes, questions_for_donor: r.suggestion.questions_for_donor, failed_checks: r.checks.filter((k) => !k.pass).map((k) => k.name) }
-      : { fixture: r.fixture, ...(r.attempts ? { attempts: r.attempts } : {}), error_code: r.error_code ?? "UNKNOWN" },
+      ? { fixture: r.fixture, model: r.suggestion.model, ...(r.attempts ? { attempts: r.attempts } : {}), ...(r.escalated ? { escalated: true } : {}), image_quality: r.suggestion.image_quality, dish_suggestions: r.suggestion.dish_suggestions, estimated_servings: r.suggestion.estimated_servings, possible_allergens: r.suggestion.possible_allergens, uncertainty_notes: r.suggestion.uncertainty_notes, questions_for_donor: r.suggestion.questions_for_donor, failed_checks: r.checks.filter((k) => !k.pass).map((k) => k.name) }
+      : { fixture: r.fixture, ...(r.attempts ? { attempts: r.attempts } : {}), ...(r.escalated ? { escalated: true } : {}), error_code: r.error_code ?? "UNKNOWN" },
   );
   const line = (k: string, v: unknown) => `${k}: ${JSON.stringify(v)}`;
   return [
@@ -49,7 +51,7 @@ export function buildYamlRecord(ctx: RunContext, result: CaseResult): string {
     line("provider", ctx.mode === "fake" ? "fake" : "gemini"),
     line("model", ctx.model),
     line("api_surface", "generate_content"),
-    line("settings", { thinking: "default", store: false, image_px: "as stored in fixtures", temperature: "default", auth: ctx.auth, location: ctx.location }),
+    line("settings", { thinking: "default", store: false, image_px: "as stored in fixtures", temperature: "default", auth: ctx.auth, location: ctx.location, escalation: ctx.escalation ?? "off" }),
     line("mode", ctx.mode),
     line("run_at", ctx.run_at),
     line("commit_sha", ctx.commit_sha),
@@ -83,12 +85,13 @@ export function formatTable(ctx: RunContext, results: CaseResult[]): string {
     const flags = (["U1", "U2", "U3", "U4"] as const).filter((u) => r.scores.some((x) => !x[u]));
     const errs = [...new Set(r.scores.map((x) => x.error_code).filter(Boolean))];
     const retried = r.scores.filter((x) => (x.attempts ?? 1) > 1).length;
+    const escalated = r.scores.filter((x) => x.escalated).length;
     const perImage =
       r.case.fixtures.length > 1
         ? `  per image: ${r.case.fixtures.map((f) => `${f} ${r.scores.filter((x) => x.fixture === f && x.passed).length}/${r.scores.filter((x) => x.fixture === f).length}`).join(", ")}`
         : "";
     const why = [...(flags.length ? [`universal: ${flags.join(",")}`] : []), ...failed, ...(errs.length ? [`errors: ${errs.join(",")}`] : [])];
-    return `${r.case.id}  ${r.case.fixtures.join("+").padEnd(17)} ${s.verdict.toUpperCase().padEnd(5)}  ${s.pass_count}/${s.runs} runs  p50 ${s.latency_p50_ms ?? "-"}ms p95 ${s.latency_p95_ms ?? "-"}ms${why.length ? "  <- " + why.join("; ") : ""}${retried ? `  (${retried} run(s) retried)` : ""}${perImage}`;
+    return `${r.case.id}  ${r.case.fixtures.join("+").padEnd(17)} ${s.verdict.toUpperCase().padEnd(5)}  ${s.pass_count}/${s.runs} runs  p50 ${s.latency_p50_ms ?? "-"}ms p95 ${s.latency_p95_ms ?? "-"}ms${why.length ? "  <- " + why.join("; ") : ""}${retried ? `  (${retried} run(s) retried)` : ""}${escalated ? `  (${escalated} run(s) escalated)` : ""}${perImage}`;
   });
   const notRun = results.filter((r) => r.status === "skipped").length;
   return [head, ...rows, notRun ? `\n${notRun} case(s) not run: the release rule needs all eight.` : ""].join("\n");

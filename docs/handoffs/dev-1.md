@@ -95,3 +95,11 @@ Full eval on the committed fixtures (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs
 **v3 written** (`annona-intake.v3.md`): poor-photo rule first and broader, fixed `not_food` note, sauces rule (soy, wheat), a blurry-photo example. It fixes the blurry-photo regression (10/10 `poor`) and soy recall (10/10) but shellfish for sushi fell to about 50%. Current full-eval scores on the same fixtures: v2 7/8, v3 6/8. No version passes all eight, and the default stays v1 in code.
 
 **Decision needed:** the rules are crowding each other. Options: (a) try `gemini-3.8-flash` with v3; (b) a v4 that merges the allergen rules into one checklist; (c) accept v2 or v3 for the demo as advisory-only (the donor verifies everything and the AI never fills a fact) and stop tuning. Stalls also cluster (2 of 3 runs in one eval); the retry rescued them.
+
+## 2026-10-17 — Escalation to gemini-3.8-flash (built; measured; recommend off for the demo)
+
+**Delivered (local):** the adapter asks `gemini-3.8-flash` (once, LOW thinking, inside the existing 14 s budget) when the first answer is for a `usable` photo with no dish above `low`. A failed second call keeps the first answer; the second answer passes the same strict parse and claim-word guard; a stored suggestion's `model` shows which model answered. `GEMINI_ESCALATION_MODEL` unset = on; `off` disables. Eval runner: `--escalation-model <id|off>`; records show `escalated` and the answering model. Request filed for the env surface: `docs/requests/intake-escalation-env.md`.
+
+**Measured (T-PE-02, 20 runs per configuration):** v2 off 20/20, on 18/20; v3 off 19/20, on 13/20. Latency p50 about 2 s off, 6-7 s on, p95 up to about 14 s. 3.8-flash at the default thinking level took 8-37 s; at LOW 2.6-4.6 s (MINIMAL is rejected). Escalation fires almost only on the deliberately ambiguous buffet photos and does not improve the outcome there.
+
+**Decision needed:** keep it on (as requested) or set `GEMINI_ESCALATION_MODEL=off` for the demo. I recommend off unless a fixture shows a case where the first model fails for lack of capability. Details: `docs/PROMPT_EVAL.md` section 13.

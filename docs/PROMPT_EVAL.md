@@ -240,8 +240,9 @@ Do not copy example parameter values from the 2025 paper (PROMPTING_GUIDE note).
 
 | Setting | Start | Tune when |
 |---|---|---|
-| `GEMINI_MODEL` | `gemini-3.5-flash-lite` (R-AI-1) | Recall or uncertainty fails → try `gemini-3.8-flash` |
-| Thinking level | Model default (3.5-flash-lite: minimal; 3.8-flash: `medium`) (R-AI-1) | Keep `medium` on 3.8-flash. Try `low` only if latency p95 > 10 s, then re-run §5 |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` (R-AI-1) | Recall or uncertainty fails → try `gemini-3.8-flash` (or the second-opinion escalation, §13) |
+| `GEMINI_ESCALATION_MODEL` | unset = `gemini-3.8-flash` as a second opinion when the first answer is unconfident (§13); `off` disables | Latency or demo reliability matters more than a second opinion → `off` |
+| Thinking level | Model default (3.5-flash-lite: minimal; 3.8-flash: `medium`) (R-AI-1). **The escalation call uses `LOW`** (measured: 3.8-flash at the default level took 8-37 s; at `LOW` 2.6-4.6 s with no thinking tokens; `MINIMAL` is rejected by 3.8-flash). | Keep `medium` on 3.8-flash if it is ever the base model. Try `low` only if latency p95 > 10 s, then re-run §5 |
 | API surface | Spike result (§1) | Schema or `store:false` rejected → switch surface (R-AI-3, R-AI-5) |
 | `store` (Interactions only) | `false` | Never change (R-AI-5) |
 | Image size | ≤ 1024 px JPEG, ≤ 1.5 MB | Latency or token cost high → smaller; detail lost → keep |
@@ -369,3 +370,29 @@ pnpm eval:intake --runs 3 --cases T-PE-01,T-PE-03 --out eval-records.yaml       
 - Asking for `gemini` with neither a key nor a project exits with code 2; it never falls back to fake. Exit code 1 means a failed case.
 - The scoring (U1-U4, M1-M4, the T-PE-01 two-of-three recall allowance) lives in `src/lib/ai/eval-cases.ts`, with unit tests that exercise the harness only. A claim the runtime guard rejects counts as a U3 hit.
 - Records follow §10, written as JSON values (valid YAML). The model ID is the one the API reported. Paste real records into the results log; they hold outputs and model IDs only, never keys or headers.
+
+## 13. Model escalation (second opinion from `gemini-3.8-flash`)
+
+**Behavior (implemented in `src/lib/ai/gemini.ts`, on by default).** When the first model (`gemini-3.5-flash-lite`) returns a valid answer for a `usable` photo in which no dish is above `low` confidence (or there is no dish), the adapter asks `gemini-3.8-flash` once, with the same prompt, at `LOW` thinking, and returns that answer stamped with the model that produced it. Rules:
+
+- **Never for a `poor` or `not_food` rating:** that is about the photo, which a stronger model cannot fix.
+- **Same guard:** the second answer goes through the identical strict parse and claim-word guard.
+- **Never worse availability:** if the second call fails for any reason (error, timeout, safety block, unusable output, claim word), the first answer is returned. No retry of the escalation.
+- **Same budget:** it runs inside the same 14 s total as the retry path (two 7 s attempts), only when at least 3 s remain, and its timeout is the time left. The service's 15 s limit is never exceeded.
+- **Switch:** `GEMINI_ESCALATION_MODEL` (unset = `gemini-3.8-flash`; `off` or empty disables; another model id uses that; equal to the base model is ignored). The variable is read in `src/lib/ai/index.ts`; see `docs/requests/intake-escalation-env.md`.
+- **Audit:** the stored suggestion's `model` field shows which model answered. There is no separate "escalated" field (the contract is strict); evals record it through `onAttempt`.
+
+**Measurements (2026-10-17, Vertex ADC, `global`).**
+
+| T-PE-02, 20 runs per configuration | Pass | p50 | p95 | Notes |
+|---|---|---|---|---|
+| v2, escalation off | **20/20** | 1.7 s | 2.1 s | every answer all-low confidence |
+| v2, escalation on | 18/20 | 6.1 s | 14.0 s | 19 of 20 runs escalated; 3.8-flash gave the final answer in 17 |
+| v3, escalation off | 19/20 | 2.0 s | 3.9 s | the one miss was a provider failure |
+| v3, escalation on | 13/20 | 6.8 s | 13.7 s | on the closed-chafing-dish photo 3.8-flash rated 7 of 10 runs `not_food` (no food visible) with fewer notes, which fails the case's two-note check |
+
+Full eight-case runs (3 runs per case), same fixtures: escalation on scored 7/8 and 6/8 (v2) and 6/8 and 5/8 (v3); off scored 5/8 and 7/8 (v2) and 5/8 and 6/8 (v3). That spread of one to two cases between identical configurations is run-to-run noise; no on-versus-off difference is visible at 3 runs per case.
+
+**Reading the results.** Escalation fired almost only on the deliberately ambiguous buffet photos, because those are the only fixtures where the first model is unconfident. There it multiplied latency by 3-4 (p50 about 2 s to 6-7 s, p95 near the 14 s ceiling) and did not improve the outcome by the case's own criteria; the stronger model is not more reliable about food it cannot see, it just answers differently (more specific names, or `not_food`). No fixture here is a case where the first model fails for lack of capability, so the eval cannot show a benefit. **Recommendation:** if demo latency and reliability matter most, set `GEMINI_ESCALATION_MODEL=off`; keep the code for the day a fixture exposes a real capability gap. Sushi, sandwiches, dessert bars, labels and the injection card never escalate (the first model is confident).
+
+**Other findings during this work.** `gemini-3.8-flash` at its default thinking level is too slow for the interactive path (8-37 s). The v3 `not_food` note ("No food is visible in the photo.") never triggered the guard in 30 runs, but in some runs the model writes no question, which fails U4.

@@ -39,6 +39,8 @@ export type RunScore = {
   fixture: string;
   /** Provider attempts for this run (2 means the retry was used). Set by the runner; absent for the fake. */
   attempts?: number;
+  /** True when the stronger model was asked for a second opinion on this run. Set by the runner. */
+  escalated?: boolean;
 };
 
 const text = (s: VisionSuggestion) => freeTextFields(s).map(([, v]) => v);

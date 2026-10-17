@@ -80,6 +80,20 @@ describe("multi-fixture cases", () => {
     expect(t).toMatch(/per image: buffet_ambiguous 1\/1, buffet_closed 1\/1/);
   });
 
+  it("reports escalated runs in the table and in each observed run, with the model that produced the answer", () => {
+    const scores = two.status === "ran" ? two.scores.map((s, i) => ({ ...s, escalated: i === 0 })) : [];
+    const escalated: CaseResult = { status: "ran", case: c2, scores, summary: summarizeCase(c2, scores) };
+    expect(formatTable(real, [escalated])).toMatch(/1 run\(s\) escalated/);
+    const rec = buildYamlRecord(real, escalated);
+    expect(rec).toContain('"escalated":true');
+    expect(rec).toContain('"model":"m"');
+  });
+
+  it("records the escalation setting", () => {
+    expect(buildYamlRecord({ ...real, escalation: "gemini-3.8-flash" }, two)).toContain('"escalation":"gemini-3.8-flash"');
+    expect(buildYamlRecord({ ...real, escalation: "off" }, two)).toContain('"escalation":"off"');
+  });
+
   it("reports retried runs in the table and in each observed run", () => {
     const scores = two.status === "ran" ? two.scores.map((s, i) => ({ ...s, attempts: i === 0 ? 2 : 1 })) : [];
     const withRetry: CaseResult = { status: "ran", case: c2, scores, summary: summarizeCase(c2, scores) };

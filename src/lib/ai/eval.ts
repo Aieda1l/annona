@@ -6,13 +6,14 @@ import type { VisionProvider } from "@/contracts";
 import { EVAL_CASES, scoreRun, summarizeCase, type RunScore } from "./eval-cases";
 import { buildYamlRecord, formatTable, type CaseResult, type RunContext } from "./eval-report";
 import { createFakeVisionProvider } from "./fake";
-import { createGeminiProvider, DEFAULT_PROMPT_VERSION, PROMPT_VERSIONS, type PromptVersion } from "./gemini";
+import { createGeminiProvider, DEFAULT_PROMPT_VERSION, PROMPT_VERSIONS, resolveEscalationModel, type GeminiAttemptEvent, type PromptVersion } from "./gemini";
 
 // Prompt eval runner (PROMPT_EVAL §5-§6, T-PE-01..08).
 //   pnpm eval:intake                         fake provider: a HARNESS CHECK only, never a model result
 //   VISION_PROVIDER=gemini GEMINI_API_KEY=… pnpm eval:intake          real model, API key
 //   VISION_PROVIDER=gemini GOOGLE_CLOUD_PROJECT=<id> pnpm eval:intake real model, Vertex AI with ADC (no key)
 // Options: --prompt-version v1|v2 (default: the adapter default)  --runs N (default 3)  --cases T-PE-01,T-PE-03  --out <file> (YAML records; otherwise printed)
+//          --escalation-model <id|off>  (default: GEMINI_ESCALATION_MODEL, else gemini-3.8-flash, as in production)
 //          Cases with several fixtures run --runs times per image. --images-dir <dir>  read <fixture>.jpg from another directory (for images that must not be committed)
 // Use synthetic photos only. Credentials are never printed or written; failures are reported by error code.
 
@@ -56,16 +57,25 @@ function commitSha(): string {
   }
 }
 
-type Built = { provider: VisionProvider; mode: "real" | "fake"; configuredModel: string | null; auth: string; location: string | null };
+type Built = {
+  provider: VisionProvider;
+  mode: "real" | "fake";
+  configuredModel: string | null;
+  auth: string;
+  location: string | null;
+  escalation: string;
+};
 
-function buildProvider(promptVersion: PromptVersion, onAttempt: () => void): Built {
+function buildProvider(promptVersion: PromptVersion, onAttempt: (e: GeminiAttemptEvent) => void): Built {
   if (process.env.VISION_PROVIDER !== "gemini") {
-    return { provider: createFakeVisionProvider(), mode: "fake", configuredModel: null, auth: "none (fake)", location: null };
+    return { provider: createFakeVisionProvider(), mode: "fake", configuredModel: null, auth: "none (fake)", location: null, escalation: "off" };
   }
   const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+  const escalationModel = resolveEscalationModel(model, arg("escalation-model") ?? process.env.GEMINI_ESCALATION_MODEL);
+  const escalation = escalationModel ?? "off";
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (apiKey) {
-    return { provider: createGeminiProvider({ client: new GoogleGenAI({ apiKey }), model, promptVersion, onAttempt }), mode: "real", configuredModel: model, auth: "api_key", location: null };
+    return { provider: createGeminiProvider({ client: new GoogleGenAI({ apiKey }), model, promptVersion, onAttempt, escalation_model: escalationModel }), mode: "real", configuredModel: model, auth: "api_key", location: null, escalation };
   }
   const project = process.env.GOOGLE_CLOUD_PROJECT?.trim();
   if (!project) {
@@ -74,7 +84,7 @@ function buildProvider(promptVersion: PromptVersion, onAttempt: () => void): Bui
   }
   const location = process.env.GOOGLE_CLOUD_LOCATION?.trim() || "global";
   const client = new GoogleGenAI({ vertexai: true, project, location });
-  return { provider: createGeminiProvider({ client, model, promptVersion, onAttempt }), mode: "real", configuredModel: model, auth: "vertex_adc", location };
+  return { provider: createGeminiProvider({ client, model, promptVersion, onAttempt, escalation_model: escalationModel }), mode: "real", configuredModel: model, auth: "vertex_adc", location, escalation };
 }
 
 async function main() {
@@ -89,7 +99,12 @@ async function main() {
   if (!(PROMPT_VERSIONS as readonly string[]).includes(requested)) fail(`--prompt-version must be one of ${PROMPT_VERSIONS.join(", ")}.`);
   const promptVersion = requested as PromptVersion;
   let attemptsInRun = 0;
-  const built = buildProvider(promptVersion, () => attemptsInRun++);
+  let escalatedInRun = false;
+  const built = buildProvider(promptVersion, (e) => {
+    // Retries of the first model count as attempts; the stronger-model second opinion is tracked separately.
+    if (e.escalated) escalatedInRun = true;
+    else attemptsInRun++;
+  });
   const results: CaseResult[] = [];
   const modelsSeen = new Set<string>();
 
@@ -105,10 +120,12 @@ async function main() {
       const bytes_base64 = readFileSync(join(imagesDir, `${fixture}.jpg`)).toString("base64");
       for (let i = 0; i < runs; i++) {
         attemptsInRun = 0;
+        escalatedInRun = false;
         const started = performance.now();
         const outcome = await built.provider.analyzeFoodImage({ image: { mime: "image/jpeg", bytes_base64 } });
         const score = scoreRun(c, outcome, Math.round(performance.now() - started), fixture);
         if (attemptsInRun > 0) score.attempts = attemptsInRun;
+        if (escalatedInRun) score.escalated = true;
         if (score.suggestion?.model) modelsSeen.add(score.suggestion.model);
         scores.push(score);
       }
@@ -122,6 +139,7 @@ async function main() {
     model: built.mode === "fake" ? null : modelsSeen.size > 0 ? [...modelsSeen].join(", ") : built.configuredModel,
     mode: built.mode,
     auth: built.auth,
+    escalation: built.escalation,
     location: built.location,
     run_at: pdtNow(),
     commit_sha: commitSha(),

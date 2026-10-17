@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ALLERGENS, scene1_vision_suggestion } from "@/contracts";
-import { createGeminiProvider, renderPrompt, sanitizeHint, type GeminiClientLike } from "@/lib/ai/gemini";
+import { createGeminiProvider, needsSecondOpinion, resolveEscalationModel, renderPrompt, sanitizeHint, type GeminiClientLike } from "@/lib/ai/gemini";
 
 // T-IN-05: the real adapter against an injected fake SDK client. No network.
 const IMAGE = { mime: "image/jpeg", bytes_base64: Buffer.from("fake image bytes").toString("base64") };
@@ -20,7 +20,7 @@ const ok = (over: Record<string, unknown> = {}) => ({
 
 function setup(
   impl: GeminiClientLike["models"]["generateContent"],
-  extra: Partial<Pick<Parameters<typeof createGeminiProvider>[0], "timeout_ms" | "max_attempts" | "onAttempt" | "promptVersion">> = {},
+  extra: Partial<Pick<Parameters<typeof createGeminiProvider>[0], "timeout_ms" | "max_attempts" | "onAttempt" | "promptVersion" | "escalation_model">> = {},
 ) {
   const generateContent = vi.fn(impl);
   const provider = createGeminiProvider({ client: { models: { generateContent } }, model: MODEL, ...extra });
@@ -329,6 +329,139 @@ describe("prompt version", () => {
     const r = await analyze(provider);
     expect(r.ok && r.data.prompt_version).toBe("v2");
     expect(textOf(generateContent)).toContain("Confidence belongs to each dish name");
+  });
+});
+
+describe("resolveEscalationModel", () => {
+  it.each([
+    [undefined, "gemini-3.5-flash-lite", "gemini-3.8-flash"],
+    ["gemini-3.1-pro-preview", "gemini-3.5-flash-lite", "gemini-3.1-pro-preview"],
+    [" gemini-3.8-flash ", "gemini-3.5-flash-lite", "gemini-3.8-flash"],
+    ["off", "gemini-3.5-flash-lite", undefined],
+    ["OFF", "gemini-3.5-flash-lite", undefined],
+    ["none", "gemini-3.5-flash-lite", undefined],
+    ["", "gemini-3.5-flash-lite", undefined],
+    ["gemini-3.8-flash", "gemini-3.8-flash", undefined], // same as the base model: nothing to escalate to
+    [undefined, "gemini-3.8-flash", undefined],
+  ])("env %j with base %s -> %s", (envValue, base, expected) => {
+    expect(resolveEscalationModel(base, envValue)).toBe(expected);
+  });
+});
+
+describe("needsSecondOpinion", () => {
+  const sug = (patch: Partial<typeof scene1_vision_suggestion>) => ({ ...scene1_vision_suggestion, ...patch });
+  const dish = (c: "low" | "medium" | "high") => ({ name: "x", confidence: c });
+
+  it.each([
+    ["every dish is low", sug({ dish_suggestions: [dish("low"), dish("low")] }), true],
+    ["no dish at all on a usable photo", sug({ dish_suggestions: [] }), true],
+    ["one medium dish", sug({ dish_suggestions: [dish("low"), dish("medium")] }), false],
+    ["a high dish", sug({ dish_suggestions: [dish("high")] }), false],
+    ["a poor photo (the photo is the limit, not the model)", sug({ image_quality: "poor", dish_suggestions: [dish("low")] }), false],
+    ["a non-food photo", sug({ image_quality: "not_food", dish_suggestions: [] }), false],
+  ])("%s -> %s", (_label, s, expected) => {
+    expect(needsSecondOpinion(s as never)).toBe(expected);
+  });
+});
+
+describe("escalation to a stronger model when the first answer is not confident", () => {
+  const BIG = "gemini-3.8-flash";
+  const lowConfidence = () => ok({ text: JSON.stringify({ ...modelOutput(), dish_suggestions: [{ name: "mixed buffet dishes", confidence: "low" }] }) });
+  const confident = () => ok({ modelVersion: BIG, text: JSON.stringify({ ...modelOutput(), dish_suggestions: [{ name: "fried rice", confidence: "high" }] }) });
+  const reqOf = (g: ReturnType<typeof setup>["generateContent"], i: number) =>
+    g.mock.calls[i]![0] as { model: string; config: { thinkingConfig?: { thinkingLevel: string } }; contents: { parts: { text?: string }[] }[] };
+
+  it("asks the stronger model once, at LOW thinking, and returns its answer stamped with its own model", async () => {
+    const { provider, generateContent } = setup(async () => confident(), { escalation_model: BIG });
+    generateContent.mockImplementationOnce(async () => lowConfidence());
+    const r = await analyze(provider);
+    expect(generateContent).toHaveBeenCalledTimes(2);
+    expect(reqOf(generateContent, 0).model).toBe(MODEL);
+    expect(reqOf(generateContent, 0).config.thinkingConfig).toBeUndefined();
+    expect(reqOf(generateContent, 1).model).toBe(BIG);
+    expect(reqOf(generateContent, 1).config.thinkingConfig).toEqual({ thinkingLevel: "LOW" });
+    expect(reqOf(generateContent, 1).contents[0]!.parts[1]!.text).toBe(reqOf(generateContent, 0).contents[0]!.parts[1]!.text);
+    expect(r.ok && r.data.model).toBe(BIG);
+    expect(r.ok && r.data.dish_suggestions[0]!.name).toBe("fried rice");
+  });
+
+  it.each([
+    ["a medium-confidence dish", () => ok()],
+    ["a poor photo", () => ok({ text: JSON.stringify({ ...modelOutput(), image_quality: "poor", dish_suggestions: [{ name: "x", confidence: "low" }], estimated_servings: null }) })],
+    ["a non-food photo", () => ok({ text: JSON.stringify({ ...modelOutput(), image_quality: "not_food", dish_suggestions: [], visible_components: [], estimated_servings: null, possible_allergens: [] }) })],
+  ])("does not escalate on %s", async (_label, first) => {
+    const { provider, generateContent } = setup(async () => first(), { escalation_model: BIG });
+    expect((await analyze(provider)).ok).toBe(true);
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing extra when escalation is not configured", async () => {
+    const { provider, generateContent } = setup(async () => lowConfidence());
+    const r = await analyze(provider);
+    expect(generateContent).toHaveBeenCalledTimes(1);
+    expect(r.ok && r.data.model).toBe(MODEL);
+  });
+
+  it("is ignored when the escalation model is the same as the base model", async () => {
+    const { provider, generateContent } = setup(async () => lowConfidence(), { escalation_model: MODEL });
+    await analyze(provider);
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["a provider error", () => Promise.reject(Object.assign(new Error("x"), { status: 503 }))],
+    ["a safety block", async () => ok({ candidates: [{ finishReason: "SAFETY" }] })],
+    ["unusable output", async () => ok({ text: "not json" })],
+    ["a claim word", async () => ok({ text: JSON.stringify({ ...modelOutput(), uncertainty_notes: ["Looks nut-free."] }) })],
+  ])("keeps the first answer when the escalation fails with %s (never worse than without it)", async (_label, bigImpl) => {
+    const { provider, generateContent } = setup(async () => lowConfidence(), { escalation_model: BIG });
+    generateContent.mockImplementationOnce(async () => lowConfidence());
+    generateContent.mockImplementationOnce(bigImpl as never);
+    const r = await analyze(provider);
+    expect(r.ok).toBe(true);
+    expect(r.ok && r.data.model).toBe(MODEL);
+    expect(generateContent).toHaveBeenCalledTimes(2); // one escalation attempt, no retry of it
+  });
+
+  it("reports the escalated attempt through onAttempt", async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const { provider, generateContent } = setup(async () => confident(), { escalation_model: BIG, onAttempt: (e) => events.push(e as never) });
+    generateContent.mockImplementationOnce(async () => lowConfidence());
+    await analyze(provider);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ attempt: 1, ok: true, escalated: false, model: MODEL });
+    expect(events[1]).toMatchObject({ ok: true, escalated: true, model: BIG });
+  });
+
+  describe("time budget", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("skips escalation when less than 3 s of the 14 s budget remains", async () => {
+      // first attempt stalls for the full 7 s, retry answers after 5 s: 12 s used, 2 s left
+      const { provider, generateContent } = setup(async () => lowConfidence(), { escalation_model: BIG });
+      generateContent.mockImplementationOnce(() => new Promise(() => {}));
+      generateContent.mockImplementationOnce(() => new Promise((res) => setTimeout(() => res(lowConfidence()), 5000)));
+      const pending = analyze(provider);
+      await vi.advanceTimersByTimeAsync(12_000);
+      const r = await pending;
+      expect(r.ok).toBe(true);
+      expect(generateContent).toHaveBeenCalledTimes(2);
+    });
+
+    it("never runs past the 14 s total: a stalled escalation is cut at the remaining time and the first answer is kept", async () => {
+      const { provider, generateContent } = setup(async () => lowConfidence(), { escalation_model: BIG });
+      generateContent.mockImplementationOnce(async () => lowConfidence());
+      generateContent.mockImplementationOnce(() => new Promise(() => {}));
+      let done = false;
+      const pending = analyze(provider).then((r) => ((done = true), r));
+      await vi.advanceTimersByTimeAsync(13_999);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const r = await pending;
+      expect(r.ok && r.data.model).toBe(MODEL);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 });
 

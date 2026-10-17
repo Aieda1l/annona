@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { err, type VisionProvider, type VisionProviderConfig } from "@/contracts";
 import { createFakeVisionProvider } from "./fake";
-import { createGeminiProvider } from "./gemini";
+import { createGeminiProvider, resolveEscalationModel } from "./gemini";
 
 // Barrel owned by Dev 1 after the baseline (keep exported names stable). CONTRACTS §9.2.
 
@@ -21,7 +21,12 @@ export function createVisionProvider(config: VisionProviderConfig): VisionProvid
   if (apiKey) {
     // Production path: an explicit API key, no Vertex. Local runs without a key use createGeminiProvider
     // directly with a Vertex/ADC client (see src/lib/ai/gemini.ts).
-    return createGeminiProvider({ client: new GoogleGenAI({ apiKey }), model });
+    // GEMINI_ESCALATION_MODEL: unset = gemini-3.8-flash as a second opinion for unconfident answers; `off` disables.
+    return createGeminiProvider({
+      client: new GoogleGenAI({ apiKey }),
+      model,
+      escalation_model: resolveEscalationModel(model, process.env.GEMINI_ESCALATION_MODEL),
+    });
   }
   return {
     mode: "real",

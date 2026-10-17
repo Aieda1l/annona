@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ContentListUnion } from "@google/genai";
+import type { ContentListUnion, ThinkingLevel } from "@google/genai";
 import { z } from "zod";
 import { ALLERGENS, VisionModelOutput, err, type Result, type VisionProvider, type VisionSuggestion } from "@/contracts";
 import { parseVisionOutput } from "./parse";
@@ -17,7 +17,12 @@ export type GeminiClientLike = {
     generateContent(params: {
       model: string;
       contents: ContentListUnion;
-      config: { responseMimeType: string; responseJsonSchema: unknown; abortSignal: AbortSignal };
+      config: {
+        responseMimeType: string;
+        responseJsonSchema: unknown;
+        abortSignal: AbortSignal;
+        thinkingConfig?: { thinkingLevel: ThinkingLevel };
+      };
     }): Promise<{
       text?: string;
       modelVersion?: string;
@@ -37,6 +42,15 @@ export const promptPathFor = (version: PromptVersion) => `src/lib/ai/prompts/ann
 // occasional stall. Vision has no side effects, so retrying a retryable provider failure is safe.
 export const GEMINI_ATTEMPT_TIMEOUT_MS = 7_000;
 export const GEMINI_MAX_ATTEMPTS = 2;
+
+// Second opinion from a stronger model (docs/PROMPT_EVAL.md §13). It runs inside the same total budget as the
+// retry path (attempts x timeout = 14 s, under the 15 s the service allows) and only when at least this much
+// time is left. Measured 2026-10-17: gemini-3.8-flash at the default thinking level took 8-37 s; at LOW it took
+// 2.6-4.6 s with no thinking tokens (MINIMAL is rejected by this model).
+export const DEFAULT_ESCALATION_MODEL = "gemini-3.8-flash";
+export const ESCALATION_MIN_REMAINING_MS = 3_000;
+// The SDK's enum is a string enum; a literal avoids a runtime import of the SDK in this module.
+const ESCALATION_THINKING = { thinkingLevel: "LOW" as unknown as ThinkingLevel };
 const MAX_HINT_CHARS = 200;
 
 /** Finish reasons that mean the provider declined to answer: a blocked photo, not bad model output. */
@@ -56,6 +70,24 @@ const RESPONSE_JSON_SCHEMA = (() => {
   delete schema.$schema;
   return schema;
 })();
+
+/**
+ * The stronger model for second opinions. Unset env means the default model; `off`, `none` or empty disables it;
+ * a model equal to the base model is pointless, so it is disabled too.
+ */
+export function resolveEscalationModel(base: string, envValue: string | undefined): string | undefined {
+  const value = envValue === undefined ? DEFAULT_ESCALATION_MODEL : envValue.trim();
+  if (!value || ["off", "none"].includes(value.toLowerCase())) return undefined;
+  return value === base ? undefined : value;
+}
+
+/**
+ * True when the first model is not confident: the photo is usable but no dish is above `low`. A `poor` or
+ * `not_food` rating is about the photo, which a stronger model cannot fix, so it never escalates.
+ */
+export function needsSecondOpinion(s: VisionSuggestion): boolean {
+  return s.image_quality === "usable" && (s.dish_suggestions.length === 0 || s.dish_suggestions.every((d) => d.confidence === "low"));
+}
 
 /** One line of plain text: control characters removed, whitespace collapsed, capped. Never instructions. */
 export function sanitizeHint(hint: string | undefined): string {
@@ -81,7 +113,17 @@ function classify(error: unknown): Result<VisionSuggestion> {
   return unavailable(`Gemini request failed (HTTP ${status})`, status === 429 || status >= 500, { status });
 }
 
-export type GeminiAttemptEvent = { attempt: number; ok: boolean; error_code?: string; retryable?: boolean; ms: number };
+export type GeminiAttemptEvent = {
+  attempt: number;
+  ok: boolean;
+  error_code?: string;
+  retryable?: boolean;
+  ms: number;
+  /** The model this attempt asked for. */
+  model: string;
+  /** True for the stronger-model second opinion. */
+  escalated: boolean;
+};
 
 export function createGeminiProvider(config: {
   client: GeminiClientLike;
@@ -91,6 +133,12 @@ export function createGeminiProvider(config: {
   /** Total attempts, including the first. 1 disables the retry. */
   max_attempts?: number;
   promptVersion?: PromptVersion;
+  /**
+   * Stronger model for a second opinion when the first answer is not confident (see needsSecondOpinion). One
+   * attempt, no retry, LOW thinking, within the same total budget. If it fails for any reason the first answer is
+   * kept, so escalation can never make availability worse. Ignored when equal to `model`.
+   */
+  escalation_model?: string;
   /** Called after every attempt (for evals and logs). Receives no request or response content. */
   onAttempt?: (event: GeminiAttemptEvent) => void;
   /** Test seam; overrides the prompt file for the version. */
@@ -109,6 +157,7 @@ export function createGeminiProvider(config: {
   async function attemptOnce(
     prompt: string,
     image: { mime: string; bytes_base64: string },
+    opts: { model: string; timeoutMs: number; thinking?: boolean } = { model, timeoutMs: timeout_ms },
   ): Promise<Result<VisionSuggestion>> {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -116,13 +165,13 @@ export function createGeminiProvider(config: {
       timer = setTimeout(() => {
         controller.abort();
         resolve(unavailable("Gemini request timed out", true));
-      }, timeout_ms);
+      }, opts.timeoutMs);
     });
 
     const call = (async (): Promise<Result<VisionSuggestion>> => {
       try {
         const response = await client.models.generateContent({
-          model,
+          model: opts.model,
           contents: [
             {
               role: "user",
@@ -133,6 +182,7 @@ export function createGeminiProvider(config: {
             responseMimeType: "application/json",
             responseJsonSchema: RESPONSE_JSON_SCHEMA,
             abortSignal: controller.signal,
+            ...(opts.thinking ? { thinkingConfig: ESCALATION_THINKING } : {}),
           },
         });
 
@@ -147,7 +197,7 @@ export function createGeminiProvider(config: {
 
         return parseVisionOutput(response.text ?? "", {
           provider: "gemini",
-          model: response.modelVersion || model,
+          model: response.modelVersion || opts.model,
           mode: "real",
           prompt_version: promptVersion,
         });
@@ -171,21 +221,42 @@ export function createGeminiProvider(config: {
       if (template === null) return unavailable("Vision prompt is not available", false);
       const prompt = renderPrompt(template, donor_hint);
 
-      let result: Result<VisionSuggestion> = unavailable("Gemini request failed", true);
-      for (let attempt = 1; attempt <= Math.max(1, max_attempts); attempt++) {
-        const started = Date.now();
-        result = await attemptOnce(prompt, image);
+      const startedAll = Date.now();
+      const budget_ms = timeout_ms * Math.max(1, max_attempts);
+      const report = (attempt: number, result: Result<VisionSuggestion>, started: number, usedModel: string, escalated: boolean) => {
         const failure = result.ok ? null : result.error;
         config.onAttempt?.({
           attempt,
           ok: result.ok,
           ...(failure ? { error_code: failure.code, retryable: failure.retryable } : {}),
           ms: Date.now() - started,
+          model: usedModel,
+          escalated,
         });
+      };
+
+      let result: Result<VisionSuggestion> = unavailable("Gemini request failed", true);
+      for (let attempt = 1; attempt <= Math.max(1, max_attempts); attempt++) {
+        const started = Date.now();
+        result = await attemptOnce(prompt, image);
+        report(attempt, result, started, model, false);
+        const failure = result.ok ? null : result.error;
         // Retry only retryable provider failures (stalls, network, 429, 5xx). Never retry a safety block, a 4xx,
         // or bad model output: re-rolling until the output passes would defeat the fail-closed guard.
         const retryable = failure !== null && failure.code === "PROVIDER_UNAVAILABLE" && failure.retryable;
-        if (!retryable) return result;
+        if (!retryable) break;
+      }
+
+      // Second opinion: only for a valid but unconfident answer, within the remaining budget, once.
+      const escalationModel = config.escalation_model;
+      if (escalationModel && escalationModel !== model && result.ok && needsSecondOpinion(result.data)) {
+        const remaining = budget_ms - (Date.now() - startedAll);
+        if (remaining >= ESCALATION_MIN_REMAINING_MS) {
+          const started = Date.now();
+          const second = await attemptOnce(prompt, image, { model: escalationModel, timeoutMs: remaining, thinking: true });
+          report(1, second, started, escalationModel, true);
+          if (second.ok) return second; // same strict parse and claim-word guard as the first answer
+        }
       }
       return result;
     },
