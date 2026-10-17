@@ -90,7 +90,7 @@ export function LiveOperatorDashboard() {
   };
   const demo: DemoHandlers = {
     onTick: () => refreshAfter(postJson("/api/internal/tick")),
-    onReset: () => refreshAfter(postJson("/api/demo/reset", { keep_identities: true })),
+    onReset: () => refreshAfter(postJson("/api/demo/reset")),
     onDispatch: (id) => refreshAfter(postJson(`/api/donations/${id}/dispatch`)),
   };
 

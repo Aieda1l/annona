@@ -149,4 +149,29 @@ describe("LiveOperatorDashboard", () => {
     await act(async () => releaseOld());
     expect(screen.getAllByTestId("donation-card").length).toBeGreaterThan(0);
   });
+
+  it("Reset demo posts to /api/demo/reset with no body (CONTRACTS section 10 lists none)", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        calls.push({ url, init });
+        if (url === "/api/demo/reset") return json({ ok: true, data: { reset_at: "2026-10-17T23:00:00.000Z" } });
+        return json(okBody());
+      }),
+    );
+    render(<LiveOperatorDashboard />);
+    await flush();
+    await act(async () => {
+      screen.getByRole("button", { name: /^reset demo/i }).click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await act(async () => {
+      screen.getByRole("button", { name: /confirm reset/i }).click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const post = calls.find((c) => c.url === "/api/demo/reset")!;
+    expect(post.init?.method).toBe("POST");
+    expect(post.init?.body).toBeUndefined();
+  });
 });
