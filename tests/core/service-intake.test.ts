@@ -6,7 +6,7 @@ import { scene1_vision_suggestion } from "@/contracts/fixtures/scenes";
 import { attachAiResult, createDraft, getDonationCard, storeDonationImage, submitVerification } from "@/core";
 import { MAX_IMAGE_BYTES } from "@/core/service/intake";
 import { audit_events, donation_images, donations, verification_links } from "@/db/schema";
-import { COURIER_A, DONOR, DONOR_PENDING, DONOR_SUSPENDED, OPERATOR, T0, at, donorActor, factsAt, iso, makeWorld, operatorActor, type World } from "./helpers/world";
+import { COURIER_A, DONOR, DONOR_PENDING, DONOR_SUSPENDED, HEADER_BY_MIME, OPERATOR, PNG_BYTES, T0, at, donorActor, factsAt, iso, makeWorld, operatorActor, padded, type World } from "./helpers/world";
 
 // Slice 2(a): storeDonationImage, createDraft (S-01), attachAiResult (S-02), submitVerification session path (S-03),
 // getDonationCard (section 3.13 / 11). PGlite store, test clock, `deps` always passed.
@@ -19,7 +19,7 @@ beforeAll(async () => {
 });
 afterAll(async () => w.close());
 
-const png = (n = 16) => new Uint8Array(Array.from({ length: n }, (_, i) => i % 251));
+const png = (n = 16) => padded(PNG_BYTES, n);
 async function image(deps = w.deps()) {
   const r = await storeDonationImage({ mime: "image/png", bytes: png() }, deps);
   if (!r.ok) throw new Error("image fixture failed");
@@ -38,7 +38,7 @@ const countDonations = async () => (await w.db.select().from(donations)).length;
 
 describe("storeDonationImage", () => {
   it.each(["image/jpeg", "image/png", "image/webp"])("stores %s byte for byte with its sha-256 and the clock's time", async (mime) => {
-    const bytes = png(300);
+    const bytes = padded(HEADER_BY_MIME[mime]!, 300);
     const deps = w.deps();
     const r = await storeDonationImage({ mime, bytes }, deps);
     expect(r.ok).toBe(true);
@@ -55,7 +55,7 @@ describe("storeDonationImage", () => {
   it("refuses an empty photo, and a photo over 5 MB, but takes exactly 5 MB", async () => {
     expect(await storeDonationImage({ mime: "image/png", bytes: new Uint8Array(0) }, w.deps())).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
     expect(await storeDonationImage({ mime: "image/png", bytes: new Uint8Array(MAX_IMAGE_BYTES + 1) }, w.deps())).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
-    expect((await storeDonationImage({ mime: "image/png", bytes: new Uint8Array(MAX_IMAGE_BYTES) }, w.deps())).ok).toBe(true);
+    expect((await storeDonationImage({ mime: "image/png", bytes: padded(PNG_BYTES, MAX_IMAGE_BYTES) }, w.deps())).ok).toBe(true);
   });
   it("refuses input that is not bytes", async () => {
     // @ts-expect-error a string is not Uint8Array

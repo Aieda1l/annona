@@ -3,7 +3,7 @@ import { err, ok, type Deps, type EligibilityDecision, type MessagingIdentity, t
 import { donations, messaging_identities, offers } from "@/db/schema";
 import { writeAudit } from "./audit";
 import { activePolicy, checkTransition, decisionWithReason, LIVE_OFFER_STATUSES, releaseIfIdle, revokeLiveLinks } from "./lifecycle";
-import { identityFromRow } from "./map";
+import { identityFromRow, isUuid } from "./map";
 import { retryOnConflict, runtime } from "./runtime";
 
 // STOP (CONTRACTS section 3.1 optOutIdentity, 4.1 S-15, S-16, S-17, 8.4 step 8): opts the identity out and unwinds
@@ -16,6 +16,7 @@ import { retryOnConflict, runtime } from "./runtime";
 // is closed by openOfferForSend (the courier is no longer joined), so nothing is ever sent after STOP.
 
 export async function optOutIdentity(input: { identity_id: string }, deps?: Deps): Promise<Result<MessagingIdentity>> {
+  if (!isUuid(input?.identity_id)) return err("NOT_FOUND", "Identity not found.");
   const { db, clock } = await runtime(deps);
 
   const first = await retryOnConflict(() =>

@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import {
   INBOUND_REPROCESS_AFTER_SECONDS,
   OutboundMessage,
@@ -13,14 +13,18 @@ import {
 } from "@/contracts";
 import { inbound_messages, messaging_identities, offers, outbound_messages, provider_status_events } from "@/db/schema";
 import { writeAudit, SYSTEM_ACTOR } from "./audit";
-import { maskHandle } from "./map";
-import { runtime } from "./runtime";
+import { isUuid, maskHandle } from "./map";
+import { activeProvider, runtime } from "./runtime";
 
 // Inbound and outbound message ledger, delivery status, and the simulated-phone thread (CONTRACTS sections 8.2, 8.3,
 // 3.10, 11). Handles are personal data: an unknown sender's handle and text are never stored.
 
 const PROVIDERS = new Set(["photon", "fake"]);
 const SAFE_TOKEN = /^[A-Za-z0-9_.:-]{1,64}$/;
+const PRINTABLE_ID = /^[\x21-\x7e]{1,128}$/;
+const MAX_PAYLOAD_JSON = 64 * 1024;
+const MASKED = /^\*{3}[^*]{1,4}$/;
+const THREAD_LIMIT = 500;
 const mode = (provider: string) => (provider === "photon" ? ("real" as const) : ("fake" as const));
 
 type Provider = "photon" | "fake";
@@ -31,14 +35,19 @@ export async function recordInboundMessage(
   payload: unknown,
   deps?: Deps,
 ): Promise<{ status: "first" | "duplicate"; stored_result: InboundResult | null }> {
-  if (!PROVIDERS.has(provider) || typeof provider_message_id !== "string" || provider_message_id === "") {
-    throw new Error("recordInboundMessage: a provider and a provider_message_id are required");
+  if (!PROVIDERS.has(provider) || typeof provider_message_id !== "string" || !PRINTABLE_ID.test(provider_message_id)) {
+    throw new Error("recordInboundMessage: a provider and a provider_message_id (at most 128 printable characters) are required");
   }
   const { db, clock } = await runtime(deps);
   return db.transaction(async (tx) => {
     const now = clock.now();
     const p = (payload ?? {}) as { sender_handle?: unknown; provider_event_id?: unknown };
     const handle = typeof p.sender_handle === "string" ? p.sender_handle.trim() : "";
+    if (p.provider_event_id !== undefined && p.provider_event_id !== null && (typeof p.provider_event_id !== "string" || !PRINTABLE_ID.test(p.provider_event_id))) {
+      throw new Error("recordInboundMessage: provider_event_id must be at most 128 printable characters");
+    }
+    // A huge body is not worth keeping: the row (the dedupe record) is written without the payload.
+    const keepPayload = JSON.stringify(payload ?? null).length <= MAX_PAYLOAD_JSON;
 
     // Only a seeded identity's handle and text are kept. A stranger's are never written (CONTRACTS section 11).
     const known = handle
@@ -55,7 +64,7 @@ export async function recordInboundMessage(
         processing_started_at: now,
         sender_handle: known ? handle : null,
         handle_masked: handle ? maskHandle(handle) : null,
-        payload: known ? (payload as object) : null,
+        payload: known && keepPayload ? (payload as object) : null,
       })
       .onConflictDoNothing()
       .returning({ id: inbound_messages.id });
@@ -113,7 +122,8 @@ export async function recordIgnoredInbound(
   const { db, clock } = await runtime(deps);
   const now = clock.now();
   // Belt and braces: whatever the caller passes, at most the last 4 characters are kept.
-  const masked = input.handle_masked.length <= 8 ? input.handle_masked : maskHandle(input.handle_masked);
+  const given = String(input.handle_masked ?? "");
+  const masked = MASKED.test(given) || given === "****" ? given : maskHandle(given);
   await db.transaction(async (tx) => {
     // The row keeps no handle and no payload (section 11); an upsert covers a caller that never recorded the message first.
     await tx
@@ -203,7 +213,11 @@ export async function hasOutboundMessage(idempotency_key: string, deps?: Deps): 
 const maskTokens = (text: string) => text.replace(/#[A-Za-z0-9_-]{43}/g, (m) => `#…${m.slice(-4)}`);
 
 export async function listMessages(input: { identity_id?: string }, deps?: Deps): Promise<ThreadMessage[]> {
+  if (input.identity_id !== undefined && !isUuid(input.identity_id)) return [];
   const { db } = await runtime(deps);
+  // Working tokens are shown only when the app itself runs on fake messaging AND the identity is a fake one (the
+  // simulated phone stands in for the donor's phone). Anything else shows the last 4 characters.
+  const showTokens = activeProvider(deps) === "fake";
   const idFilter = input.identity_id;
   const [identity] = idFilter ? await db.select().from(messaging_identities).where(eq(messaging_identities.id, idFilter)) : [];
   if (idFilter && !identity) return [];
@@ -213,7 +227,8 @@ export async function listMessages(input: { identity_id?: string }, deps?: Deps)
     .from(outbound_messages)
     .innerJoin(messaging_identities, eq(outbound_messages.identity_id, messaging_identities.id))
     .where(idFilter ? eq(outbound_messages.identity_id, idFilter) : undefined)
-    .orderBy(asc(outbound_messages.created_at));
+    .orderBy(desc(outbound_messages.created_at))
+    .limit(THREAD_LIMIT);
   const inbound = await db
     .select()
     .from(inbound_messages)
@@ -223,13 +238,14 @@ export async function listMessages(input: { identity_id?: string }, deps?: Deps)
         identity ? sql`lower(${inbound_messages.sender_handle}) = ${identity.handle.toLowerCase()} and ${inbound_messages.provider} = ${identity.provider}` : undefined,
       ),
     )
-    .orderBy(asc(inbound_messages.received_at));
+    .orderBy(desc(inbound_messages.received_at))
+    .limit(THREAD_LIMIT);
 
   const thread: ThreadMessage[] = [
     ...outbound.map((r) => ({
       id: r.o.id,
       direction: "outbound" as const,
-      text: r.provider === "fake" || r.o.purpose !== "draft_ready" ? r.o.text : maskTokens(r.o.text),
+      text: (showTokens && r.provider === "fake") || r.o.purpose !== "draft_ready" ? r.o.text : maskTokens(r.o.text),
       purpose: r.o.purpose as ThreadMessage["purpose"],
       created_at: r.o.created_at.toISOString(),
     })),
@@ -275,7 +291,11 @@ export async function recordDeliveryStatus(
   if (!["accepted", "delivered", "failed"].includes(evt.status)) return err("VALIDATION_FAILED", "Unknown delivery status.");
   const { db, clock } = await runtime(deps);
   return db.transaction(async (tx) => {
-    const [offer] = await tx.select().from(offers).where(eq(offers.provider_message_id, evt.provider_message_id)).for("update");
+    const [offer] = await tx
+      .select()
+      .from(offers)
+      .where(and(eq(offers.provider_message_id, evt.provider_message_id), eq(offers.provider_mode, mode(evt.provider))))
+      .for("update");
     if (!offer) return ok({ offer_id: null, offer_status: null });
     const current = STATUS_RANK[offer.delivery_status as keyof typeof STATUS_RANK] ?? 0;
     if (STATUS_RANK[evt.status] > current) {

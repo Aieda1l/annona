@@ -17,7 +17,7 @@ import { canTransition } from "../state";
 import { parseUtc } from "../time";
 import { writeAudit } from "./audit";
 import { buildCard } from "./cards";
-import { donorFromRow, policyFromRow, iso } from "./map";
+import { donorFromRow, isUuid, policyFromRow, iso } from "./map";
 import { runtime } from "./runtime";
 
 // Slice 2(a): intake-facing core (CONTRACTS section 9.3, S-01, S-02, S-03 session path). Dev 1 calls these and never
@@ -26,12 +26,23 @@ import { runtime } from "./runtime";
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+const startsWith = (bytes: Uint8Array, at: number, sig: number[]) => sig.every((b, i) => bytes[at + i] === b);
+function looksLike(mime: string, bytes: Uint8Array): boolean {
+  if (mime === "image/png") return startsWith(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (mime === "image/jpeg") return startsWith(bytes, 0, [0xff, 0xd8, 0xff]);
+  if (mime === "image/webp") return bytes.length >= 12 && startsWith(bytes, 0, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes, 8, [0x57, 0x45, 0x42, 0x50]);
+  return false;
+}
+
 export async function storeDonationImage(input: { mime: string; bytes: Uint8Array }, deps?: Deps): Promise<Result<{ image_id: string }>> {
   if (typeof input?.mime !== "string" || !ALLOWED_IMAGE_MIME.has(input.mime)) {
     return err("VALIDATION_FAILED", "Please upload a JPEG, PNG or WebP photo.");
   }
   if (!(input.bytes instanceof Uint8Array) || input.bytes.length === 0) return err("VALIDATION_FAILED", "The photo is empty.");
   if (input.bytes.length > MAX_IMAGE_BYTES) return err("VALIDATION_FAILED", "The photo is larger than 5 MB.");
+
+  // The declared type must match the first bytes, so an HTML page or program cannot be stored as a photo.
+  if (!looksLike(input.mime, input.bytes)) return err("VALIDATION_FAILED", "That file is not a valid photo of the type it claims to be.");
 
   const { db, clock } = await runtime(deps);
   const sha256 = createHash("sha256").update(input.bytes).digest("hex");
@@ -53,6 +64,7 @@ export async function createDraft(
     return err("VALIDATION_FAILED", source === "messaging" ? "A messaging draft needs the inbound photo reference." : "This source has no reference.");
   }
 
+  if (!isUuid(actor.id) || !isUuid(image_id)) return err(isUuid(actor.id) ? "NOT_FOUND" : "NOT_AUTHORIZED", isUuid(actor.id) ? "Photo not found." : "Only a donor can start a draft.");
   const { db, clock } = await runtime(deps);
   return db.transaction(async (tx): Promise<Result<DonationCard>> => {
     const [donor] = await tx.select().from(donors).where(eq(donors.id, actor.id!));
@@ -71,7 +83,7 @@ export async function createDraft(
         : (await tx.select().from(donations).where(and(eq(donations.source, source), eq(donations.source_ref, source_ref))))[0];
 
     const replay = async (existing: typeof donations.$inferSelect): Promise<Result<DonationCard>> =>
-      existing.donor_id === actor.id ? ok(await buildCard(tx, existing, "donor")) : err("CONFLICT", "That photo already belongs to another donation.");
+      existing.donor_id === actor.id ? ok(await buildCard(tx, existing, "donor")) : err("CONFLICT", "That photo reference is already in use.");
 
     const existing = await findExisting();
     if (existing) return replay(existing);
@@ -101,6 +113,7 @@ export async function attachAiResult(
   input: { donation_id: string; result: { ok: true; suggestion: VisionSuggestion } | { ok: false; error_code: string } },
   deps?: Deps,
 ): Promise<Result<DonationCard>> {
+  if (!isUuid(input?.donation_id)) return err("NOT_FOUND", "Donation not found.");
   const { db, clock } = await runtime(deps);
   return db.transaction(async (tx): Promise<Result<DonationCard>> => {
     const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("no key update");
@@ -151,6 +164,7 @@ export async function submitVerification(
     return err("NOT_IMPLEMENTED", "Verification by link is not implemented yet.");
   }
   const actor = input.auth.actor;
+  if (!isUuid(input.donation_id)) return err("NOT_FOUND", "Donation not found.");
 
   const { db, clock } = await runtime(deps);
   return db.transaction(async (tx): Promise<Result<{ card: DonationCard; resubmit_token: string | null }>> => {

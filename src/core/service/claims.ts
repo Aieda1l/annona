@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
+  SHORT_CODE_REGEX,
   VerifiedFacts,
   type Assignment,
   type ClaimCommand,
@@ -22,11 +23,15 @@ import {
   loadMatchWorld,
   releaseIfIdle,
 } from "./lifecycle";
-import { courierFromRow, donorFromRow, recipientFromRow, type DonationRow, type OfferRow } from "./map";
+import { courierFromRow, donorFromRow, isUuid, recipientFromRow, type DonationRow, type OfferRow } from "./map";
 import { activeProvider, providerMode, retryOnConflict, runtime, type Q } from "./runtime";
 
 // claimOffer and declineOffer: CONTRACTS section 8.1, steps 1-9 in this order. First valid claim wins. Every
-// outcome is a result, never an error (200). A result for an unknown or foreign offer reveals nothing about it.
+// outcome is a result, never an error (200). The two answers for an unknown and a foreign offer carry no details about
+// the offer (the contract keeps them distinct; a route must rate-limit short-code guessing).
+
+/** A caller-supplied id that goes into the audit trail must be a plain token, never text or a handle. */
+const plainToken = (v: unknown): string | null => (typeof v === "string" && /^[A-Za-z0-9_.:-]{1,64}$/.test(v) ? v : null);
 
 const CLAIM_TEXT: Record<ClaimResult["code"], string> = {
   claimed: "Claimed. Thank you for taking this pickup.",
@@ -65,10 +70,10 @@ async function freshShape(q: Q, offer: OfferRow, donation: DonationRow): Promise
 
 /** Step 1: a short_code resolves to exactly one offer of ANY status, because codes are never reused before resetDemo. */
 async function resolveOffer(q: Q, ref: ClaimCommand["offer_ref"]): Promise<OfferRow | undefined> {
-  if (ref && typeof ref === "object" && "offer_id" in ref && typeof ref.offer_id === "string") {
+  if (ref && typeof ref === "object" && "offer_id" in ref && isUuid(ref.offer_id)) {
     return (await q.select().from(offers).where(eq(offers.id, ref.offer_id)))[0];
   }
-  if (ref && typeof ref === "object" && "short_code" in ref && typeof ref.short_code === "string") {
+  if (ref && typeof ref === "object" && "short_code" in ref && typeof ref.short_code === "string" && SHORT_CODE_REGEX.test(ref.short_code)) {
     return (await q.select().from(offers).where(eq(offers.short_code, ref.short_code)))[0];
   }
   return undefined;
@@ -177,7 +182,7 @@ export async function claimOffer(command: ClaimCommand, deps?: Deps): Promise<Cl
       for (const s of siblings) {
         await writeAudit(tx, { at: now, type: "offer.superseded", actor: command.actor, donation_id: donation.id, offer_id: s.id, mode: { messaging: s.provider_mode as "real" | "fake" }, data: { by_offer_id: offer.id } });
       }
-      await writeAudit(tx, { at: now, type: "claim.accepted", actor: command.actor, donation_id: donation.id, offer_id: offer.id, mode: { messaging: providerMode(provider) }, data: { source: command.source, source_event_id: command.source_event_id } });
+      await writeAudit(tx, { at: now, type: "claim.accepted", actor: command.actor, donation_id: donation.id, offer_id: offer.id, mode: { messaging: providerMode(provider) }, data: { source: command.source === "simulated_messaging" ? "simulated_messaging" : "messaging", source_event_id: plainToken(command.source_event_id) } });
       return claimResult("claimed", shapeOf(accepted[0]!, claimed[0]!), await buildAssignment(tx, claimed[0]!, accepted[0]!));
     });
 

@@ -132,3 +132,7 @@ export const statusOf = (r: DonationRow): DonationStatus => r.status as Donation
 export function maskHandle(handle: string): string {
   return handle.length <= 4 ? "****" : `***${handle.slice(-4)}`;
 }
+
+/** Shape check for ids that arrive from outside. A malformed id is a plain "not found", never a database error. */
+export const isUuid = (v: unknown): v is string =>
+  typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);

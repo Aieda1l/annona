@@ -11,7 +11,7 @@ import {
   type VisionSuggestion,
 } from "@/contracts";
 import { audit_events, couriers, donations, donors, offers, recipients } from "@/db/schema";
-import { auditFromRow, isoOrNull, type DonationRow } from "./map";
+import { auditFromRow, isUuid, isoOrNull, type DonationRow } from "./map";
 import { runtime, type Q } from "./runtime";
 import type { Deps } from "@/contracts";
 
@@ -86,7 +86,12 @@ export async function buildCard(q: Q, row: DonationRow, view: CardView): Promise
     .orderBy(desc(audit_events.at), desc(audit_events.id))
     .limit(30);
   let timeline = timelineRows.map(auditFromRow).reverse();
-  if (view === "donor") timeline = timeline.filter((e) => DONOR_TIMELINE.some((re) => re.test(e.type)));
+  if (view === "donor") {
+    // The donor learns that things happened, not who did them: courier and offer ids and the claim's source are hidden.
+    timeline = timeline
+      .filter((e) => DONOR_TIMELINE.some((re) => re.test(e.type)))
+      .map((e) => ({ ...e, offer_id: null, actor: e.actor.role === "donor" ? e.actor : { role: e.actor.role, id: null }, data: e.type === "claim.accepted" ? {} : e.data }));
+  }
 
   const [deliveredEvent] = await q
     .select({ at: audit_events.at })
@@ -139,6 +144,7 @@ export function viewFor(actor: Actor, row: Pick<DonationRow, "donor_id">): CardV
 export async function getDonationCard(actor: Actor, id: string, deps?: Deps): Promise<Result<DonationCard>> {
   // Role first: a caller who may never see donations learns nothing about which ids exist.
   if (actor.role !== "operator" && actor.role !== "donor") return err("NOT_AUTHORIZED", "You can't view this donation.");
+  if (!isUuid(id)) return err("NOT_FOUND", "Donation not found.");
   const { db } = await runtime(deps);
   const [row] = await db.select().from(donations).where(eq(donations.id, id));
   if (!row) return err("NOT_FOUND", "Donation not found.");

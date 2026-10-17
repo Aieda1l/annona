@@ -28,6 +28,18 @@ export const operatorActor: Actor = { role: "operator", id: OPERATOR };
 export const courierActor = (id: string = COURIER_A): Actor => ({ role: "courier", id });
 export const IDENTITY = SEED_IDENTITY_IDS;
 
+// Minimal byte strings that start like real images (storeDonationImage checks the first bytes against the declared type).
+export const PNG_BYTES = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0);
+export const JPEG_BYTES = Uint8Array.of(0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01);
+export const WEBP_BYTES = Uint8Array.of(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20);
+/** A header followed by filler up to `size` bytes. */
+export const padded = (header: Uint8Array, size: number): Uint8Array => {
+  const out = new Uint8Array(Math.max(size, header.length));
+  out.set(header);
+  return out;
+};
+export const HEADER_BY_MIME: Record<string, Uint8Array> = { "image/png": PNG_BYTES, "image/jpeg": JPEG_BYTES, "image/webp": WEBP_BYTES };
+
 export type World = {
   store: DispatchStore;
   db: ReturnType<typeof storeInternals>["db"];
@@ -118,7 +130,7 @@ export async function joinIdentityNow(w: World, identity_id: string, deps = w.de
 export async function makeEligibleDonation(w: World, opts: { from?: Date; facts?: Record<string, unknown>; donor?: string } = {}): Promise<string> {
   const from = opts.from ?? T0;
   const deps = w.deps(from);
-  const img = await storeDonationImage({ mime: "image/png", bytes: new Uint8Array([1, 2, 3, 4]) }, deps);
+  const img = await storeDonationImage({ mime: "image/png", bytes: PNG_BYTES }, deps);
   if (!img.ok) throw new Error("image failed");
   const actor = { role: "donor" as const, id: opts.donor ?? DONOR };
   const draft = await createDraft({ actor, image_id: img.data.image_id, source: "web_upload", source_ref: null }, deps);

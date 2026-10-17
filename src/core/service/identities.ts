@@ -2,7 +2,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { err, ok, type Deps, type MessagingIdentity, type Offer, type Result } from "@/contracts";
 import { messaging_identities, offers } from "@/db/schema";
 import { writeAudit } from "./audit";
-import { identityFromRow, offerFromRow } from "./map";
+import { identityFromRow, isUuid, offerFromRow } from "./map";
 import { runtime } from "./runtime";
 
 // Messaging identities (CONTRACTS section 3.1, 8, 11). Full handles stay inside core; callers outside the operator
@@ -24,6 +24,7 @@ export async function resolveIdentityByHandle(provider: "photon" | "fake", handl
 }
 
 export async function getIdentity(identity_id: string, deps?: Deps): Promise<MessagingIdentity | null> {
+  if (!isUuid(identity_id)) return null;
   const { db } = await runtime(deps);
   const [row] = await db.select().from(messaging_identities).where(eq(messaging_identities.id, identity_id));
   return row ? identityFromRow(row) : null;
@@ -34,6 +35,7 @@ export async function joinIdentity(
   input: { identity_id: string; provider_space_id: string | null; provider_sender_id: string | null },
   deps?: Deps,
 ): Promise<Result<MessagingIdentity>> {
+  if (!isUuid(input?.identity_id)) return err("NOT_FOUND", "Identity not found.");
   const { db, clock } = await runtime(deps);
   return db.transaction(async (tx): Promise<Result<MessagingIdentity>> => {
     const [row] = await tx.select().from(messaging_identities).where(eq(messaging_identities.id, input.identity_id)).for("update");
@@ -72,6 +74,7 @@ export async function joinIdentity(
 
 /** The courier's offers that can still be answered: open and not past their deadline. */
 export async function findOpenOffersForCourier(courier_id: string, deps?: Deps): Promise<Offer[]> {
+  if (!isUuid(courier_id)) return [];
   const { db, clock } = await runtime(deps);
   const now = clock.now();
   const rows = await db

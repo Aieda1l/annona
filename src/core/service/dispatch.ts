@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import {
   ALLERGENS,
   SHORT_CODE_ALPHABET,
@@ -31,7 +31,7 @@ import {
   revokeLiveLinks,
   LIVE_OFFER_STATUSES,
 } from "./lifecycle";
-import { identityFromRow, offerFromRow } from "./map";
+import { identityFromRow, isUuid, offerFromRow } from "./map";
 import { activeProvider, providerMode, retryOnConflict, runtime } from "./runtime";
 
 // Slice 2(b), part 2: dispatch. createNextOffers (S-04, S-05, S-18), openOfferForSend, markOfferSendFailed,
@@ -62,6 +62,7 @@ export async function listPendingSendOffers(deps?: Deps): Promise<Offer[]> {
 }
 
 export async function createNextOffers(input: { donation_id: string }, deps?: Deps): Promise<Result<Offer[]>> {
+  if (!isUuid(input?.donation_id)) return err("NOT_FOUND", "Donation not found.");
   const { db, clock } = await runtime(deps);
   const provider = activeProvider(deps);
   return retryOnConflict(() => db.transaction(async (tx): Promise<Result<Offer[]>> => {
@@ -195,6 +196,7 @@ export async function openOfferForSend(
   input: { offer_id: string },
   deps?: Deps,
 ): Promise<Result<{ offer: Offer; identity: MessagingIdentity; message_view: OfferMessageView }>> {
+  if (!isUuid(input?.offer_id)) return err("NOT_FOUND", "Offer not found.");
   const { db, clock } = await runtime(deps);
   const provider = activeProvider(deps);
   return retryOnConflict(() => db.transaction(async (tx) => {
@@ -277,6 +279,7 @@ export async function openOfferForSend(
 }
 
 export async function markOfferSendFailed(input: { offer_id: string; reason: string }, deps?: Deps): Promise<Result<Offer>> {
+  if (!isUuid(input?.offer_id)) return err("NOT_FOUND", "Offer not found.");
   const { db, clock } = await runtime(deps);
   return retryOnConflict(() => db.transaction(async (tx): Promise<Result<Offer>> => {
     const [peek] = await tx.select({ donation_id: offers.donation_id }).from(offers).where(eq(offers.id, input.offer_id));
@@ -303,7 +306,10 @@ export async function markOfferSendFailed(input: { offer_id: string; reason: str
 }
 
 export async function recordOfferProviderMessage(input: { offer_id: string; provider_message_id: string }, deps?: Deps): Promise<Result<Offer>> {
-  if (typeof input.provider_message_id !== "string" || input.provider_message_id === "") return err("VALIDATION_FAILED", "A provider message id is required.");
+  if (!isUuid(input?.offer_id)) return err("NOT_FOUND", "Offer not found.");
+  if (typeof input.provider_message_id !== "string" || !/^[\x21-\x7e]{1,128}$/.test(input.provider_message_id)) {
+    return err("VALIDATION_FAILED", "A provider message id is 1 to 128 printable characters.");
+  }
   const { db } = await runtime(deps);
   return db.transaction(async (tx): Promise<Result<Offer>> => {
     const [offer] = await tx.select().from(offers).where(eq(offers.id, input.offer_id)).for("update");
@@ -311,6 +317,9 @@ export async function recordOfferProviderMessage(input: { offer_id: string; prov
     if (offer.provider_message_id === input.provider_message_id) return ok(offerFromRow(offer));
     // The id is Photon's evidence for this offer; once set it is never replaced by a different one.
     if (offer.provider_message_id !== null) return err("CONFLICT", "This offer already has a different provider message id.");
+    // One id, one offer: delivery events find their offer by this id.
+    const taken = await tx.select({ id: offers.id }).from(offers).where(and(eq(offers.provider_message_id, input.provider_message_id), ne(offers.id, offer.id)));
+    if (taken.length > 0) return err("CONFLICT", "That provider message id belongs to another offer.");
     const [updated] = await tx.update(offers).set({ provider_message_id: input.provider_message_id }).where(and(eq(offers.id, offer.id), isNull(offers.provider_message_id))).returning();
     return updated ? ok(offerFromRow(updated)) : err("CONFLICT", "The offer changed; please retry.", { retryable: true });
   });
