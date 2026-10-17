@@ -22,11 +22,13 @@ export const isOperator = (actor: Actor | null): boolean => actor?.role === "ope
 export const forbidden = (): Response => toResponse(err("NOT_AUTHORIZED", "Not allowed."));
 
 /**
- * ANNONA_INTERNAL_SECRET is not in getEnv() yet (captain request: docs/requests/messaging-env-names.md). Until the
- * captain adds `internal_secret`, this returns undefined and the internal-secret path stays closed, which is safe.
+ * The relay worker's shared secret (ANNONA_INTERNAL_SECRET, via getEnv()). Unset or blank keeps the internal-secret path
+ * closed. It is trimmed because HTTP header values are trimmed, so a secret pasted with a trailing newline could never
+ * match what a request presents, and a whitespace-only value must not count as a secret at all.
  */
 export function internalSecretFromEnv(): string | undefined {
-  return (getEnv() as unknown as { internal_secret?: string }).internal_secret;
+  const secret = getEnv().internal_secret?.trim();
+  return secret ? secret : undefined;
 }
 
 /** 501 while a lane function is still a stub; otherwise a generic 500 that never echoes the error to the caller. */

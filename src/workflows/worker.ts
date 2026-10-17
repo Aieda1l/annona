@@ -8,7 +8,6 @@ import { createRelay } from "./relay";
 // inbound Photon messages by polling (ARCHITECTURE §6). Run it on the demo laptop next to `pnpm start`.
 
 const CURSOR_FILE = ".data/photon-cursor"; // gitignored
-const DEFAULT_TICK_INTERVAL_MS = 5000;
 
 const fileCursor = {
   async load(): Promise<string | null> {
@@ -45,8 +44,7 @@ async function main(): Promise<void> {
     fail("MESSAGING_PROVIDER=photon but PHOTON_PROJECT_ID or PHOTON_API_KEY is missing. Not starting.");
   }
 
-  const tickIntervalMs =
-    (getEnv() as unknown as { tick_interval_ms?: number }).tick_interval_ms ?? DEFAULT_TICK_INTERVAL_MS;
+  const tickIntervalMs = env.tick_interval_ms;
   const relay = createRelay({
     appBaseUrl: env.app_base_url,
     internalSecret,
