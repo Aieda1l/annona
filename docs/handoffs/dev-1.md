@@ -45,3 +45,13 @@ Scripts and raw outputs stayed outside version control (`.spikes-local/`, exclud
 - The prompt file is read from disk at runtime: see `docs/requests/intake-prompt-file-tracing.md`.
 
 **Next smallest action:** make real synthetic eval photos, write `src/lib/ai/eval.ts` runner, push the adapter PR after CP2.
+
+## 2026-10-17 — Eval runner (`pnpm eval:intake`, branch `feat/intake-gemini`)
+
+**Delivered (local):** `src/lib/ai/eval-cases.ts` (T-PE-01..08 catalog, U1-U4/M1-M4 scoring, T-PE-01 tolerates recall in 2 of 3 runs), `src/lib/ai/eval-report.ts` (PROMPT_EVAL §10 records and a console table), `src/lib/ai/eval.ts` (CLI: `--runs`, `--cases`, `--out`). `VISION_PROVIDER=gemini` runs the real model with `GEMINI_API_KEY` or, without a key, Vertex AI with ADC via `GOOGLE_CLOUD_PROJECT`; asking for `gemini` without either exits 2 and never falls back to fake. Fake runs are labeled a harness check and recorded as `not_run`.
+
+**Tests:** `tests/intake/eval-score.test.ts` and `eval-report.test.ts` (33, scoring and formatting only, no model).
+
+**Run once as a shake-down (not logged in PROMPT_EVAL §11):** fake harness: T-PE-01/02/04 pass, 5 cases not run (fixtures missing). Real model via Vertex ADC on the abstract placeholder drawings, 1 run: T-PE-02 and T-PE-04 pass, T-PE-01 fails on "a question about spreads or fillings" because the drawing is not recognizable as sandwiches. That failure reflects the placeholder image, not the prompt.
+
+**Blocked on:** real synthetic photos for `dessert_bars`, `non_food`, `sushi_tray`, `packaged_label`, `injection_note` (and better `sandwich_platter`, `buffet_ambiguous`, `blurry`), per `fixtures/intake/PROVENANCE.md` rules. No prompt version can pass the release rule until all eight cases run.

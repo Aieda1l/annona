@@ -40,7 +40,7 @@ export function containsSafetyClaim(s: string): boolean {
 }
 
 /** Every free-text field the dashboard or donor UI may render, with its path for error reporting. */
-function freeTextFields(o: VisionModelOutput): Array<[path: string, value: string]> {
+export function freeTextFields(o: VisionModelOutput): Array<[path: string, value: string]> {
   return [
     ...o.dish_suggestions.map((d, i): [string, string] => [`dish_suggestions[${i}].name`, d.name]),
     ...o.visible_components.map((c, i): [string, string] => [`visible_components[${i}]`, c]),
