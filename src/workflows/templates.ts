@@ -71,6 +71,10 @@ export const declineAckText = (): string => "Annona: offer declined. No assignme
 export const intakeFailedText = (): string =>
   "Annona: we couldn't use that photo. Please send another photo or use the web upload.";
 
+/** The photo arrived and was drafted, but core cannot issue the checklist link yet. Honest, and it moves the relay on. */
+export const linkUnavailableText = (): string =>
+  "Annona: we got your photo, but the checklist link isn't available yet. Please use the web upload.";
+
 export const askForCodeText = (): string =>
   "Annona: which offer? Reply YES or NO followed by the 4-character code from the offer text.";
 

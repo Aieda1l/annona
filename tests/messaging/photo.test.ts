@@ -178,6 +178,17 @@ describe("T-MS-18 failures before a draft exists", () => {
     await expect(handle(DONOR, msg(image()))).rejects.toThrow(/issueVerificationLink/);
   });
 
+  it("answers instead of retrying forever while the link function is not built (NOT_IMPLEMENTED), so the relay moves on", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { handle } = setup({ issueLink: async () => bad("NOT_IMPLEMENTED") });
+    const reply = await handle(DONOR, msg(image()));
+    expect(reply).toMatchObject({ purpose: "intake_failed", idempotency_key: "reply:pho_msg_photo1:v1" });
+    expect(reply?.text).toContain("web upload");
+    expect(reply?.text).not.toContain(TOKEN);
+    expect(logged.mock.calls.flat().join(" ")).toContain("issueVerificationLink");
+    logged.mockRestore();
+  });
+
   it("does no work at all when the app's public URL is not configured, and says so loudly for the operator", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { handle, fetchImage, createDraft } = setup({ appBaseUrl: undefined });

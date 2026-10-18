@@ -508,4 +508,18 @@ describe("a core fault during YES or NO (claimOffer or declineOffer throws)", ()
     expect(logged).not.toContain(HANDLE);
     expect(logged).not.toContain("K7M3");
   });
+
+  it("logs only the class name for an error that is not one of core's own fault messages", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { double, handle } = setup();
+    double.core.claimOffer = async () => {
+      throw new Error('duplicate key value violates unique constraint, Key (short_code)=(K7M3) already exists');
+    };
+    await handle(inbound("YES K7M3"));
+    const logged = log.mock.calls.flat().join(" ");
+    log.mockRestore();
+    expect(logged).toContain("Error");
+    expect(logged).not.toContain("short_code");
+    expect(logged).not.toContain("K7M3");
+  });
 });

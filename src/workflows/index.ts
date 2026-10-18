@@ -13,6 +13,7 @@ import { getEnv } from "@/server/env";
 import { bindCore } from "./core-binding";
 import { createDeliveryHandler } from "./delivery";
 import { readFixtureImage } from "./fixtures";
+import { createImageSource } from "./image-source";
 import { createInboundHandler } from "./inbound";
 import { createPhotoHandler } from "./photo";
 import { createTicker } from "./tick";
@@ -38,11 +39,7 @@ function photoHandler(deps: Deps | undefined, hasOutboundMessage: (key: string) 
       ? createAttachmentFetcher({ project_id: env.photon_project_id, api_key: env.photon_api_key })
       : null;
   return createPhotoHandler({
-    fetchImage: async (ref) => {
-      if (ref.provider_attachment_id && photon) return photon.fetchImage(ref.provider_attachment_id);
-      if (ref.fixture_id) return readFixtureImage(ref.fixture_id);
-      return { ok: false, reason: "not_found" };
-    },
+    fetchImage: createImageSource({ provider: env.messaging_provider, photon, readFixture: (id) => readFixtureImage(id) }),
     createDraft: (input) => createDraftFromImage(input, deps),
     issueLink: (input) => core.issueVerificationLink(input, deps),
     hasOutboundMessage,

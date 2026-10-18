@@ -116,7 +116,11 @@ export function createInboundHandler(deps: {
         // reply again and the result is saved. Nothing was claimed: core rolled the transaction back.
         const failed = async (purpose: "claim_result" | "decline_ack", error: unknown): Promise<InboundResult> => {
           const name = purpose === "claim_result" ? "claimOffer" : "declineOffer";
-          console.error(`[inbound] ${name} failed: ${error instanceof Error ? error.message.slice(0, 200) : "unknown error"}`);
+          // Core's own fault messages are static and safe to log; anything else (a driver error can echo key values)
+          // is reduced to its class name.
+          const detail =
+            error instanceof Error ? (/^(claimOffer|declineOffer): /.test(error.message) ? error.message.slice(0, 200) : error.name) : "unknown error";
+          console.error(`[inbound] ${name} failed: ${detail}`);
           return { outcome: "rejected", command, reply: await reply(identity, msg, purpose, tryAgainText()) };
         };
         if (command === "accept") {
