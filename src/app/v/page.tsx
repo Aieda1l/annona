@@ -21,7 +21,7 @@ export default function VerifyPage() {
         <p className="annona-eyebrow text-xs font-semibold tracking-widest uppercase">Annona · Donor checklist</p>
         <h1 className="mt-1 text-3xl font-bold">Confirm your donation details</h1>
       </header>
-      <p className="rounded-lg border border-[#e8833a] border-l-4 bg-[#fff7ee] p-3 text-sm text-[#17301f]">
+      <p className="rounded-lg border border-[#f5b942] border-l-4 bg-[#261d0b] p-3 text-sm text-foreground">
         <strong>Synthetic demo.</strong> You are the source of these facts: Annona records what you confirm below and
         does not check it. The AI summary is only a guess to help you fill this in.
       </p>

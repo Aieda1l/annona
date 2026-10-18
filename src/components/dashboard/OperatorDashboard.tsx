@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DashboardSnapshot, OperatorAction } from "@/contracts";
+import type { DashboardSnapshot, DonationStatus, OperatorAction } from "@/contracts";
 import type { Outcome } from "./api";
 import { DemoControls } from "./DemoControls";
 import { DispatchNowButton, DispatchResult, type DispatchState } from "./DispatchNowButton";
@@ -9,12 +9,31 @@ import { DonationBoard } from "./DonationBoard";
 import { IdentityList } from "./IdentityList";
 import { OperatorActions } from "./OperatorActions";
 import { formatPacific } from "./format";
+import { statusLabel } from "./StatusBadge";
 
 export type DemoHandlers = {
   onReset: () => Promise<Outcome>;
   onTick: () => Promise<Outcome>;
   onDispatch: (donationId: string) => Promise<Outcome>;
 };
+
+const TILE_ORDER: readonly DonationStatus[] = ["needs_review", "eligible", "offered", "claimed", "delivered", "rejected", "expired"];
+
+/** Server-provided counts only; nothing is derived here. Zero-count statuses are omitted. */
+function CountTiles({ counts }: { counts: DashboardSnapshot["counts_by_status"] }) {
+  const tiles = TILE_ORDER.filter((s) => (counts[s] ?? 0) > 0);
+  if (tiles.length === 0) return null;
+  return (
+    <ul aria-label="Donations by status" className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+      {tiles.map((s) => (
+        <li key={s} className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+          <p className="tabular font-sans text-3xl font-bold text-foreground">{counts[s]}</p>
+          <p className="text-xs font-medium text-muted-foreground">{statusLabel(s)}</p>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 /** Renders one DashboardSnapshot exactly as given. No status, eligibility or deadline is computed here. */
 export function OperatorDashboard({
@@ -59,23 +78,24 @@ export function OperatorDashboard({
       <header className="annona-hero space-y-1 rounded-2xl px-6 py-5 shadow-sm">
         <p className="annona-eyebrow text-xs font-semibold tracking-widest uppercase">Annona · Operator</p>
         <h1 className="text-3xl font-bold">Operator dashboard</h1>
-        <p className="text-sm text-[#cfe3c9]">
+        <p className="text-sm text-[#a9bfb5]">
           {sourceLabel} · snapshot {formatPacific(snapshot.generated_at)} · policy {snapshot.modes.policy_version}.
           &quot;Eligible&quot; means eligible for dispatch under the prototype operator policy, based on
           donor-attested records.
         </p>
         {snapshot.modes.messaging.mode === "fake" && (
           <p className="text-sm">
-            <a href="/operator/phone" className="font-medium text-[#8dbf7a] underline">
+            <a href="/operator/phone" className="font-medium text-primary underline">
               Open the simulated phone
             </a>{" "}
             (fake messaging only)
           </p>
         )}
         {!onAction && (
-          <p className="text-sm font-medium text-[#eef4ec]">Read-only: operator actions are not wired to the server yet.</p>
+          <p className="text-sm font-medium text-[#eaf2ee]">Read-only: operator actions are not wired to the server yet.</p>
         )}
       </header>
+      <CountTiles counts={snapshot.counts_by_status} />
       {demo && (
         <DemoControls
           locked={locked}

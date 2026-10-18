@@ -10,7 +10,7 @@ const LABEL: Record<FieldState, string> = {
 };
 
 const CLASS: Record<FieldState, string> = {
-  suggested: "border-dashed border-slate-500 bg-white text-slate-800",
+  suggested: "border-dashed border-slate-500 bg-card text-slate-800",
   donor_verified: "border-slate-600 bg-slate-100 text-slate-900",
   unknown: "border-slate-500 bg-slate-200 text-slate-900",
   needs_review: "border-amber-600 bg-amber-50 text-amber-950",

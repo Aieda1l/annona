@@ -50,7 +50,7 @@ export function ProfilePicker() {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3 rounded-lg border border-slate-300 bg-white p-4">
+    <form onSubmit={submit} className="space-y-3 rounded-lg border border-slate-300 bg-card p-4">
       <h2 className="text-lg font-semibold">Choose a demo profile</h2>
       <label className="block text-sm font-medium" htmlFor="actor">
         Profile (synthetic)

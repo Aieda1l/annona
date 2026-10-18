@@ -71,7 +71,7 @@ export function PhoneThread({ messages }: { messages: PhoneMessage[] }) {
             className={`max-w-[85%] rounded-lg border px-3 py-1.5 text-sm ${
               m.direction === "outbound"
                 ? "mr-auto border-slate-400 bg-slate-100"
-                : "ml-auto border-slate-700 bg-white"
+                : "ml-auto border-slate-700 bg-card"
             }`}
           >
             <p className="whitespace-pre-wrap break-words">{linkify(m.text)}</p>

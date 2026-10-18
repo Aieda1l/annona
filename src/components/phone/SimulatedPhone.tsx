@@ -127,7 +127,7 @@ export function SimulatedPhone() {
   const disabled = realMessaging || forbidden;
   const codeUpper = code.trim().toUpperCase();
   const btn =
-    "rounded border border-slate-700 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900";
+    "rounded border border-slate-700 bg-card px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900";
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-4 p-4">
@@ -170,7 +170,7 @@ export function SimulatedPhone() {
 
             <PhoneThread messages={messages} />
 
-            <div className="space-y-3 rounded border border-slate-300 bg-white p-3">
+            <div className="space-y-3 rounded border border-slate-300 bg-card p-3">
               <div className="flex flex-wrap items-end gap-2">
                 <button type="button" className={btn} onClick={() => send({ text: "JOIN" })}>
                   JOIN

@@ -48,45 +48,63 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Dark remap of the Tailwind scales the dashboard components hardcode (slate, amber, rose, ...).
+   Low numbers are now dark surfaces, high numbers light text, so existing classes keep their meaning. */
+@theme {
+  --color-slate-50: #0f1a17; --color-slate-100: #16241f; --color-slate-200: #1d312a; --color-slate-300: #2a4a3e;
+  --color-slate-400: #3f6556; --color-slate-500: #4f7868; --color-slate-600: #8fa79d; --color-slate-700: #a9bfb5;
+  --color-slate-800: #d3e2da; --color-slate-900: #eaf2ee; --color-slate-950: #f6fbf8;
+  --color-stone-200: #2b2a25; --color-stone-600: #a8a29e; --color-stone-900: #e7e5e4;
+  --color-amber-50: #261d0b; --color-amber-100: #33260c; --color-amber-600: #f5b942; --color-amber-700: #f5b942;
+  --color-amber-900: #fde9b8; --color-amber-950: #fde9b8;
+  --color-rose-50: #2a1413; --color-rose-100: #3a1a19; --color-rose-600: #f87171; --color-rose-700: #f87171;
+  --color-rose-900: #fecaca; --color-rose-950: #fecaca;
+  --color-teal-50: #0e2723; --color-teal-100: #103730; --color-teal-200: #14463c; --color-teal-700: #4fd1b8;
+  --color-teal-800: #5fe0c6; --color-teal-950: #c4f5ea;
+  --color-sky-100: #0e2b3d; --color-sky-700: #5bb8e8; --color-sky-950: #d2ecff;
+  --color-indigo-100: #1c1f3f; --color-indigo-700: #959cf5; --color-indigo-950: #e2e4ff;
+}
+
 :root {
-  /* Annona deck palette: forest 24523A, leaf 2F7D4F, mint 8DBF7A, pale EEF4EC, apricot E8833A, slate 5E7A68 */
-  --annona-ink: #17301f;
-  --annona-forest: #24523a;
-  --annona-leaf: #2f7d4f;
-  --annona-mint: #8dbf7a;
-  --annona-apricot: #e8833a;
-  --background: #eef4ec;
-  --foreground: #17301f;
-  --card: #ffffff;
-  --card-foreground: #17301f;
-  --popover: #ffffff;
-  --popover-foreground: #17301f;
-  --primary: #2f7d4f;
-  --primary-foreground: #ffffff;
-  --secondary: #dfeadb;
-  --secondary-foreground: #24523a;
-  --muted: #e3ede0;
-  --muted-foreground: #4a6454;
-  --accent: #dfeadb;
-  --accent-foreground: #24523a;
-  --destructive: #b5413b;
-  --border: #c9dac6;
-  --input: #b9cfb6;
-  --ring: #2f7d4f;
-  --chart-1: #8dbf7a;
-  --chart-2: #2f7d4f;
-  --chart-3: #24523a;
-  --chart-4: #e8833a;
-  --chart-5: #17301f;
+  /* Video palette (VIDEO_SCRIPT.md §3): bg 0F1A17, surface 16241F, text EAF2EE, muted 8FA79D, go 4ADE80, caution F5B942, stop F87171 */
+  color-scheme: dark;
+  --annona-ink: #0f1a17;
+  --annona-forest: #1f4a35;
+  --annona-leaf: #4ade80;
+  --annona-mint: #4ade80;
+  --annona-apricot: #f5b942;
+  --background: #0f1a17;
+  --foreground: #eaf2ee;
+  --card: #16241f;
+  --card-foreground: #eaf2ee;
+  --popover: #16241f;
+  --popover-foreground: #eaf2ee;
+  --primary: #4ade80;
+  --primary-foreground: #0f1a17;
+  --secondary: #1d312a;
+  --secondary-foreground: #eaf2ee;
+  --muted: #1d312a;
+  --muted-foreground: #8fa79d;
+  --accent: #1d312a;
+  --accent-foreground: #eaf2ee;
+  --destructive: #f87171;
+  --border: #2a4a3e;
+  --input: #3a5d4e;
+  --ring: #4ade80;
+  --chart-1: #4ade80;
+  --chart-2: #2dd4a0;
+  --chart-3: #8fa79d;
+  --chart-4: #f5b942;
+  --chart-5: #f87171;
   --radius: 0.875rem;
-  --sidebar: #17301f;
-  --sidebar-foreground: #eef4ec;
-  --sidebar-primary: #8dbf7a;
-  --sidebar-primary-foreground: #17301f;
-  --sidebar-accent: #24523a;
-  --sidebar-accent-foreground: #eef4ec;
-  --sidebar-border: #24523a;
-  --sidebar-ring: #8dbf7a;
+  --sidebar: #16241f;
+  --sidebar-foreground: #eaf2ee;
+  --sidebar-primary: #4ade80;
+  --sidebar-primary-foreground: #0f1a17;
+  --sidebar-accent: #1d312a;
+  --sidebar-accent-foreground: #eaf2ee;
+  --sidebar-border: #2a4a3e;
+  --sidebar-ring: #4ade80;
 }
 
 .dark {
@@ -143,7 +161,7 @@
     font-variant-numeric: tabular-nums;
   }
   :focus-visible {
-    outline: 2px solid var(--annona-leaf);
+    outline: 2px solid var(--annona-mint);
     outline-offset: 2px;
   }
   @media (prefers-reduced-motion: reduce) {
@@ -166,13 +184,16 @@
   }
   h1, h2, h3 {
     font-family: var(--font-heading);
-    color: var(--annona-forest);
+    color: var(--foreground);
     letter-spacing: -0.01em;
   }
   /* Dark forest hero bands (deck title slides): headings flip to cream. */
   .annona-hero {
-    background: linear-gradient(135deg, var(--annona-ink), var(--annona-forest));
-    color: #eef4ec;
+    background:
+      radial-gradient(60rem 18rem at 85% -40%, rgb(74 222 128 / 0.22), transparent 60%),
+      linear-gradient(135deg, #16241f, #1f4a35);
+    border: 1px solid #2a4a3e;
+    color: #eaf2ee;
   }
   .annona-hero h1, .annona-hero h2 { color: #fff; }
   .annona-hero .annona-eyebrow { color: var(--annona-mint); }

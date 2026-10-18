@@ -42,7 +42,7 @@ export function DonorDonationView({ card }: { card: DonationCard }) {
         <StatusBadge status={card.status} />
       </header>
 
-      <p data-testid="donor-status-explainer" className="rounded border border-slate-300 bg-white p-3 text-sm text-slate-900">
+      <p data-testid="donor-status-explainer" className="rounded border border-slate-300 bg-card p-3 text-sm text-slate-900">
         {EXPLAINER[card.status]}
       </p>
 
@@ -82,7 +82,7 @@ export function DonorDonationView({ card }: { card: DonationCard }) {
           <ul aria-label="Offers" className="space-y-1 text-sm">
             {offers.map((o, i) => (
               // The donor projection drops `id` (CONTRACTS section 3.13), so key on what survives it.
-              <li key={`${o.sent_at}-${i}`}className="rounded border border-slate-300 bg-white px-2 py-1">
+              <li key={`${o.sent_at}-${i}`}className="rounded border border-slate-300 bg-card px-2 py-1">
                 <span className="font-medium capitalize">{o.status.replace(/_/g, " ")}</span> · sent {formatPacific(o.sent_at)} ·
                 expires {formatPacific(o.expires_at)}
               </li>
@@ -92,7 +92,7 @@ export function DonorDonationView({ card }: { card: DonationCard }) {
       )}
 
       {card.assignment && (
-        <p data-testid="donor-assignment" className="rounded border border-slate-300 bg-white p-3 text-sm text-slate-900">
+        <p data-testid="donor-assignment" className="rounded border border-slate-300 bg-card p-3 text-sm text-slate-900">
           Assigned: {card.assignment.courier_display_name} → {card.assignment.recipient_display_name}. Pickup and
           delivery are simulated in this demo.
         </p>

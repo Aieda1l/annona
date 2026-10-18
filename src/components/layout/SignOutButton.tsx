@@ -57,7 +57,7 @@ export function SignOutButton() {
         type="button"
         onClick={signOut}
         disabled={busy}
-        className="rounded border border-slate-500 bg-white px-3 py-1 font-medium text-slate-900 disabled:opacity-60"
+        className="rounded border border-slate-500 bg-card px-3 py-1 font-medium text-slate-900 disabled:opacity-60"
       >
         Sign out
       </button>

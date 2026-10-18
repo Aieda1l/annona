@@ -30,7 +30,7 @@ export function ModeBanner({ modes, generated_at }: { modes: SystemModes; genera
   const chip = (text: string, warn: boolean) => (
     <span
       className={`rounded border px-2 py-0.5 text-xs font-semibold ${
-        warn ? "border-amber-700 bg-amber-100 text-amber-950" : "border-[#8dbf7a] bg-[#17301f] text-[#eef4ec]"
+        warn ? "border-amber-700 bg-amber-100 text-amber-950" : "border-[#4ade80] bg-background text-foreground"
       }`}
     >
       {text}
@@ -40,7 +40,7 @@ export function ModeBanner({ modes, generated_at }: { modes: SystemModes; genera
     <div
       role="status"
       aria-label="System mode"
-      className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-[#24523a] bg-[#24523a] px-4 py-2"
+      className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-card/95 px-4 py-2 backdrop-blur"
     >
       <span aria-hidden="true" className="annona-live" />
       {chip(ai.text, ai.warn)}

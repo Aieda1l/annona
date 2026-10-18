@@ -17,7 +17,7 @@ export function DispatchNowButton({
       type="button"
       disabled={disabled}
       onClick={onDispatch}
-      className="rounded border border-slate-700 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50"
+      className="rounded border border-slate-700 bg-card px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50"
     >
       Dispatch now
     </button>

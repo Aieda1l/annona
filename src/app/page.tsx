@@ -8,8 +8,8 @@ export default function Home() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/annona-logo-512.png" alt="" width={256} height={170} className="h-auto w-64 max-w-full" />
         <h1 className="text-4xl font-bold">Annona</h1>
-        <p className="text-[#cfe3c9]">Surplus-food coordination: AI describes, humans verify, the backend enforces.</p>
-        <p className="rounded-lg border border-[#e8833a] border-l-4 bg-[#fff7ee] p-3 text-sm text-[#17301f]">
+        <p className="text-[#a9bfb5]">Surplus-food coordination: AI describes, humans verify, the backend enforces.</p>
+        <p className="rounded-lg border border-[#f5b942] border-l-4 bg-[#261d0b] p-3 text-sm text-foreground">
           <strong>Synthetic demo.</strong> All donors, recipients and couriers are fake. This prototype is not
           certified or reviewed for food-safety compliance, and a photo or AI output never establishes food safety
           or allergen status.

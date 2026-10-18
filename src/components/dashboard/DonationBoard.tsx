@@ -46,9 +46,9 @@ export function DonationBoard({
             data-tone={status === "unmatched" ? "neutral" : undefined}
             className="space-y-3"
           >
-            <h2 className="flex items-baseline gap-2 border-b border-[#c9dac6] pb-1 text-xl font-bold">
+            <h2 className="flex items-baseline gap-2 border-b border-border pb-1 text-xl font-bold">
               {HEADING[status] ?? statusLabel(status)}{" "}
-              <span className="tabular rounded-full bg-[#24523a] px-2 py-0.5 font-sans text-xs font-semibold text-white">({counts_by_status[status] ?? cards.length})</span>
+              <span className="tabular rounded-full bg-primary/15 px-2 py-0.5 font-sans text-xs font-semibold text-primary">({counts_by_status[status] ?? cards.length})</span>
             </h2>
             <div className="grid gap-3 md:grid-cols-2">
               {cards.map((c) => (

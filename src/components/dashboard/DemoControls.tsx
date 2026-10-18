@@ -31,7 +31,7 @@ export function DemoControls({
   }
 
   const btn =
-    "rounded border border-slate-700 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900";
+    "rounded border border-slate-700 bg-card px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900";
 
   return (
     <section aria-label="Demo controls" className="space-y-2 rounded border border-slate-400 bg-slate-50 p-3">

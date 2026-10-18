@@ -10,7 +10,7 @@ const STATUS_LABEL: Record<IdentitySummary["status"], string> = {
 export function IdentityList({ identities }: { identities: readonly IdentitySummary[] }) {
   if (identities.length === 0) return <p className="text-sm text-slate-700">No messaging identities.</p>;
   return (
-    <ul className="divide-y divide-slate-200 rounded border border-slate-300 bg-white" aria-label="Messaging identities">
+    <ul className="divide-y divide-slate-200 rounded border border-slate-300 bg-card" aria-label="Messaging identities">
       {identities.map((i) => (
         <li key={i.identity_id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
           <span>

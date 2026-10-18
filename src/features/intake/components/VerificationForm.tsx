@@ -56,7 +56,7 @@ const ALLERGEN_CHOICES = [
 ] as const;
 
 const SELECT_CLASS =
-  "h-11 w-full cursor-pointer rounded-lg border border-input bg-white px-2 text-base outline-none transition-colors duration-200 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-10 sm:text-sm";
+  "h-11 w-full cursor-pointer rounded-lg border border-input bg-background px-2 text-base outline-none transition-colors duration-200 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-10 sm:text-sm";
 
 export type VerificationFormProps = {
   /** Shown only as unverified hints beside the donor's own fields. Never used to pre-fill. */
@@ -81,11 +81,11 @@ function Field({ label, htmlFor, hint, children }: { label: string; htmlFor: str
 
 function Section({ step, title, children }: { step: number; title: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-4 rounded-2xl border border-[#c9dac6] bg-white p-5 shadow-sm">
+    <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm">
       <h2 className="flex items-center gap-3 text-xl font-bold">
         <span
           aria-hidden="true"
-          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#24523a] font-sans text-sm font-semibold text-white"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary font-sans text-sm font-bold text-primary-foreground"
         >
           {step}
         </span>
@@ -216,8 +216,8 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
         {ALLERGENS.map((a) => (
-          <fieldset key={a} className="flex flex-col gap-1 rounded-xl border border-[#c9dac6] bg-[#f6faf4] p-3">
-            <legend className="px-1 text-sm font-semibold text-[#24523a]">{ALLERGEN_NAMES[a]}</legend>
+          <fieldset key={a} className="flex flex-col gap-1 rounded-xl border border-border bg-secondary/60 p-3">
+            <legend className="px-1 text-sm font-semibold text-primary">{ALLERGEN_NAMES[a]}</legend>
             {aiAllergens.has(a) && (
               <Hint id={`allergen-${a}`}>AI: possible — {aiAllergens.get(a)} (unverified)</Hint>
             )}
@@ -225,7 +225,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
               {ALLERGEN_CHOICES.map((c) => (
                 <label key={c.value} className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-8">
                   <input
-                    className="size-4 cursor-pointer accent-[#2f7d4f]"
+                    className="size-4 cursor-pointer accent-[#4ade80]"
                     type="radio"
                     name={id(`allergen-${a}`)}
                     value={c.value}
@@ -265,7 +265,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           {ALLERGENS.map((a) => (
             <label key={a} className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-8">
               <input
-                className="size-4 cursor-pointer accent-[#2f7d4f]"
+                className="size-4 cursor-pointer accent-[#4ade80]"
                 type="checkbox"
                 aria-label={`${ALLERGEN_NAMES[a]} cross-contact`}
                 disabled={!declared}
@@ -331,7 +331,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         />
         <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-8">
           <input
-            className="size-4 cursor-pointer accent-[#2f7d4f]"
+            className="size-4 cursor-pointer accent-[#4ade80]"
             type="checkbox"
             checked={state.no_discard_by}
             onChange={(e) => set("no_discard_by", e.target.checked)}
@@ -371,10 +371,10 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           onChange={text("attested_by_label")}
         />
       </Field>
-      <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-lg bg-[#f6faf4] p-3 text-sm">
+      <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-lg bg-secondary/60 p-3 text-sm">
         <input
           type="checkbox"
-          className="mt-0.5 size-4 cursor-pointer accent-[#2f7d4f]"
+          className="mt-0.5 size-4 cursor-pointer accent-[#4ade80]"
           checked={state.attested}
           onChange={(e) => set("attested", e.target.checked)}
         />

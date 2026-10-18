@@ -49,7 +49,7 @@ export function HandoffControls({
         type="button"
         disabled={busy}
         onClick={() => run(step)}
-        className="rounded border border-slate-700 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+        className="rounded border border-slate-700 bg-card px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
       >
         {step === "collected"
           ? "Mark collected (simulated)"
