@@ -4,7 +4,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { ALLERGENS, err } from "@/contracts";
 import * as core from "@/core";
-import { audit_events, donations } from "@/db/schema";
+import { audit_events, donation_images, donations } from "@/db/schema";
+import { GPS_MARKER, contains, heicWithExif, jpegWithExif } from "./doubles/images";
 import { createIntakeService } from "@/features/intake/service";
 import { createFakeVisionProvider } from "@/lib/ai/fake";
 import { donorActor, factsAt, makeWorld, type World } from "../core/helpers/world";
@@ -171,5 +172,20 @@ describe("intake service against the real core", () => {
     expect(r).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
     expect(analyze).not.toHaveBeenCalled();
     expect((await w.db.select().from(donations)).length).toBe(before);
+  });
+  it.each([
+    ["a JPEG", "image/jpeg", () => jpegWithExif(), "messaging"],
+    ["a HEIC", "image/heic", () => heicWithExif(), "messaging"],
+  ] as const)("%s with GPS in its metadata is stored without it", async (_label, mime, make, source) => {
+    const vision = createFakeVisionProvider();
+    const s = createIntakeService({ core, vision });
+    const r = await s.createDraftFromImage(
+      { actor: donorActor(), image: { mime, bytes_base64: Buffer.from(make()).toString("base64") }, source, source_ref: `fake:exif-${mime}` },
+      w.deps(),
+    );
+    // core may refuse a mime it does not accept yet (HEIC allowlist is Dev 2's); either way no GPS is ever stored
+    const rows = await w.db.select().from(donation_images);
+    for (const row of rows) expect(contains(new Uint8Array(row.bytes), GPS_MARKER)).toBe(false);
+    if (mime === "image/jpeg") expect(r.ok).toBe(true);
   });
 });

@@ -13,6 +13,7 @@ import { createFakeVisionProvider } from "@/lib/ai/fake";
 import { createVisionProvider } from "@/lib/ai";
 import { createIntakeService } from "@/features/intake/service";
 import { createCoreDouble, DONOR } from "./doubles/core";
+import { GPS_MARKER, contains, heicWithExif, jpegOfSize, jpegWithExif, pngWithMetadata } from "./doubles/images";
 
 const fixture = (id: string) => ({
   mime: "image/jpeg",
@@ -68,7 +69,7 @@ describe("createDraftFromImage", () => {
       const s = createIntakeService({ core, vision: provider });
       await s.createDraftFromImage({
         actor: DONOR,
-        image: { mime: "image/heic", bytes_base64: bytes(100) },
+        image: { mime: "image/heic", bytes_base64: Buffer.from(heicWithExif()).toString("base64") },
         source: "messaging",
         source_ref: "fake:heic-1",
       });
@@ -99,7 +100,7 @@ describe("createDraftFromImage", () => {
       const s = createIntakeService({ core, vision: provider });
       const r = await s.createDraftFromImage({
         actor: DONOR,
-        image: { mime: "image/jpeg", bytes_base64: bytes(3 * 1024 * 1024) },
+        image: { mime: "image/jpeg", bytes_base64: Buffer.from(jpegOfSize(3 * 1024 * 1024)).toString("base64") },
         source: "messaging",
       });
       expect(r.ok).toBe(true);
@@ -181,6 +182,42 @@ describe("createDraftFromImage", () => {
     it("a well-formed suggestion with matching mode passes through", async () => {
       const result = await run({ ...scene1_vision_suggestion, mode: "real" }, "real");
       expect(result).toMatchObject({ ok: true });
+    });
+  });
+
+  describe("location metadata is stripped before storage and before the model sees the photo", () => {
+    const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
+    it.each([
+      ["a JPEG from messaging", "image/jpeg", () => jpegWithExif(), "messaging"],
+      ["a JPEG from web upload", "image/jpeg", () => jpegWithExif(), "web_upload"],
+      ["a PNG from web upload", "image/png", () => pngWithMetadata(), "web_upload"],
+      ["a HEIC from messaging", "image/heic", () => heicWithExif(), "messaging"],
+    ] as const)("%s", async (_label, mime, make, source) => {
+      const { core } = setup();
+      const { provider, analyzeFoodImage } = spyVision(async () => err("PROVIDER_UNAVAILABLE", "stub"));
+      const s = createIntakeService({ core, vision: provider });
+      await s.createDraftFromImage({
+        actor: DONOR,
+        image: { mime, bytes_base64: b64(make()) },
+        source,
+        ...(source === "messaging" ? { source_ref: "fake:exif-1" } : {}),
+      });
+      const stored = core.storeDonationImage.mock.calls[0]![0].bytes as Uint8Array;
+      expect(contains(stored, GPS_MARKER)).toBe(false);
+      const sent = Buffer.from(analyzeFoodImage.mock.calls[0]![0].image.bytes_base64, "base64");
+      expect(contains(sent, GPS_MARKER)).toBe(false);
+    });
+
+    it("a photo that cannot be read is refused before any store or AI call", async () => {
+      const { core } = setup();
+      const { provider, analyzeFoodImage } = spyVision(async () => err("PROVIDER_UNAVAILABLE", "unused"));
+      const s = createIntakeService({ core, vision: provider });
+      const truncated = jpegWithExif().subarray(0, 40);
+      const r = await s.createDraftFromImage({ actor: DONOR, image: { mime: "image/jpeg", bytes_base64: b64(truncated) }, source: "web_upload" });
+      expect(r).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
+      expect(core.storeDonationImage).not.toHaveBeenCalled();
+      expect(core.createDraft).not.toHaveBeenCalled();
+      expect(analyzeFoodImage).not.toHaveBeenCalled();
     });
   });
 

@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { err, scene1_vision_suggestion, type VisionProvider, type VisionSuggestion } from "@/contracts";
 import { createIntakeService, type IntakeService } from "@/features/intake/service";
 import { createCoreDouble, DONOR } from "./doubles/core";
+import { jpegOfSize } from "./doubles/images";
 
 // Review (MEDIUM): one upload can cost up to three paid provider calls (retry, then escalation). A double click or a
 // replayed request must not multiply that. Web and fixture drafts carry no source_ref (CONTRACTS §3.2), so the
 // service shares the in-flight result only, keyed by donor and image bytes. Nothing is reused once it settles.
 
 const DONOR_B = { role: "donor", id: "00000000-0000-4000-8000-0000000000bb" } as const;
-const image = (fill: number) => ({ mime: "image/jpeg", bytes_base64: Buffer.alloc(200, fill).toString("base64") });
+const image = (fill: number) => ({ mime: "image/jpeg", bytes_base64: Buffer.from(jpegOfSize(200, fill)).toString("base64") });
 const good = { ...scene1_vision_suggestion, mode: "real" } as VisionSuggestion;
 
 function setup(impl: VisionProvider["analyzeFoodImage"] = async () => ({ ok: true, data: good })) {
