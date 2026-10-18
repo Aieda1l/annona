@@ -88,6 +88,12 @@ describe("SignOutButton", () => {
     expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
   });
 
+  it("is not shown on the donor's checklist page /v: the donor opens it from a message link and has no session there", () => {
+    pathname = "/v";
+    render(<SignOutButton />);
+    expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
+  });
+
   it("is shown on the donor and operator pages", () => {
     for (const p of ["/operator", "/operator/phone", "/donor/new", "/operator/donations/abc"]) {
       pathname = p;

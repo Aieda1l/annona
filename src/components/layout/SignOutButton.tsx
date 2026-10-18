@@ -6,7 +6,7 @@ import { useState } from "react";
 /**
  * Ends the demo session: asks the server to clear the session cookie (DELETE /api/session, the cookie is HttpOnly so
  * the page cannot clear it itself) and only then goes to the home page. If the server does not confirm, it says so
- * instead of pretending. The home page holds the profile picker, so the button is not shown there.
+ * instead of pretending. Not shown on the home page (it holds the profile picker) or on /v (the donor's checklist link).
  */
 export function SignOutButton() {
   const router = useRouter();
@@ -23,6 +23,9 @@ export function SignOutButton() {
     if (pendingOn !== null) setPendingOn(null);
     return null;
   }
+  // The donor's checklist page is opened from a link in a message and is authorised by the token in that link, not a
+  // session, so a "Sign out" there would only confuse (and send the donor to the profile picker mid-checklist).
+  if (pathname === "/v") return null;
 
   async function signOut() {
     if (busy) return;
