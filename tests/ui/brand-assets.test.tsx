@@ -4,7 +4,11 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The home page renders the profile picker, which navigates with the app router (#56); there is no router in this test.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => undefined }) }));
+
 import Home from "@/app/page";
 
 afterEach(cleanup);
