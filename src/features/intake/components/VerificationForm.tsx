@@ -13,11 +13,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { buildFacts, initialFormState, type FormState } from "./verification-form-model";
+import { buildFacts, initialFormState, prefillFromSuggestion, showsColdQuestions, toLocalInput, type AiFilled, type FormState } from "./verification-form-model";
 
-// The donor checklist (Dev 1). Every fact starts empty or `unknown`; the AI suggestion appears only as
-// labeled, unverified hints and never fills a field. No client-side safety logic: the server parses the
-// payload and the gate decides. Never render "safe", "allergen-free", "certified" or "compliant".
+// The donor checklist (Dev 1). Every fact starts empty or `unknown`, except what the AI draft fills to save typing
+// (D-042; see `prefillFromSuggestion`): dish name, servings, the ingredients text and the allergens the AI flagged,
+// each tagged "from the AI draft" and editable. The AI never fills "not in my listed ingredients", cross-contact,
+// handling, preparation, temperatures or times. No client-side safety logic: the server parses the payload and the gate
+// decides. Never render "safe", "allergen-free", "certified" or "compliant".
 
 const ALLERGEN_NAMES: Record<Allergen, string> = {
   milk: "Milk",
@@ -59,7 +61,7 @@ const SELECT_CLASS =
   "h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 export type VerificationFormProps = {
-  /** Shown only as unverified hints beside the donor's own fields. Never used to pre-fill. */
+  /** Unverified hints beside the fields; also fills a few descriptive fields that are still untouched (D-042). */
   suggestion: VisionSuggestion | null;
   onSubmit: (raw: unknown) => void | Promise<void>;
   submitting?: boolean;
@@ -85,9 +87,43 @@ const Hint = ({ id, children }: { id: string; children: ReactNode }) => (
   </p>
 );
 
+const AiTag = ({ field, children }: { field: string; children: ReactNode }) => (
+  <span data-testid={`ai-filled-${field}`} className="w-fit rounded border border-dashed border-input px-1.5 py-0.5 text-xs text-muted-foreground">
+    {children}
+  </span>
+);
+
+/** "+1 h / +2 h / +4 h" buttons: the donor clicks one to fill a time field; nothing is pre-selected. */
+function TimeShortcuts({ label, disabled, onPick }: { label: string; disabled?: boolean; onPick: (local: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label={`${label} shortcuts`}>
+      {[1, 2, 4].map((h) => (
+        <Button
+          key={h}
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          aria-label={`${label} +${h} h from now`}
+          onClick={() => onPick(toLocalInput(new Date(Date.now() + h * 3_600_000)))}
+        >
+          +{h} h
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 export function VerificationForm({ suggestion, onSubmit, submitting = false, error = null }: VerificationFormProps) {
   const uid = useId();
-  const [state, setState] = useState<FormState>(initialFormState);
+  // A suggestion that is there at the first render fills the form at once (no empty flash, nothing to wait for); one that
+  // arrives later is applied by the effect below.
+  const [initial] = useState(() => prefillFromSuggestion(initialFormState(), suggestion));
+  const [state, setState] = useState<FormState>(initial.state);
+  const [aiFilled, setAiFilled] = useState<AiFilled>(initial.filled);
+  const appliedFor = useRef<VisionSuggestion | null>(suggestion);
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const [errors, setErrors] = useState<string[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const alertRef = useRef<HTMLDivElement>(null);
@@ -97,6 +133,23 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
   const text = (key: keyof FormState) => (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     set(key, e.target.value as never);
 
+  // Start from the AI draft once per suggestion, filling only what the donor has not touched yet (a draft that arrives
+  // after the donor began typing never overwrites their text).
+  useEffect(() => {
+    if (!suggestion || appliedFor.current === suggestion) return;
+    appliedFor.current = suggestion;
+    const out = prefillFromSuggestion(stateRef.current, suggestion);
+    setState(out.state);
+    setAiFilled((f) => ({
+      dish_name: out.filled.dish_name ?? f.dish_name,
+      servings: out.filled.servings ?? f.servings,
+      ingredients_text: out.filled.ingredients_text ?? f.ingredients_text,
+      allergens: [...new Set([...f.allergens, ...out.filled.allergens])],
+    }));
+  }, [suggestion]);
+
+  /** The tag is shown only while the field still holds what the AI draft put there. */
+  const stillAi = (field: "dish_name" | "servings" | "ingredients_text") => aiFilled[field] !== undefined && state[field] === aiFilled[field];
   const aiAllergens = new Map(suggestion?.possible_allergens.map((a) => [a.allergen, a.basis]) ?? []);
   const est = suggestion?.estimated_servings;
 
@@ -156,6 +209,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         }
       >
         <Input id={id("dish_name")} aria-required="true" maxLength={80} value={state.dish_name} onChange={text("dish_name")} />
+        {stillAi("dish_name") && <AiTag field="dish_name">From the AI draft: check it</AiTag>}
       </Field>
 
       <Field label="Description (optional)" htmlFor={id("description")}>
@@ -168,6 +222,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         hint={est && <Hint id="servings">AI estimate (unverified): {est.min}–{est.max} servings</Hint>}
       >
         <Input id={id("servings")} aria-required="true" type="number" inputMode="numeric" value={state.servings} onChange={text("servings")} />
+        {stillAi("servings") && <AiTag field="servings">From the AI draft (the lower end of its estimate): check it</AiTag>}
       </Field>
 
       <Field
@@ -185,6 +240,20 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           value={state.ingredients_text}
           onChange={text("ingredients_text")}
         />
+        {stillAi("ingredients_text") && (
+          <>
+            <AiTag field="ingredients_text">From the AI draft: it only lists what it can see, not what is inside the food</AiTag>
+            <label className="flex items-start gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={state.ingredients_checked}
+                onChange={(e) => set("ingredients_checked", e.target.checked)}
+              />
+              I checked this ingredient list against my recipe or label
+            </label>
+          </>
+        )}
       </Field>
 
       <div className="flex flex-col gap-3">
@@ -196,6 +265,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         {ALLERGENS.map((a) => (
           <fieldset key={a} className="flex flex-col gap-1">
             <legend className="text-sm font-medium">{ALLERGEN_NAMES[a]}</legend>
+            {aiFilled.allergens.includes(a) && state.allergens[a] === "present" && (
+              <AiTag field={`allergen-${a}`}>Pre-selected from the AI draft (it flagged this as possible): change it if it is not in your food</AiTag>
+            )}
             {aiAllergens.has(a) && (
               <Hint id={`allergen-${a}`}>AI: possible — {aiAllergens.get(a)} (unverified)</Hint>
             )}
@@ -272,15 +344,24 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
       >
         {select("contains_excluded_category", YES_NO_UNKNOWN, YNU_LABELS)}
       </Field>
-      <Field
-        label="Held at 41 °F (5 °C) or below continuously since preparation, per your establishment's procedures?"
-        htmlFor={id("continuous_cold_holding")}
-      >
-        {select("continuous_cold_holding", YES_NO_UNKNOWN, YNU_LABELS)}
-      </Field>
-      <Field label="Do you have a temperature log for this food?" htmlFor={id("temperature_log_available")}>
-        {select("temperature_log_available", YES_NO_UNKNOWN, YNU_LABELS)}
-      </Field>
+      {showsColdQuestions(state.handling_mode) ? (
+        <>
+          <Field
+            label="Held at 41 °F (5 °C) or below continuously since preparation, per your establishment's procedures?"
+            htmlFor={id("continuous_cold_holding")}
+          >
+            {select("continuous_cold_holding", YES_NO_UNKNOWN, YNU_LABELS)}
+          </Field>
+          <Field label="Do you have a temperature log for this food?" htmlFor={id("temperature_log_available")}>
+            {select("temperature_log_available", YES_NO_UNKNOWN, YNU_LABELS)}
+          </Field>
+        </>
+      ) : (
+        <p data-testid="cold-questions-skipped" className="text-xs text-muted-foreground">
+          This prototype only offers refrigerated food, so the cold-holding and temperature-log questions are skipped for this
+          food. It will be sent for review.
+        </p>
+      )}
       <Field
         label="Was any of this food served to or handled by customers (for example on a buffet line)?"
         htmlFor={id("previously_served")}
@@ -299,6 +380,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           value={state.discard_by_local}
           onChange={text("discard_by_local")}
         />
+        <TimeShortcuts label="Discard-by time" disabled={state.no_discard_by} onPick={(v) => set("discard_by_local", v)} />
         <label className="flex items-center gap-1.5 text-sm">
           <input
             type="checkbox"
@@ -317,6 +399,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           value={state.donor_pickup_by_local}
           onChange={text("donor_pickup_by_local")}
         />
+        <TimeShortcuts label="Pickup time" onPick={(v) => set("donor_pickup_by_local", v)} />
       </Field>
 
       <Field label="Pickup instructions (shared only with the courier who accepts)" htmlFor={id("pickup_instructions")}>

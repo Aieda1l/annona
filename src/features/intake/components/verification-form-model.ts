@@ -5,6 +5,7 @@ import {
   type DonorAllergenStatus,
   type HandlingMode,
   type PreparationType,
+  type VisionSuggestion,
   type YesNoUnknown,
 } from "@/contracts";
 
@@ -33,9 +34,12 @@ export type FormState = {
   pickup_instructions: string;
   attested_by_label: string;
   attested: boolean;
+  /** The ingredients text the AI draft filled in, or null. While the field still equals it, the donor must tick `ingredients_checked`. */
+  ai_ingredients: string | null;
+  ingredients_checked: boolean;
 };
 
-/** Nothing here comes from the AI suggestion: every fact starts empty or `unknown`. */
+/** The empty form: every fact starts empty or `unknown`. `prefillFromSuggestion` may then fill a few descriptive fields. */
 export function initialFormState(): FormState {
   return {
     dish_name: "",
@@ -58,7 +62,67 @@ export function initialFormState(): FormState {
     pickup_instructions: "",
     attested_by_label: "",
     attested: false,
+    ai_ingredients: null,
+    ingredients_checked: false,
   };
+}
+
+/** What `prefillFromSuggestion` filled, so the form can tag those fields and drop the tag when the donor changes them. */
+export type AiFilled = { dish_name?: string; servings?: string; ingredients_text?: string; allergens: Allergen[] };
+
+/**
+ * D-042: starts the form from the AI draft to save the donor typing. It fills ONLY fields that are still at their
+ * default (so it never overwrites what the donor typed or chose):
+ * - dish name: the top suggestion;
+ * - servings: the LOWER bound of the estimate (never a bigger count than the AI guessed);
+ * - ingredients: the visible components (the donor must tick that they checked the list before submitting);
+ * - each allergen the AI flagged as possible: pre-selected as `present`, the cautious direction.
+ * It NEVER selects `not_in_listed_ingredients` (the AI not mentioning an allergen is not evidence it is absent) and
+ * never touches cross-contact, handling, preparation, excluded category, temperatures, holding, previously served,
+ * containers, the times, or the attestation. The filled values are the donor's statement only once the donor submits.
+ */
+export function prefillFromSuggestion(state: FormState, suggestion: VisionSuggestion | null): { state: FormState; filled: AiFilled } {
+  const filled: AiFilled = { allergens: [] };
+  if (!suggestion) return { state, filled };
+  const next: FormState = { ...state, allergens: { ...state.allergens } };
+
+  const dish = suggestion.dish_suggestions[0]?.name.trim().slice(0, 80);
+  if (state.dish_name === "" && dish) {
+    next.dish_name = dish;
+    filled.dish_name = dish;
+  }
+  const lowest = suggestion.estimated_servings?.min;
+  if (state.servings === "" && typeof lowest === "number" && Number.isFinite(lowest)) {
+    const servings = String(Math.min(500, Math.max(1, Math.floor(lowest))));
+    next.servings = servings;
+    filled.servings = servings;
+  }
+  const ingredients = suggestion.visible_components.map((c) => c.trim()).filter(Boolean).join(", ").slice(0, 1000);
+  if (state.ingredients_text === "" && ingredients) {
+    next.ingredients_text = ingredients;
+    next.ai_ingredients = ingredients;
+    filled.ingredients_text = ingredients;
+  }
+  for (const flagged of suggestion.possible_allergens) {
+    if (state.allergens[flagged.allergen] === "unknown") {
+      next.allergens[flagged.allergen] = "present";
+      filled.allergens.push(flagged.allergen);
+    }
+  }
+  return { state: next, filled };
+}
+
+/**
+ * The cold-holding and temperature-log questions only matter for refrigerated food: the prototype policy offers
+ * refrigerated food only (the gate rejects every other handling mode as out of scope), so once the donor says the
+ * food is hot, room temperature or frozen those two questions are hidden. Until the donor has chosen, they show.
+ */
+export const showsColdQuestions = (handling: HandlingMode): boolean => handling === "refrigerated" || handling === "unknown";
+
+/** `Date` to a `datetime-local` input value (the donor's local time, minutes), for the "+1 h / +2 h / +4 h" buttons. */
+export function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** `datetime-local` value (the donor's local time) to a UTC ISO string, or null if empty or invalid. */
@@ -85,6 +149,9 @@ export function buildFacts(state: FormState, now: Date = new Date()): BuildResul
     errors.push("Enter a discard-by time, or tick 'My kitchen has no discard-by time'.");
   }
   if (!state.attested_by_label.trim()) errors.push("Enter your name or role for the attestation.");
+  if (state.ai_ingredients !== null && state.ingredients_text === state.ai_ingredients && !state.ingredients_checked) {
+    errors.push("Tick that you checked the ingredient list against your recipe or label, or edit the list.");
+  }
   if (!state.attested) errors.push("Tick the attestation to continue.");
   if (errors.length > 0) return { ok: false, errors };
 
@@ -102,8 +169,9 @@ export function buildFacts(state: FormState, now: Date = new Date()): BuildResul
       handling_mode: state.handling_mode,
       preparation_type: state.preparation_type,
       contains_excluded_category: state.contains_excluded_category,
-      continuous_cold_holding: state.continuous_cold_holding,
-      temperature_log_available: state.temperature_log_available,
+      // Hidden questions are submitted as unknown, never as a stale answer the donor can no longer see.
+      continuous_cold_holding: showsColdQuestions(state.handling_mode) ? state.continuous_cold_holding : "unknown",
+      temperature_log_available: showsColdQuestions(state.handling_mode) ? state.temperature_log_available : "unknown",
       previously_served: state.previously_served,
       covered_food_grade_containers: state.covered_food_grade_containers,
       discard_by: discard,

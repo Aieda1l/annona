@@ -59,6 +59,9 @@ function fillAndSubmit() {
   fireEvent.click(screen.getByLabelText(/no discard-by time/i));
   fireEvent.change(screen.getByLabelText(/Your name or role/i), { target: { value: "Catering lead" } });
   fireEvent.click(screen.getByLabelText(/I attest/i));
+  // D-042: the AI draft fills the ingredients list, which the donor must say they checked.
+  const checked = screen.queryByLabelText(/checked this ingredient list/i);
+  if (checked) fireEvent.click(checked);
   fireEvent.click(screen.getByRole("button", { name: /submit for review/i }));
 }
 
@@ -122,13 +125,15 @@ describe("the same form as the web path (T-IN-12 defaults hold)", () => {
     renderLink();
     await screen.findByLabelText(/^Dish name/i);
     expect(screen.getByText("AI: FAKE")).toBeInTheDocument();
-    for (const name of ["Milk", "Wheat", "Sesame"]) {
+    // D-042: the draft fills the dish name, the lower servings bound and the allergens the AI flagged (as Present);
+    // an allergen it did not mention stays unknown, and no safety fact is touched.
+    for (const [name, value] of [["Milk", "present"], ["Wheat", "present"], ["Sesame", "unknown"]] as const) {
       const group = screen.getByRole("group", { name });
-      expect(within(group).getByRole("radio", { checked: true })).toHaveAttribute("value", "unknown");
+      expect(within(group).getByRole("radio", { checked: true })).toHaveAttribute("value", value);
     }
     expect(screen.getByLabelText(/How is this food being held right now/i)).toHaveValue("unknown");
-    expect(screen.getByLabelText(/^Servings/i)).toHaveValue(null);
-    expect(screen.getByLabelText(/^Dish name/i)).toHaveValue("");
+    expect(screen.getByLabelText(/^Servings/i)).toHaveValue(18);
+    expect(screen.getByLabelText(/^Dish name/i)).toHaveValue("assorted deli sandwiches and wraps");
   });
 
   it("fails closed when the AI draft failed: no AI panel, form fully usable", async () => {

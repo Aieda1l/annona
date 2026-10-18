@@ -56,11 +56,14 @@ describe("AI suggestion succeeded", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/does not look like food/i);
   });
 
-  it("never fills the form from the suggestion", () => {
+  it("fills only the descriptive fields from the suggestion (D-042) and never selects 'not in my listed ingredients'", () => {
     renderReview();
-    expect(screen.getByLabelText(/^Dish name/i)).toHaveValue("");
+    expect(screen.getByLabelText(/^Dish name/i)).not.toHaveValue(""); // the AI's top dish name, tagged and editable
     const milk = screen.getByRole("group", { name: "Milk" });
-    expect(within(milk).getByRole("radio", { checked: true })).toHaveAttribute("value", "unknown");
+    expect(within(milk).getByRole("radio", { checked: true })).toHaveAttribute("value", "present"); // flagged by the AI: cautious direction
+    const sesame = screen.getByRole("group", { name: "Sesame" });
+    expect(within(sesame).getByRole("radio", { checked: true })).toHaveAttribute("value", "unknown"); // not flagged: stays unknown
+    expect(screen.queryAllByRole("radio", { checked: true }).filter((r) => r.getAttribute("value") === "not_in_listed_ingredients")).toHaveLength(0);
   });
 
   it("renders no forbidden wording", () => {
@@ -123,7 +126,8 @@ describe("switching donations", () => {
     fireEvent.change(screen.getByLabelText(/^Dish name/i), { target: { value: "Soup" } });
     fireEvent.click(screen.getByLabelText(/I attest/i));
     rerender(<DraftReview donationId="don_2" {...props} />);
-    expect(screen.getByLabelText(/^Dish name/i)).toHaveValue("");
+    // a new donation starts again from its own AI draft: what the donor typed for the old one is gone
+    expect(screen.getByLabelText(/^Dish name/i)).not.toHaveValue("Soup");
     expect(screen.getByLabelText(/I attest/i)).not.toBeChecked();
   });
 });
