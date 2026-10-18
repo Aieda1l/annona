@@ -313,3 +313,71 @@ describe("worker logs say why a network call failed", () => {
     expect(logs).toEqual(["[worker] tick failed: TypeError"]);
   });
 });
+
+describe("T-MS-10 delivery receipts in poll mode", () => {
+  // Photon reports our own sends on GET /messages with status "delivered" or "failed" (docs/handoffs/dev-3.md, spike
+  // (a)). The inbound cursor moves past a send before it is delivered, so receipts come from a short look-back window.
+  const sent = (id: string, status: string, over: Record<string, unknown> = {}) => ({
+    id,
+    platform: "imessage",
+    status,
+    createdAt: "2026-10-17T21:58:00.000Z",
+    content: { type: "text", format: "plain", text: "Annona: pickup offer K7M3 ..." },
+    sentBy: { id: "pho_usr_line", kind: "agent" },
+    space: { id: "pho_spc_1" },
+    ...over,
+  });
+  const posted = (calls: { url: string; init?: RequestInit }[]) =>
+    calls.filter((c) => c.url === inboundUrl).map((c) => JSON.parse(String(c.init?.body)));
+
+  it("looks back five minutes for our own sends and relays a delivered one as message.delivered", async () => {
+    const { relay, calls } = setup({ routes: (u) => (isPhoton(u) ? json(200, { items: [sent("pho_msg_a", "delivered")] }) : json(200, { received: true })) });
+    await relay.statusOnce();
+    expect(new URL(calls[0]?.url as string).searchParams.get("createdSince")).toBe("2026-10-17T21:55:00.000Z");
+    const [event] = posted(calls);
+    expect(event).toMatchObject({ id: "poll_pho_msg_a_delivered", type: "message.delivered", data: { object: { id: "pho_msg_a", platform: "imessage" } } });
+    // Only what the status event needs crosses over: never the text or who it went to.
+    expect(JSON.stringify(event)).not.toContain("pickup offer");
+    expect(JSON.stringify(event)).not.toContain("pho_spc_1");
+  });
+
+  it("relays a failed send with its failure code", async () => {
+    const { relay, calls } = setup({
+      routes: (u) => (isPhoton(u) ? json(200, { items: [sent("pho_msg_b", "failed", { failure: { code: "recipient_unreachable" } })] }) : json(200, {})),
+    });
+    await relay.statusOnce();
+    expect(posted(calls)[0]).toMatchObject({ type: "message.failed", data: { object: { id: "pho_msg_b", failure: { code: "recipient_unreachable" } } } });
+  });
+
+  it("ignores inbound messages and sends that are not delivered or failed yet", async () => {
+    const items = [sent("pho_msg_c", "sent"), sent("pho_msg_d", "queued"), { ...sent("pho_msg_e", "received"), sentBy: { id: "pho_usr_h", handle: "courier@example.invalid", kind: "human" } }];
+    const { relay, calls } = setup({ routes: (u) => (isPhoton(u) ? json(200, { items }) : json(200, {})) });
+    await relay.statusOnce();
+    expect(posted(calls)).toHaveLength(0);
+  });
+
+  it("relays each receipt once, but tries again when the app did not accept it", async () => {
+    let appStatus = 500;
+    const { relay, calls } = setup({ routes: (u) => (isPhoton(u) ? json(200, { items: [sent("pho_msg_f", "delivered")] }) : json(appStatus, {})) });
+    await relay.statusOnce();
+    appStatus = 200;
+    await relay.statusOnce();
+    await relay.statusOnce();
+    expect(posted(calls)).toHaveLength(2);
+  });
+
+  it("never moves the inbound cursor", async () => {
+    const { relay, cursor } = setup({ cursor: "2026-10-17T21:59:00.000Z", routes: (u) => (isPhoton(u) ? json(200, { items: [sent("pho_msg_g", "delivered")] }) : json(200, {})) });
+    await relay.statusOnce();
+    expect(cursor()).toBe("2026-10-17T21:59:00.000Z");
+  });
+
+  it("the run loop also checks receipts when Photon is configured", async () => {
+    const { relay, calls } = setup({ routes: (u) => (isPhoton(u) ? json(200, { items: [] }) : json(200, { ok: true, data: {} })) });
+    const controller = new AbortController();
+    let sleeps = 0;
+    await relay.run({ tickIntervalMs: 5000, signal: controller.signal, sleep: async () => void (++sleeps >= 9 && controller.abort()) });
+    const sinces = calls.filter((c) => isPhoton(c.url)).map((c) => new URL(c.url).searchParams.get("createdSince"));
+    expect(sinces).toContain("2026-10-17T21:55:00.000Z");
+  });
+});
