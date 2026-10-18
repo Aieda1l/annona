@@ -1,0 +1,1 @@
+CREATE INDEX "offers_provider_message_idx" ON "offers" USING btree ("provider_message_id") WHERE "offers"."provider_message_id" is not null;

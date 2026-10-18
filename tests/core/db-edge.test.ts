@@ -79,7 +79,7 @@ const offerRow = (donation_id: string, over: Partial<typeof offers.$inferInsert>
   wave_no: 1,
   created_at: NOW,
   provider_mode: "fake",
-  candidate: {},
+  candidate: {} as never,
   ...over,
 });
 
