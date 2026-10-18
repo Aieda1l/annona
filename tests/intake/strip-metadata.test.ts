@@ -201,9 +201,28 @@ describe("other types", () => {
 
 describe("a real iPhone photo (local only)", () => {
   const path = process.env.HEIC_SAMPLE;
-  it.skipIf(!path)("strips the file named by HEIC_SAMPLE and keeps its size", () => {
+  // Finds the Exif payload by its TIFF header ("MM\0*" or "II*\0"), then checks it is zeroed in the output.
+  const tiffHeaders = (b: Uint8Array) => {
+    const hits: number[] = [];
+    for (let i = 0; i + 4 <= b.length; i++) {
+      const be = b[i] === 0x4d && b[i + 1] === 0x4d && b[i + 2] === 0 && b[i + 3] === 0x2a;
+      const le = b[i] === 0x49 && b[i + 1] === 0x49 && b[i + 2] === 0x2a && b[i + 3] === 0;
+      if (be || le) hits.push(i);
+    }
+    return hits;
+  };
+
+  it.skipIf(!path)("strips the file named by HEIC_SAMPLE: same size, Exif and XMP zeroed, nothing else touched", () => {
     const input = new Uint8Array(readFileSync(path!));
     const out = ok("image/heic", input);
     expect(out.length).toBe(input.length);
+    const headers = tiffHeaders(input);
+    expect(headers.length).toBeGreaterThan(0); // the sample must actually carry Exif for this check to mean anything
+    for (const at of headers) expect(Array.from(out.subarray(at, at + 4))).toEqual([0, 0, 0, 0]);
+    expect(contains(input, "<x:xmpmeta") ? contains(out, "<x:xmpmeta") : false).toBe(false);
+    let changed = 0;
+    for (let i = 0; i < input.length; i++) if (input[i] !== out[i]) changed++;
+    expect(changed).toBeGreaterThan(0);
+    expect(changed).toBeLessThan(input.length / 20); // metadata only, not picture data
   });
 });
