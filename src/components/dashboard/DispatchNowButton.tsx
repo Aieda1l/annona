@@ -1,5 +1,7 @@
 "use client";
 
+import { Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { Outcome } from "./api";
 
 export type DispatchState = { busy: boolean; result: Outcome | null };
@@ -13,14 +15,10 @@ export function DispatchNowButton({
   disabled: boolean;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onDispatch}
-      className="rounded border border-slate-700 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50"
-    >
+    <Button type="button" disabled={disabled} onClick={onDispatch} className="w-fit">
+      <Send aria-hidden />
       Dispatch now
-    </button>
+    </Button>
   );
 }
 
@@ -30,7 +28,11 @@ export function DispatchResult({ result }: { result: Outcome }) {
       <p
         role="status"
         aria-label="Dispatch result"
-        className={result.warn ? "rounded border border-amber-700 bg-amber-50 px-2 py-1 text-xs text-amber-950" : "text-xs text-slate-800"}
+        className={
+          result.warn
+            ? "rounded-lg border border-review-border bg-review-subtle px-3 py-2 text-xs text-review"
+            : "rounded-lg bg-muted px-3 py-2 text-xs text-foreground/85"
+        }
       >
         {result.warn && <strong>Completed with failures: </strong>}
         {result.summary}
@@ -38,7 +40,7 @@ export function DispatchResult({ result }: { result: Outcome }) {
     );
   }
   return (
-    <p role="alert" aria-label="Dispatch result" className="rounded border border-rose-700 bg-rose-50 px-2 py-1 text-sm text-rose-950">
+    <p role="alert" aria-label="Dispatch result" className="rounded-lg border border-danger-border bg-danger-subtle px-3 py-2 text-sm text-danger">
       {result.error}
     </p>
   );

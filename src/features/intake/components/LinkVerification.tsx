@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { VerificationLinkView } from "@/contracts";
 import { ReasonList } from "@/components/dashboard/ReasonList";
+import { CheckCircle2, LoaderCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DraftReview } from "./DraftReview";
 
@@ -129,7 +130,7 @@ export function LinkVerification({ hash, fetchImpl }: LinkVerificationProps) {
     }
   }
 
-  if (fragmentToken === null) return <p role="status">Loading your draft…</p>;
+  if (fragmentToken === null) return <Loading />;
   if (fragmentToken === "") {
     return (
       <Alert>
@@ -139,7 +140,7 @@ export function LinkVerification({ hash, fetchImpl }: LinkVerificationProps) {
       </Alert>
     );
   }
-  if (state.kind === "loading") return <p role="status">Loading your draft…</p>;
+  if (state.kind === "loading") return <Loading />;
   if (state.kind === "expired") {
     return (
       <Alert>
@@ -160,11 +161,14 @@ export function LinkVerification({ hash, fetchImpl }: LinkVerificationProps) {
 
   if (state.kind === "done") {
     return (
-      <div className="flex flex-col gap-3" data-testid="link-outcome">
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-xs" data-testid="link-outcome">
         {view.status === "eligible" ? (
-          <p>Thank you. Your details are recorded, and the team will offer this donation to a courier.</p>
+          <p className="flex items-start gap-3 text-base">
+            <CheckCircle2 aria-hidden className="mt-0.5 size-5 shrink-0 text-primary" />
+            Thank you. Your details are recorded, and the team will offer this donation to a courier.
+          </p>
         ) : (
-          <p>
+          <p className="text-base">
             We can&apos;t offer this donation as submitted. Here is why. You can text the photo again to start a new
             draft.
           </p>
@@ -177,8 +181,8 @@ export function LinkVerification({ hash, fetchImpl }: LinkVerificationProps) {
   return (
     <div className="flex flex-col gap-4">
       {view.status === "needs_review" && (
-        <div className="flex flex-col gap-2" data-testid="link-review">
-          <p className="text-sm font-medium">A few items need your attention. Please update your answers below.</p>
+        <div className="flex flex-col gap-2 rounded-xl border border-review-border bg-review-subtle/60 p-4" data-testid="link-review">
+          <p className="text-sm font-semibold text-review">A few items need your attention. Please update your answers below.</p>
           <ReasonList reasons={reasons} />
         </div>
       )}
@@ -192,5 +196,14 @@ export function LinkVerification({ hash, fetchImpl }: LinkVerificationProps) {
         error={error}
       />
     </div>
+  );
+}
+
+function Loading() {
+  return (
+    <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+      <LoaderCircle aria-hidden className="size-4 animate-spin text-primary" />
+      Loading your draft…
+    </p>
   );
 }

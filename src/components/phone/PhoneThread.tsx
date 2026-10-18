@@ -45,7 +45,7 @@ export function linkify(text: string): ReactNode[] {
     if (start > last) parts.push(text.slice(last, start));
     const href = `/v${url.hash}`;
     parts.push(
-      <a key={start} href={href} target="_blank" rel="noopener noreferrer" className="underline">
+      <a key={start} href={href} target="_blank" rel="noopener noreferrer" className="font-semibold break-all underline underline-offset-2">
         {href}
       </a>,
     );
@@ -56,26 +56,36 @@ export function linkify(text: string): ReactNode[] {
 }
 
 export function PhoneThread({ messages }: { messages: PhoneMessage[] }) {
-  if (messages.length === 0) return <p className="text-sm text-slate-700">No messages yet.</p>;
+  if (messages.length === 0)
+    return (
+      <p className="mx-auto mt-10 max-w-56 text-center text-sm text-muted-foreground">
+        No messages yet. Send JOIN to opt this contact in.
+      </p>
+    );
   return (
-    <ul className="space-y-2" aria-label="Simulated thread">
+    <ul className="flex flex-col gap-2" aria-label="Simulated thread">
       {messages.map((m) =>
         m.kind === "unreadable" ? (
-          <li key={m.key} className="rounded border border-amber-700 bg-amber-50 px-2 py-1 text-xs text-amber-950">
+          <li key={m.key} className="rounded-lg border border-review-border bg-review-subtle px-3 py-1.5 text-xs text-review">
             Unreadable message (unexpected shape from the server).
           </li>
         ) : (
+          // The phone belongs to the contact: their own messages sit on the right, Annona's on the left.
           <li
             key={m.key}
             data-direction={m.direction}
-            className={`max-w-[85%] rounded-lg border px-3 py-1.5 text-sm ${
-              m.direction === "outbound"
-                ? "mr-auto border-slate-400 bg-slate-100"
-                : "ml-auto border-slate-700 bg-white"
-            }`}
+            className={`flex max-w-[85%] animate-rise flex-col gap-0.5 ${m.direction === "outbound" ? "mr-auto items-start" : "ml-auto items-end"}`}
           >
-            <p className="whitespace-pre-wrap break-words">{linkify(m.text)}</p>
-            <p className="text-[11px] text-slate-700">
+            <p
+              className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap shadow-xs ${
+                m.direction === "outbound"
+                  ? "rounded-bl-md border border-border bg-muted text-foreground"
+                  : "rounded-br-md bg-primary text-primary-foreground"
+              }`}
+            >
+              {linkify(m.text)}
+            </p>
+            <p className="px-1 text-[11px] text-muted-foreground">
               {m.direction === "outbound" ? "Annona → contact" : "Contact → Annona"} · {formatPacific(m.at)}
             </p>
           </li>

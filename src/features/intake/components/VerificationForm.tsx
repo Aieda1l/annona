@@ -13,6 +13,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Sparkles } from "lucide-react";
+import { cn } from "cn";
 import { buildFacts, initialFormState, prefillFromSuggestion, showsColdQuestions, toLocalInput, type AiFilled, type FormState } from "./verification-form-model";
 
 // The donor checklist (Dev 1). Every fact starts empty or `unknown`, except what the AI draft fills to save typing
@@ -58,7 +60,25 @@ const ALLERGEN_CHOICES = [
 ] as const;
 
 const SELECT_CLASS =
-  "h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+  "h-11 w-full rounded-lg border border-input bg-card px-3 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-10 sm:text-sm";
+
+/** One numbered checklist section (UI redesign). Presentation only: no field, order or default changes. */
+function FormSection({ n, title, description, children }: { n: number; title: string; description?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="rounded-xl border border-border bg-card p-4 shadow-xs sm:p-5">
+      <div className="mb-4 flex items-start gap-3">
+        <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary font-heading text-sm font-semibold text-secondary-foreground">
+          {n}
+        </span>
+        <div className="min-w-0 space-y-0.5">
+          <h3 className="font-heading text-base font-semibold">{title}</h3>
+          {description && <div className="text-sm text-muted-foreground">{description}</div>}
+        </div>
+      </div>
+      <div className="flex flex-col gap-5">{children}</div>
+    </section>
+  );
+}
 
 export type VerificationFormProps = {
   /** Unverified hints beside the fields; also fills a few descriptive fields that are still untouched (D-042). */
@@ -71,8 +91,8 @@ export type VerificationFormProps = {
 
 function Field({ label, htmlFor, hint, children }: { label: string; htmlFor: string; hint?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={htmlFor} className="text-sm font-medium">
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={htmlFor} className="text-sm leading-snug font-medium">
         {label}
       </label>
       {children}
@@ -82,14 +102,19 @@ function Field({ label, htmlFor, hint, children }: { label: string; htmlFor: str
 }
 
 const Hint = ({ id, children }: { id: string; children: ReactNode }) => (
-  <p data-testid={`ai-hint-${id}`} className="text-xs text-muted-foreground">
-    {children}
+  <p data-testid={`ai-hint-${id}`} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+    <Sparkles aria-hidden className="mt-px size-3.5 shrink-0" />
+    <span>{children}</span>
   </p>
 );
 
 const AiTag = ({ field, children }: { field: string; children: ReactNode }) => (
-  <span data-testid={`ai-filled-${field}`} className="w-fit rounded border border-dashed border-input px-1.5 py-0.5 text-xs text-muted-foreground">
-    {children}
+  <span
+    data-testid={`ai-filled-${field}`}
+    className="inline-flex w-fit items-start gap-1 rounded-md border border-dashed border-input bg-background px-2 py-1 text-xs text-muted-foreground"
+  >
+    <Sparkles aria-hidden className="mt-px size-3.5 shrink-0" />
+    <span>{children}</span>
   </span>
 );
 
@@ -193,11 +218,13 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
   );
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-5">
+    <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
         Please answer from your own records. Anything you are not sure about, leave as &ldquo;I don&apos;t know&rdquo;;
         the team will review it.
       </p>
+
+      <FormSection n={1} title="The food" description="Fields marked with a sparkle came from the AI draft. Check each one.">
 
       <Field
         label="Dish name"
@@ -259,26 +286,48 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         )}
       </Field>
 
-      <div className="flex flex-col gap-3">
-        <h3 className="text-sm font-semibold">Major allergens</h3>
-        <p className="text-xs text-muted-foreground">
-          For each, say whether it is in the ingredients you listed. &ldquo;Not in my listed ingredients&rdquo; is your
-          statement about your list; it is not a guarantee.
-        </p>
+      </FormSection>
+
+      <FormSection
+        n={2}
+        title="Major allergens"
+        description={
+          <>
+            For each, say whether it is in the ingredients you listed. &ldquo;Not in my listed ingredients&rdquo; is your
+            statement about your list; it is not a guarantee.
+          </>
+        }
+      >
+      <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
         {ALLERGENS.map((a) => (
-          <fieldset key={a} className="flex flex-col gap-1">
-            <legend className="text-sm font-medium">{ALLERGEN_NAMES[a]}</legend>
+          <fieldset
+            key={a}
+            className="flex min-w-0 flex-col gap-2 px-3 py-3"
+          >
+            <legend className="float-left text-sm font-semibold">{ALLERGEN_NAMES[a]}</legend>
             {aiFilled.allergens.includes(a) && state.allergens[a] === "present" && (
               <AiTag field={`allergen-${a}`}>Pre-selected from the AI draft (it flagged this as possible): change it if it is not in your food</AiTag>
             )}
             {aiAllergens.has(a) && (
               <Hint id={`allergen-${a}`}>AI: possible — {aiAllergens.get(a)} (unverified)</Hint>
             )}
-            <div className="flex flex-wrap gap-4">
+            {/* Segmented choice over the same native radios. "I don't know" stays visibly unanswered (dashed). */}
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
               {ALLERGEN_CHOICES.map((c) => (
-                <label key={c.value} className="flex items-center gap-1.5 text-sm">
+                <label
+                  key={c.value}
+                  className={cn(
+                    "flex min-h-11 items-center justify-center rounded-md border border-transparent px-2 py-1.5 text-center text-xs leading-tight font-medium text-muted-foreground transition-colors has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50 sm:min-h-10 sm:text-sm",
+                    "hover:text-foreground",
+                    state.allergens[a] === c.value &&
+                      (c.value === "unknown"
+                        ? "border-dashed border-closed-border bg-card text-closed"
+                        : "border-input bg-card text-foreground shadow-xs"),
+                  )}
+                >
                   <input
                     type="radio"
+                    className="sr-only"
                     name={id(`allergen-${a}`)}
                     value={c.value}
                     checked={state.allergens[a] === c.value}
@@ -312,9 +361,16 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
       </Field>
       <fieldset className="flex flex-col gap-1">
         <legend className="text-sm font-medium">Allergens that may have touched this food</legend>
-        <div className="flex flex-wrap gap-4">
+        <div className="mt-1 flex flex-wrap gap-2">
           {ALLERGENS.map((a) => (
-            <label key={a} className="flex items-center gap-1.5 text-sm">
+            <label
+              key={a}
+              className={cn(
+                "flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm transition-colors has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50",
+                declared ? "border-input bg-card" : "border-border bg-muted/60 text-muted-foreground",
+                state.cross_contact_allergens.includes(a) && "border-primary bg-secondary text-secondary-foreground",
+              )}
+            >
               <input
                 type="checkbox"
                 aria-label={`${ALLERGEN_NAMES[a]} cross-contact`}
@@ -334,7 +390,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           ))}
         </div>
       </fieldset>
+      </FormSection>
 
+      <FormSection n={3} title="Handling" description="How the food has been kept. Annona records your answers; it does not check them.">
       <Field label="How is this food being held right now?" htmlFor={id("handling_mode")}>
         {select("handling_mode", HANDLING_MODES, HANDLING_LABELS)}
       </Field>
@@ -375,6 +433,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         {select("covered_food_grade_containers", YES_NO_UNKNOWN, YNU_LABELS)}
       </Field>
 
+      </FormSection>
+
+      <FormSection n={4} title="Timing and pickup" description="Times come from your own kitchen procedure. Nothing here is estimated by the AI.">
       <Field label="Discard-by time from your kitchen's own procedure" htmlFor={id("discard_by")}>
         <Input
           id={id("discard_by")}
@@ -414,6 +475,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         />
       </Field>
 
+      </FormSection>
+
+      <FormSection n={5} title="Attestation">
       <Field label="Your name or role (for the attestation)" htmlFor={id("attested_by_label")}>
         <Input
           id={id("attested_by_label")}
@@ -423,15 +487,16 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           onChange={text("attested_by_label")}
         />
       </Field>
-      <label className="flex items-start gap-2 text-sm">
+      <label className="flex items-start gap-3 rounded-lg border border-border bg-background p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-secondary/60">
         <input
           type="checkbox"
-          className="mt-0.5"
+          className="mt-0.5 size-4"
           checked={state.attested}
           onChange={(e) => set("attested", e.target.checked)}
         />
         I attest that these answers are accurate to the best of my knowledge.
       </label>
+      </FormSection>
 
       {shown.length > 0 && (
         <Alert ref={alertRef} tabIndex={-1} variant="destructive" role="alert">
@@ -445,9 +510,11 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         </Alert>
       )}
 
-      <Button type="submit" disabled={submitting}>
-        {submitting ? "Submitting…" : "Submit for review"}
-      </Button>
+      <div className="sticky bottom-0 z-10 -mx-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+        <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={submitting}>
+          {submitting ? "Submitting…" : "Submit for review"}
+        </Button>
+      </div>
     </form>
   );
 }

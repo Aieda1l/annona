@@ -2,6 +2,8 @@
 
 import { useId, useState, type ChangeEvent } from "react";
 import type { DonationCard } from "@/contracts";
+import { Camera, ImageUp, LoaderCircle } from "lucide-react";
+import { cn } from "cn";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { browserIO, downscaleToJpeg, type ImageIO } from "./photo-downscale";
 
@@ -72,23 +74,43 @@ export function PhotoUpload({ onDraft, endpoint = "/api/intake/drafts", io = bro
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <label htmlFor={inputId} className="text-sm font-medium">
-        Choose a photo of the food
+    <div className="flex flex-col gap-3">
+      {/* The native file input stays the control (camera on phones, keyboard and screen readers everywhere); the
+          large label around it is the visible target. */}
+      <label
+        htmlFor={inputId}
+        aria-busy={busy}
+        className={cn(
+          "group flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-input bg-card px-6 py-10 text-center transition-colors has-[:focus-visible]:border-ring has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/40 hover:border-primary hover:bg-secondary/40",
+          busy && "pointer-events-none opacity-80",
+        )}
+      >
+        <span className="flex size-14 items-center justify-center rounded-full bg-secondary text-secondary-foreground transition-transform group-hover:scale-105">
+          {busy ? <LoaderCircle aria-hidden className="size-6 animate-spin" /> : <Camera aria-hidden className="size-6" />}
+        </span>
+        <span className="space-y-1">
+          <span className="block font-heading text-base font-semibold">Choose a photo of the food</span>
+          <span className="block text-sm text-muted-foreground">JPEG, PNG or WebP. On a phone you can take one now.</span>
+        </span>
+        <span className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-xs">
+          <ImageUp aria-hidden className="size-4" />
+          {busy ? (phase === "preparing" ? "Preparing photo…" : "Uploading…") : "Select photo"}
+        </span>
+        <input
+          id={inputId}
+          type="file"
+          accept={ACCEPTED.join(",")}
+          disabled={busy}
+          onChange={onChange}
+          className="sr-only"
+        />
       </label>
-      <input
-        id={inputId}
-        type="file"
-        accept={ACCEPTED.join(",")}
-        disabled={busy}
-        onChange={onChange}
-        className="text-sm file:mr-3 file:rounded-lg file:border file:bg-muted file:px-3 file:py-1.5"
-      />
       <p className="text-xs text-muted-foreground">
         Demo tip: photograph the food only, with no people, faces, brand labels or addresses in the frame.
       </p>
       {busy && (
-        <p role="status" className="text-sm">
+        <p role="status" className="flex items-center gap-2 text-sm font-medium">
+          <LoaderCircle aria-hidden className="size-4 animate-spin text-primary" />
           {phase === "preparing" ? "Preparing photo…" : "Uploading…"}
         </p>
       )}

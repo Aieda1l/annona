@@ -1,6 +1,7 @@
 "use client";
 
 import type { DonationCard } from "@/contracts";
+import { Notice } from "@/components/ui/notice";
 import { DonationDetail } from "./DonationDetail";
 
 /**
@@ -10,11 +11,13 @@ import { DonationDetail } from "./DonationDetail";
 export function FixtureDonationDetail({ card }: { card: DonationCard }) {
   return (
     <>
-      <p className="bg-amber-100 p-2 text-center text-sm font-semibold text-amber-950">
-        FIXTURE DATA — not live server state. Actions are disabled.
-      </p>
       <DonationDetail
         card={card}
+        notice={
+          <Notice tone="synthetic">
+            <p className="font-semibold">FIXTURE DATA — not live server state. Actions are disabled.</p>
+          </Notice>
+        }
         onAction={() => {
           throw new Error("FIXTURE: operator actions are disabled on fixture data.");
         }}

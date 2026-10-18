@@ -17,9 +17,9 @@ const VIEW: Record<ClaimResultCode, { headline: string; tone: Tone }> = {
 };
 
 const TONE_CLASS: Record<Tone, string> = {
-  success: "border-teal-700 bg-teal-50 text-teal-950",
-  neutral: "border-slate-500 bg-slate-50 text-slate-900",
-  warning: "border-amber-700 bg-amber-50 text-amber-950",
+  success: "border-progress-border bg-progress-subtle text-progress",
+  neutral: "border-neutral-border bg-neutral-subtle text-neutral",
+  warning: "border-review-border bg-review-subtle text-review",
 };
 
 export function ClaimResultView({ result }: { result: ClaimResult }) {
@@ -29,7 +29,7 @@ export function ClaimResultView({ result }: { result: ClaimResult }) {
       data-testid="claim-result"
       data-code={result.code}
       data-tone={v.tone}
-      className={`space-y-1 rounded border-l-4 p-3 text-sm ${TONE_CLASS[v.tone]}`}
+      className={`space-y-1 rounded-lg border border-l-4 p-3 text-sm ${TONE_CLASS[v.tone]}`}
     >
       <p data-testid="claim-headline" className="font-semibold">
         {v.headline}

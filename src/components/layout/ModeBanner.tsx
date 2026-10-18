@@ -1,4 +1,6 @@
+import { AlertTriangle, Bot, Clock, Database, MessageSquare, Timer } from "lucide-react";
 import type { SystemModes } from "@/contracts";
+import { cn } from "cn";
 import { SyntheticBadge } from "./SyntheticBadge";
 
 const STALL_MS = 30_000;
@@ -23,35 +25,37 @@ function schedulerStalled(modes: SystemModes, generated_at: string): boolean {
   return Date.parse(generated_at) - Date.parse(modes.last_tick_at) > STALL_MS;
 }
 
+function Chip({ text, warn, icon: Icon }: { text: string; warn: boolean; icon: typeof Bot }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap",
+        warn ? "border-review-border bg-review-subtle font-semibold text-review" : "border-border bg-card text-foreground/80",
+      )}
+    >
+      <Icon aria-hidden className="size-3.5 shrink-0" />
+      {text}
+    </span>
+  );
+}
+
+/** The provider-mode strip under the header. Truthful labels only; warnings stay loud (icon + text, not color alone). */
 export function ModeBanner({ modes, generated_at }: { modes: SystemModes; generated_at: string }) {
   const ai = aiLabel(modes.vision);
   const msg = messagingLabel(modes.messaging);
   const stalled = schedulerStalled(modes, generated_at);
-  const chip = (text: string, warn: boolean) => (
-    <span
-      className={`rounded border px-2 py-0.5 text-xs font-semibold ${
-        warn ? "border-amber-700 bg-amber-100 text-amber-950" : "border-slate-600 bg-white text-slate-900"
-      }`}
-    >
-      {text}
-    </span>
-  );
   return (
-    <div
-      role="status"
-      aria-label="System mode"
-      className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-slate-400 bg-slate-100 px-4 py-2"
-    >
-      {chip(ai.text, ai.warn)}
-      {chip(msg.text, msg.warn)}
-      {chip(`Store: ${modes.store}`, false)}
-      {modes.demo_accelerated && chip("DEMO: accelerated timers", false)}
-      <SyntheticBadge />
-      {stalled && (
-        <span className="rounded border border-amber-700 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-950">
-          Scheduler stalled{modes.last_tick_at ? "" : " — no tick recorded"}
-        </span>
-      )}
+    <div role="status" aria-label="System mode" className="border-b border-border/70 bg-surface-sunken/70">
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-1.5 px-4 py-1.5 sm:px-6">
+        <Chip text={ai.text} warn={ai.warn} icon={ai.warn ? AlertTriangle : Bot} />
+        <Chip text={msg.text} warn={msg.warn} icon={msg.warn ? AlertTriangle : MessageSquare} />
+        <Chip text={`Store: ${modes.store}`} warn={false} icon={Database} />
+        {modes.demo_accelerated && <Chip text="DEMO: accelerated timers" warn={false} icon={Timer} />}
+        <SyntheticBadge />
+        {stalled && (
+          <Chip text={`Scheduler stalled${modes.last_tick_at ? "" : " — no tick recorded"}`} warn icon={Clock} />
+        )}
+      </div>
     </div>
   );
 }

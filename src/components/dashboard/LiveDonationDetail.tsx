@@ -5,6 +5,9 @@ import type { DonationCard, HandoffStep, OperatorAction } from "@/contracts";
 import type { Outcome } from "./api";
 import { DonationDetail } from "./DonationDetail";
 import { formatPacific } from "./format";
+import { PageContainer } from "@/components/layout/PageHeader";
+import { Notice } from "@/components/ui/notice";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const POLL_MS = 2000;
 
@@ -96,27 +99,29 @@ export function LiveDonationDetail({ id }: { id: string }) {
     await load();
   }
 
+  const notice = failure && (
+    <Notice role="alert" tone="warning" title={`Donation data unavailable: ${failure.code}`}>
+      <p>{failure.message}</p>
+      {card && <p>Showing the last card received (stale{lastGoodAt ? ` since ${formatPacific(lastGoodAt)}` : ""}).</p>}
+    </Notice>
+  );
+
+  if (card)
+    return <DonationDetail card={card} onAction={onAction} onHandoff={onHandoff} actionError={actionError} notice={notice} />;
+
   return (
-    <>
-      {failure && (
-        <div
-          role="alert"
-          className="mx-auto mt-4 w-full max-w-4xl rounded border border-amber-700 bg-amber-50 p-3 text-sm text-amber-950"
-        >
-          <p className="font-semibold">Donation data unavailable: {failure.code}</p>
-          <p>{failure.message}</p>
-          {card && (
-            <p>
-              Showing the last card received (stale{lastGoodAt ? ` since ${formatPacific(lastGoodAt)}` : ""}).
-            </p>
-          )}
+    <PageContainer size="wide" className="space-y-6">
+      {notice || (
+        <div role="status" aria-label="Loading donation" className="space-y-4">
+          <span className="sr-only">Loading donation…</span>
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-9 w-80" />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <Skeleton className="h-96 rounded-xl" />
+            <Skeleton className="h-64 rounded-xl" />
+          </div>
         </div>
       )}
-      {card ? (
-        <DonationDetail card={card} onAction={onAction} onHandoff={onHandoff} actionError={actionError} />
-      ) : (
-        !failure && <p className="p-4 text-sm">Loading donation…</p>
-      )}
-    </>
+    </PageContainer>
   );
 }
