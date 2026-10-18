@@ -1,3 +1,5 @@
+<p align="center"><img src="public/annona_banner.svg" alt="Annona: Good food finds its way" width="100%"></p>
+
 # Annona — "Good food finds its way" (DubHacks 2026 codename)
 
 > **Status (2026-10-15): pre-event planning package. There is no application code yet.**

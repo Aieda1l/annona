@@ -1,9 +1,12 @@
 // The Annona mark as a browser-tab icon, an iPhone home-screen icon and a header image. Next.js serves
 // src/app/icon.png, src/app/apple-icon.png and src/app/favicon.ico automatically. The logo was generated with ChatGPT
-// (disclosed in the handoff); these files are derived crops and resizes of it, with no metadata.
+// (disclosed in the handoff); these files are derived crops and resizes of it, with no metadata. The tab icons
+// (icon.png, favicon.ico) have a transparent background; the iPhone icon stays opaque because iOS fills
+// transparency with black.
 import { cleanup, render, screen } from "@testing-library/react";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { inflateSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The home page renders the profile picker, which navigates with the app router (#56); there is no router in this test.
@@ -25,6 +28,20 @@ function png(p: string) {
     i += 12 + n;
   }
   return { width: b.readUInt32BE(16), height: b.readUInt32BE(20), chunks, bytes: b.length };
+}
+
+// Alpha of the top-left pixel of an 8-bit RGBA PNG. Every PNG row filter leaves the first pixel of the first row
+// unchanged (its left/up/up-left neighbours are all zero), so no unfiltering is needed.
+function cornerAlpha(b: Buffer) {
+  expect(b[25]).toBe(6); // colour type 6 = RGBA
+  expect(b[24]).toBe(8); // 8 bits per channel
+  const idat: Buffer[] = [];
+  for (let i = 8; i < b.length; ) {
+    const n = b.readUInt32BE(i);
+    if (b.subarray(i + 4, i + 8).toString("latin1") === "IDAT") idat.push(b.subarray(i + 8, i + 8 + n));
+    i += 12 + n;
+  }
+  return inflateSync(Buffer.concat(idat))[4]; // [0] is the row filter byte, then R, G, B, A
 }
 
 describe("icons", () => {
@@ -51,6 +68,16 @@ describe("icons", () => {
       expect(b[offset + 25]).toBe(6); // PNG colour type 6 = RGBA
     }
     expect(b.length).toBeLessThan(60_000);
+  });
+
+  it("the tab icons have a transparent background", () => {
+    expect(cornerAlpha(file("src/app/icon.png"))).toBe(0);
+    const b = file("src/app/favicon.ico");
+    for (let i = 0; i < b.readUInt16LE(4); i++) {
+      const offset = b.readUInt32LE(6 + i * 16 + 12);
+      const size = b.readUInt32LE(6 + i * 16 + 8);
+      expect(cornerAlpha(b.subarray(offset, offset + size))).toBe(0);
+    }
   });
 
   it("the header image is a small copy of the full logo, not the 1 MB original", () => {
