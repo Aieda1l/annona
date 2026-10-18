@@ -3,12 +3,13 @@ import { err, ok, type Result } from "@/contracts";
 // Removes location-bearing metadata (Exif GPS, XMP, IPTC, text chunks) from an accepted photo before it is stored or
 // sent to a model. Pure byte surgery, no image library. Messaging photos arrive exactly as the phone wrote them; web
 // uploads were already re-encoded by the browser. If a container cannot be read we cannot say the metadata is gone,
-// so the photo is refused (fail closed). Picture data is never touched.
+// so the photo is refused (fail closed). Picture data is never touched. The one thing kept from a JPEG's Exif is its orientation, in a segment of its own.
 
 const TEXT = new TextDecoder("latin1");
 const cc = (b: Uint8Array, at: number) => TEXT.decode(b.subarray(at, at + 4));
 const be16 = (b: Uint8Array, at: number) => (b[at]! << 8) | b[at + 1]!;
 const be32 = (b: Uint8Array, at: number) => ((b[at]! << 24) | (b[at + 1]! << 16) | (b[at + 2]! << 8) | b[at + 3]!) >>> 0;
+const le16 = (b: Uint8Array, at: number) => b[at]! | (b[at + 1]! << 8);
 const le32 = (b: Uint8Array, at: number) => ((b[at + 3]! << 24) | (b[at + 2]! << 16) | (b[at + 1]! << 8) | b[at]!) >>> 0;
 
 class Unreadable extends Error {}
@@ -36,9 +37,49 @@ function keepJpegSegment(marker: number, segment: Uint8Array): boolean {
   return true;
 }
 
+/**
+ * The Exif orientation (2 to 8) from an APP1 segment, or null. Orientation says how to turn the picture upright; losing
+ * it leaves a portrait phone photo sideways for the model. This is best effort and never throws: an unreadable Exif
+ * just yields null, and the Exif is dropped either way.
+ */
+function readExifOrientation(segment: Uint8Array): number | null {
+  const tiff = 10; // marker (2) + length (2) + "Exif\0\0" (6)
+  if (segment.length < tiff + 8 || TEXT.decode(segment.subarray(4, tiff)) !== "Exif\0\0") return null;
+  const big = segment[tiff] === 0x4d && segment[tiff + 1] === 0x4d;
+  if (!big && !(segment[tiff] === 0x49 && segment[tiff + 1] === 0x49)) return null;
+  const r16 = (at: number) => (big ? be16(segment, at) : le16(segment, at));
+  const r32 = (at: number) => (big ? be32(segment, at) : le32(segment, at));
+  if (r16(tiff + 2) !== 42) return null;
+  const ifd = tiff + r32(tiff + 4);
+  if (ifd + 2 > segment.length) return null;
+  const count = Math.min(r16(ifd), 64);
+  for (let k = 0; k < count; k++) {
+    const entry = ifd + 2 + k * 12;
+    if (entry + 12 > segment.length) return null;
+    if (r16(entry) !== 0x0112) continue;
+    if (r16(entry + 2) !== 3 || r32(entry + 4) !== 1) return null; // SHORT, one value
+    const value = r16(entry + 8);
+    return value >= 2 && value <= 8 ? value : null; // 1 is already upright and is not written
+  }
+  return null;
+}
+
+/** A complete APP1 Exif segment holding only the orientation tag: no GPS, no timestamps, no device. */
+function orientationSegment(orientation: number): Uint8Array {
+  return Uint8Array.of(
+    0xff, 0xe1, 0x00, 0x22, // APP1, length 34
+    0x45, 0x78, 0x69, 0x66, 0x00, 0x00, // "Exif\0\0"
+    0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08, // big-endian TIFF header, IFD0 at 8
+    0x00, 0x01, // one entry
+    0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, orientation, 0x00, 0x00, // Orientation, SHORT, 1 value
+    0x00, 0x00, 0x00, 0x00, // no next IFD
+  );
+}
+
 function stripJpeg(b: Uint8Array): Uint8Array {
   if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) fail("jpeg start");
   const out: Uint8Array[] = [b.subarray(0, 2)];
+  let seenExif = false;
   let i = 2;
   for (;;) {
     if (i + 2 > b.length) fail("jpeg truncated");
@@ -74,6 +115,12 @@ function stripJpeg(b: Uint8Array): Uint8Array {
     if (length < 2 || i + 2 + length > b.length) fail("jpeg segment length");
     const segment = b.subarray(i, i + 2 + length);
     if (keepJpegSegment(marker, segment)) out.push(segment);
+    else if (marker === 0xe1 && !seenExif && TEXT.decode(segment.subarray(4, 10)) === "Exif\0\0") {
+      // Only the first Exif counts. Its orientation is re-emitted in a segment that has nothing else in it.
+      seenExif = true;
+      const orientation = readExifOrientation(segment);
+      if (orientation !== null) out.push(orientationSegment(orientation));
+    }
     i += 2 + length;
   }
 }
