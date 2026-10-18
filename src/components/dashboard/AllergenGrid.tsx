@@ -1,9 +1,18 @@
+import { CircleHelp, Sparkles } from "lucide-react";
 import { ALLERGENS, type Allergen, type DonorAllergenStatus, type VisionSuggestion } from "@/contracts";
+import { cn } from "cn";
 
 const DONOR_LABEL: Record<DonorAllergenStatus, string> = {
   present: "Donor: present",
   not_in_listed_ingredients: "Donor: not in listed ingredients",
   unknown: "Donor: unknown",
+};
+
+// Unknown is visibly unfinished (dashed); "not in listed ingredients" is a plain statement, never styled as a pass.
+const DONOR_CLASS: Record<DonorAllergenStatus, string> = {
+  present: "border-neutral-border bg-neutral-subtle font-semibold text-foreground",
+  not_in_listed_ingredients: "border-neutral-border bg-card text-foreground/85",
+  unknown: "border-dashed border-closed-border bg-closed-subtle text-closed",
 };
 
 const NAME: Record<Allergen, string> = {
@@ -32,27 +41,43 @@ export function AllergenGrid({
 }) {
   const possible = new Map((suggestion?.possible_allergens ?? []).map((p) => [p.allergen, p.basis]));
   return (
-    <table className="w-full text-left text-sm" aria-label="Allergens">
-      <thead>
-        <tr className="text-xs text-slate-700">
-          <th className="py-1 pr-2 font-medium">Allergen</th>
-          <th className="py-1 pr-2 font-medium">Donor statement</th>
-          <th className="py-1 font-medium">AI hint</th>
-        </tr>
-      </thead>
-      <tbody>
-        {ALLERGENS.map((a) => {
-          const status = allergens?.[a] ?? "unknown";
-          const basis = possible.get(a);
-          return (
-            <tr key={a} data-testid={`allergen-${a}`} data-donor-status={status} className="border-t border-slate-200">
-              <td className="py-1 pr-2">{NAME[a]}</td>
-              <td className="py-1 pr-2">{DONOR_LABEL[status]}</td>
-              <td className="py-1">{basis !== undefined ? `AI: possible (${basis})` : ""}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full min-w-[30rem] text-left text-sm" aria-label="Allergens">
+        <thead className="bg-muted/60">
+          <tr className="text-xs text-muted-foreground">
+            <th scope="col" className="px-3 py-2 font-semibold">Allergen</th>
+            <th scope="col" className="px-3 py-2 font-semibold">Donor statement</th>
+            <th scope="col" className="px-3 py-2 font-semibold">AI hint</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border bg-card">
+          {ALLERGENS.map((a) => {
+            const status = allergens?.[a] ?? "unknown";
+            const basis = possible.get(a);
+            return (
+              <tr key={a} data-testid={`allergen-${a}`} data-donor-status={status}>
+                <th scope="row" className="px-3 py-2 font-medium">{NAME[a]}</th>
+                <td className="px-3 py-2">
+                  <span className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs", DONOR_CLASS[status])}>
+                    {status === "unknown" && <CircleHelp aria-hidden className="size-3" />}
+                    {DONOR_LABEL[status]}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-xs text-muted-foreground">
+                  {basis !== undefined ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Sparkles aria-hidden className="size-3" />
+                      {`AI: possible (${basis})`}
+                    </span>
+                  ) : (
+                    ""
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

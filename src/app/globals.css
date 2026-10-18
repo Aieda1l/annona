@@ -2,14 +2,23 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+ * Annona design tokens. Source of truth: design-system/annona/MASTER.md (UI/UX Pro Max, "Accessible & Ethical",
+ * Lexend + Source Sans 3) with the Annona brand override documented there (forest/leaf greens from the logo).
+ * Components use the semantic names below, never raw palette classes.
+ *
+ * Status tones encode WORKFLOW STATE, not food safety: there is deliberately no green "good/safe" tone. Brand green is
+ * for navigation, primary actions and identity only. Every tone is always paired with text and an icon.
+ */
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-source-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-lexend), var(--font-source-sans), ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,6 +48,35 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+
+  /* Brand */
+  --color-forest: var(--forest);
+  --color-leaf: var(--leaf);
+  --color-surface-sunken: var(--surface-sunken);
+
+  /* Status tones: `text-<tone>`, `bg-<tone>-subtle`, `border-<tone>-border` */
+  --color-neutral: var(--tone-neutral-fg);
+  --color-neutral-subtle: var(--tone-neutral-bg);
+  --color-neutral-border: var(--tone-neutral-border);
+  --color-review: var(--tone-review-fg);
+  --color-review-subtle: var(--tone-review-bg);
+  --color-review-border: var(--tone-review-border);
+  --color-info: var(--tone-info-fg);
+  --color-info-subtle: var(--tone-info-bg);
+  --color-info-border: var(--tone-info-border);
+  --color-offer: var(--tone-offer-fg);
+  --color-offer-subtle: var(--tone-offer-bg);
+  --color-offer-border: var(--tone-offer-border);
+  --color-progress: var(--tone-progress-fg);
+  --color-progress-subtle: var(--tone-progress-bg);
+  --color-progress-border: var(--tone-progress-border);
+  --color-danger: var(--tone-danger-fg);
+  --color-danger-subtle: var(--tone-danger-bg);
+  --color-danger-border: var(--tone-danger-border);
+  --color-closed: var(--tone-closed-fg);
+  --color-closed-subtle: var(--tone-closed-bg);
+  --color-closed-border: var(--tone-closed-border);
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -46,85 +84,207 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  --shadow-xs: 0 1px 2px rgb(21 34 25 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(21 34 25 / 0.06), 0 1px 3px rgb(21 34 25 / 0.04);
+  --shadow-md: 0 2px 4px rgb(21 34 25 / 0.04), 0 6px 16px -4px rgb(21 34 25 / 0.08);
+  --shadow-lg: 0 4px 8px rgb(21 34 25 / 0.04), 0 16px 32px -8px rgb(21 34 25 / 0.12);
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-rise: rise 360ms var(--ease-out-soft) both;
+  --animate-pulse-ring: pulse-ring 1.8s ease-out infinite;
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes pulse-ring {
+    0% {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--primary) 40%, transparent);
+    }
+    80%,
+    100% {
+      box-shadow: 0 0 0 8px transparent;
+    }
+  }
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Surfaces: warm paper background, white cards (Organic + Accessible) */
+  --background: #f7f6f1;
+  --foreground: #152219;
+  --surface-sunken: #efede6;
+  --card: #ffffff;
+  --card-foreground: #152219;
+  --popover: #ffffff;
+  --popover-foreground: #152219;
+
+  /* Brand: forest primary (logo shadow green), leaf highlight (logo light green, decorative only) */
+  --primary: #1d6b3e;
+  --primary-foreground: #ffffff;
+  --forest: #134a2a;
+  --leaf: #4fa448;
+
+  --secondary: #e9f2eb;
+  --secondary-foreground: #1c4a2e;
+  --muted: #f0eee8;
+  --muted-foreground: #565f58;
+  --accent: #e6f1e8;
+  --accent-foreground: #152219;
+  --destructive: #b42318;
+  --border: #e2ded4;
+  --input: #8a8578;
+  --ring: #2e8a4e;
+
+  /* Workflow tones (text on subtle bg >= 4.5:1) */
+  --tone-neutral-fg: #3a423c;
+  --tone-neutral-bg: #f1f0ec;
+  --tone-neutral-border: #cfccc2;
+  --tone-review-fg: #7a3e05;
+  --tone-review-bg: #fdf3e1;
+  --tone-review-border: #e8b25a;
+  --tone-info-fg: #1e428a;
+  --tone-info-bg: #ebf1fd;
+  --tone-info-border: #9db8ea;
+  --tone-offer-fg: #45318f;
+  --tone-offer-bg: #f1eefc;
+  --tone-offer-border: #b6a8ec;
+  --tone-progress-fg: #0d5752;
+  --tone-progress-bg: #e4f3f1;
+  --tone-progress-border: #86c6bd;
+  --tone-danger-fg: #8f1d14;
+  --tone-danger-bg: #fdeceb;
+  --tone-danger-border: #eda39b;
+  --tone-closed-fg: #4d4a43;
+  --tone-closed-bg: #ecebe6;
+  --tone-closed-border: #c4c0b6;
+
+  --chart-1: #1d6b3e;
+  --chart-2: #4fa448;
+  --chart-3: #1e428a;
+  --chart-4: #7a3e05;
+  --chart-5: #45318f;
+  --radius: 0.75rem;
+  --sidebar: #fbfaf7;
+  --sidebar-foreground: #152219;
+  --sidebar-primary: #1d6b3e;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e9f2eb;
+  --sidebar-accent-foreground: #152219;
+  --sidebar-border: #e2ded4;
+  --sidebar-ring: #2e8a4e;
 }
 
+/* Kept coherent for completeness; the app ships the light theme (no theme toggle is mounted). */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0f1a14;
+  --foreground: #e8efe9;
+  --surface-sunken: #0b140f;
+  --card: #15231b;
+  --card-foreground: #e8efe9;
+  --popover: #15231b;
+  --popover-foreground: #e8efe9;
+  --primary: #5cbf72;
+  --primary-foreground: #0c1a11;
+  --forest: #a6dcb2;
+  --leaf: #6cc265;
+  --secondary: #1c2e23;
+  --secondary-foreground: #e8efe9;
+  --muted: #1c2e23;
+  --muted-foreground: #9fb2a5;
+  --accent: #1c2e23;
+  --accent-foreground: #e8efe9;
+  --destructive: #f08a80;
+  --border: #2a3f32;
+  --input: #3a5344;
+  --ring: #5cbf72;
+  --tone-neutral-fg: #d6ddd7;
+  --tone-neutral-bg: #1f2b24;
+  --tone-neutral-border: #3d4c42;
+  --tone-review-fg: #f6c77a;
+  --tone-review-bg: #33260c;
+  --tone-review-border: #8a6420;
+  --tone-info-fg: #a9c3f5;
+  --tone-info-bg: #14243f;
+  --tone-info-border: #34568f;
+  --tone-offer-fg: #c8bdf6;
+  --tone-offer-bg: #221c40;
+  --tone-offer-border: #51458f;
+  --tone-progress-fg: #8fded2;
+  --tone-progress-bg: #0f2c29;
+  --tone-progress-border: #2c6d65;
+  --tone-danger-fg: #f6aaa2;
+  --tone-danger-bg: #3a1714;
+  --tone-danger-border: #8a3a32;
+  --tone-closed-fg: #cfccc4;
+  --tone-closed-bg: #262521;
+  --tone-closed-border: #4a4740;
+  --sidebar: #15231b;
+  --sidebar-foreground: #e8efe9;
+  --sidebar-primary: #5cbf72;
+  --sidebar-primary-foreground: #0c1a11;
+  --sidebar-accent: #1c2e23;
+  --sidebar-accent-foreground: #e8efe9;
+  --sidebar-border: #2a3f32;
+  --sidebar-ring: #5cbf72;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
     @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "kern", "liga";
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading tracking-tight text-balance;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--leaf) 30%, transparent);
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label:has(> input[type="radio"]:not(:disabled)),
+  label:has(> input[type="checkbox"]:not(:disabled)),
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 2px;
+  }
+  input[type="radio"],
+  input[type="checkbox"] {
+    accent-color: var(--primary);
+  }
+  time,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

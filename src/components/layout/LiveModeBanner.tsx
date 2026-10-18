@@ -36,14 +36,16 @@ export function LiveModeBanner() {
 
   if (!health)
     return (
-      <div role="status" aria-label="System mode" className="border-b border-slate-400 bg-slate-100 px-4 py-2 text-xs">
-        Checking system mode…
+      <div role="status" aria-label="System mode" className="border-b border-border/70 bg-surface-sunken/70">
+        <p className="mx-auto w-full max-w-7xl px-4 py-1.5 text-xs text-muted-foreground sm:px-6">Checking system mode…</p>
       </div>
     );
   if ("error" in health)
     return (
-      <div role="status" aria-label="System mode" className="border-b border-amber-700 bg-amber-100 px-4 py-2 text-xs font-semibold text-amber-950">
-        System mode unavailable ({health.error}). Showing no provider labels.
+      <div role="status" aria-label="System mode" className="border-b border-review-border bg-review-subtle">
+        <p className="mx-auto w-full max-w-7xl px-4 py-1.5 text-xs font-semibold text-review sm:px-6">
+          System mode unavailable ({health.error}). Showing no provider labels.
+        </p>
       </div>
     );
   return <ModeBanner modes={health.modes} generated_at={health.generated_at} />;

@@ -1,13 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { Ban, CircleSlash, RefreshCw, Undo2 } from "lucide-react";
 import type { DonationCard, OperatorAction } from "@/contracts";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 const LABEL: Record<OperatorAction, string> = {
   reject: "Reject",
   return_to_donor: "Return to donor",
   cancel: "Cancel",
   retry_matching: "Retry matching",
+};
+
+const ICON: Record<OperatorAction, typeof Ban> = {
+  reject: Ban,
+  return_to_donor: Undo2,
+  cancel: CircleSlash,
+  retry_matching: RefreshCw,
 };
 
 /**
@@ -70,37 +80,43 @@ export function OperatorActions({
       className="space-y-2"
     >
       <div className="flex flex-wrap gap-2">
-        {actions.map((a) => (
-          <button
-            key={a}
-            type="button"
-            data-action={a}
-            onClick={() => {
-              setPending(a);
-              setNote("");
-            }}
-            className="rounded border border-slate-700 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-          >
-            {LABEL[a]}
-          </button>
-        ))}
+        {actions.map((a) => {
+          const Icon = ICON[a];
+          return (
+            <Button
+              key={a}
+              type="button"
+              size="sm"
+              variant={a === "reject" ? "destructive" : "outline"}
+              data-action={a}
+              onClick={() => {
+                setPending(a);
+                setNote("");
+              }}
+            >
+              <Icon aria-hidden />
+              {LABEL[a]}
+            </Button>
+          );
+        })}
       </div>
 
       {pending && (
-        <div className="space-y-2 rounded border border-slate-300 bg-slate-50 p-3">
+        <div className="animate-rise space-y-2 rounded-xl border border-border bg-muted/50 p-3">
           <label className="block text-sm font-medium" htmlFor={`note-${card.id}`}>
             Note{needNote ? " (required)" : " (optional)"}
           </label>
-          <textarea
+          <Textarea
             id={`note-${card.id}`}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="w-full rounded border border-slate-500 p-2 text-sm"
             rows={2}
           />
-          <div className="flex gap-2">
-            <button
+          <div className="flex flex-wrap gap-2">
+            <Button
               type="button"
+              size="sm"
+              variant={pending === "reject" ? "destructive" : "default"}
               disabled={!canConfirm}
               onClick={async () => {
                 setLocalError(null);
@@ -111,23 +127,18 @@ export function OperatorActions({
                   setLocalError(e instanceof Error ? e.message : "Action failed");
                 }
               }}
-              className="rounded border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
             >
               Confirm {pending === "return_to_donor" ? "return" : LABEL[pending].toLowerCase()}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPending(null)}
-              className="rounded border border-slate-500 px-3 py-1.5 text-sm"
-            >
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setPending(null)}>
               Back
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {shownError && (
-        <p role="alert" className="rounded border border-rose-700 bg-rose-50 px-2 py-1 text-sm text-rose-950">
+        <p role="alert" className="rounded-lg border border-danger-border bg-danger-subtle px-3 py-2 text-sm text-danger">
           {shownError}
         </p>
       )}

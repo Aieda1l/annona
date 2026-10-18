@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { LogOut } from "lucide-react";
 
 /**
  * Ends the demo session: asks the server to clear the session cookie (DELETE /api/session, the cookie is HttpOnly so
@@ -47,9 +48,9 @@ export function SignOutButton() {
   }
 
   return (
-    <div className="flex items-center justify-end gap-3 px-4 py-1 text-sm">
+    <div className="flex items-center justify-end gap-3 text-sm">
       {error && (
-        <p role="alert" className="text-rose-900">
+        <p role="alert" className="max-w-56 text-right text-xs font-medium text-destructive sm:max-w-none sm:text-sm">
           {error}
         </p>
       )}
@@ -57,8 +58,9 @@ export function SignOutButton() {
         type="button"
         onClick={signOut}
         disabled={busy}
-        className="rounded border border-slate-500 bg-white px-3 py-1 font-medium text-slate-900 disabled:opacity-60"
+        className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 font-medium text-foreground shadow-xs transition-colors hover:bg-muted disabled:opacity-60"
       >
+        <LogOut aria-hidden className="size-4" />
         Sign out
       </button>
     </div>

@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import type { DonationCard as DonationCardData, DonationStatus } from "@/contracts";
+import { SectionHeading } from "@/components/layout/PageHeader";
 import { DonationCard } from "./DonationCard";
-import { statusLabel } from "./StatusBadge";
+import { statusIcon, statusLabel } from "./StatusBadge";
 
 // Display order only; grouping is by the server-provided status. `unmatched` is a dispatch outcome,
 // so it gets its own neutral group and never safety styling.
-const ORDER: readonly DonationStatus[] = [
+export const BOARD_ORDER: readonly DonationStatus[] = [
   "needs_review",
   "eligible",
   "unmatched",
@@ -35,8 +36,8 @@ export function DonationBoard({
   detailHref?: (card: DonationCardData) => string;
 }) {
   return (
-    <div className="space-y-6">
-      {ORDER.map((status) => {
+    <div className="space-y-8">
+      {BOARD_ORDER.map((status) => {
         const cards = donations.filter((d) => d.status === status);
         if (cards.length === 0) return null;
         return (
@@ -44,13 +45,14 @@ export function DonationBoard({
             key={status}
             data-testid={`group-${status}`}
             data-tone={status === "unmatched" ? "neutral" : undefined}
-            className="space-y-3"
+            aria-labelledby={`group-heading-${status}`}
+            className="scroll-mt-28 space-y-3"
+            id={`status-${status}`}
           >
-            <h2 className="text-lg font-semibold text-slate-900">
-              {HEADING[status] ?? statusLabel(status)}{" "}
-              <span className="text-sm font-normal text-slate-700">({counts_by_status[status] ?? cards.length})</span>
-            </h2>
-            <div className="grid gap-3 md:grid-cols-2">
+            <SectionHeading id={`group-heading-${status}`} icon={statusIcon(status)} count={counts_by_status[status] ?? cards.length}>
+              {HEADING[status] ?? statusLabel(status)}
+            </SectionHeading>
+            <div className="grid gap-4 xl:grid-cols-2">
               {cards.map((c) => (
                 <DonationCard key={c.id} card={c} actions={renderActions?.(c)} detailHref={detailHref?.(c)} />
               ))}

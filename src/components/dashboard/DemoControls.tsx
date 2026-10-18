@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { FlaskConical, Play, RotateCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { Outcome } from "./api";
 
 /** Demo-mode controls. Each call goes to a server route; the UI has no authority to dispatch or reset on its own. */
@@ -30,28 +32,36 @@ export function DemoControls({
     }
   }
 
-  const btn =
-    "rounded border border-slate-700 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900";
-
   return (
-    <section aria-label="Demo controls" className="space-y-2 rounded border border-slate-400 bg-slate-50 p-3">
-      <h2 className="text-sm font-semibold text-slate-900">Demo controls (synthetic data only)</h2>
+    <section
+      aria-label="Demo controls"
+      className="space-y-3 rounded-xl border border-dashed border-offer-border bg-offer-subtle/50 p-4"
+    >
+      <div className="space-y-0.5">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-offer">
+          <FlaskConical aria-hidden className="size-4" />
+          Demo controls (synthetic data only)
+        </h2>
+        <p className="text-xs text-foreground/75">Each button calls the server; the page decides nothing on its own.</p>
+      </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={btn} disabled={busy} onClick={() => run(onTick)}>
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => run(onTick)}>
+          <Play aria-hidden />
           Run tick now
-        </button>
+        </Button>
         {!confirming ? (
-          <button type="button" className={btn} disabled={busy} onClick={() => setConfirming(true)}>
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
+            <RotateCcw aria-hidden />
             Reset demo
-          </button>
+          </Button>
         ) : (
           <>
-            <button type="button" className={btn} disabled={busy} onClick={() => run(onReset)}>
+            <Button type="button" variant="destructive" size="sm" disabled={busy} onClick={() => run(onReset)}>
               Confirm reset
-            </button>
-            <button type="button" className={btn} disabled={busy} onClick={() => setConfirming(false)}>
+            </Button>
+            <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(false)}>
               Back
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -61,8 +71,8 @@ export function DemoControls({
           aria-label="Demo control result"
           className={
             result.warn
-              ? "rounded border border-amber-700 bg-amber-50 px-2 py-1 text-sm text-amber-950"
-              : "text-sm text-slate-900"
+              ? "rounded-lg border border-review-border bg-review-subtle px-3 py-2 text-sm text-review"
+              : "rounded-lg bg-card px-3 py-2 text-sm text-foreground"
           }
         >
           {result.warn && <strong>Completed with failures: </strong>}
@@ -70,7 +80,7 @@ export function DemoControls({
         </p>
       )}
       {result && !result.ok && (
-        <p role="alert" className="rounded border border-rose-700 bg-rose-50 px-2 py-1 text-sm text-rose-950">
+        <p role="alert" className="rounded-lg border border-danger-border bg-danger-subtle px-3 py-2 text-sm text-danger">
           {result.error}
         </p>
       )}

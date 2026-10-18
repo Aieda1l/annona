@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { DonationCard, HandoffStep } from "@/contracts";
+import { PackageCheck, Truck } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { Outcome } from "./api";
 
 /**
@@ -40,28 +42,35 @@ export function HandoffControls({
   }
 
   return (
-    <section aria-label="Simulated handoff" className="space-y-2 rounded border border-slate-400 bg-slate-50 p-3">
-      <h3 className="text-sm font-semibold text-slate-900">Simulated handoff</h3>
-      <p className="text-xs text-slate-800">
-        This records a simulated step for the demo. No real food moves and no one is contacted.
-      </p>
-      <button
+    <section aria-label="Simulated handoff" className="space-y-3 rounded-xl border border-dashed border-progress-border bg-progress-subtle/60 p-4">
+      <div className="space-y-1">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-progress">
+          <Truck aria-hidden className="size-4" />
+          Simulated handoff
+        </h3>
+        <p className="text-xs text-foreground/80">
+          This records a simulated step for the demo. No real food moves and no one is contacted.
+        </p>
+      </div>
+      <Button
         type="button"
+        variant="outline"
         disabled={busy}
         onClick={() => run(step)}
-        className="rounded border border-slate-700 bg-white px-3 py-1.5 text-sm font-medium text-slate-900 hover:bg-slate-100 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+        className="h-auto min-h-10 w-full justify-start py-2 text-left whitespace-normal sm:w-fit"
       >
+        {step === "collected" ? <Truck aria-hidden /> : <PackageCheck aria-hidden />}
         {step === "collected"
           ? "Mark collected (simulated)"
           : "Mark delivered (simulated) — recipient accepted after inspection"}
-      </button>
+      </Button>
       {result?.ok && (
-        <p role="status" className="text-sm text-slate-900">
+        <p role="status" className="text-sm text-foreground">
           {result.summary}
         </p>
       )}
       {result && !result.ok && (
-        <p role="alert" className="rounded border border-rose-700 bg-rose-50 px-2 py-1 text-sm text-rose-950">
+        <p role="alert" className="rounded-lg border border-danger-border bg-danger-subtle px-3 py-2 text-sm text-danger">
           {result.error}
         </p>
       )}

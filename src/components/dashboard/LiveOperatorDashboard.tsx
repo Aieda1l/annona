@@ -5,6 +5,9 @@ import type { DashboardSnapshot, OperatorAction } from "@/contracts";
 import { postJson, type Outcome } from "./api";
 import { OperatorDashboard, type DemoHandlers } from "./OperatorDashboard";
 import { formatPacific } from "./format";
+import { PageContainer } from "@/components/layout/PageHeader";
+import { Notice } from "@/components/ui/notice";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const POLL_MS = 2000;
 
@@ -94,27 +97,52 @@ export function LiveOperatorDashboard() {
     onDispatch: (id) => refreshAfter(postJson(`/api/donations/${id}/dispatch`)),
   };
 
+  const notice = failure && (
+    <Notice role="alert" tone="warning" title={`Dashboard data unavailable: ${failure.code}`}>
+      <p>{failure.message}</p>
+      {snapshot && <p>Showing the last snapshot, stale since {formatPacific(snapshot.generated_at)}.</p>}
+    </Notice>
+  );
+
+  if (snapshot)
+    return (
+      <OperatorDashboard
+        snapshot={snapshot}
+        sourceLabel={failure ? "STALE server state" : "Live server state"}
+        onAction={onAction}
+        actionErrors={actionErrors}
+        notice={notice}
+        // Demo controls are hidden while the snapshot is stale: the last-seen mode may no longer match the server.
+        demo={snapshot.modes.demo_accelerated && !failure ? demo : undefined}
+      />
+    );
+
   return (
-    <>
-      {failure && (
-        <div role="alert" className="mx-auto mt-4 w-full max-w-6xl rounded border border-amber-700 bg-amber-50 p-3 text-sm text-amber-950">
-          <p className="font-semibold">Dashboard data unavailable: {failure.code}</p>
-          <p>{failure.message}</p>
-          {snapshot && <p>Showing the last snapshot, stale since {formatPacific(snapshot.generated_at)}.</p>}
-        </div>
-      )}
-      {snapshot ? (
-        <OperatorDashboard
-          snapshot={snapshot}
-          sourceLabel={failure ? "STALE server state" : "Live server state"}
-          onAction={onAction}
-          actionErrors={actionErrors}
-          // Demo controls are hidden while the snapshot is stale: the last-seen mode may no longer match the server.
-          demo={snapshot.modes.demo_accelerated && !failure ? demo : undefined}
-        />
-      ) : (
-        !failure && <p className="p-4 text-sm">Loading dashboard…</p>
-      )}
-    </>
+    <PageContainer size="wide" className="space-y-6">
+      {notice || <DashboardSkeleton />}
+    </PageContainer>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div role="status" aria-label="Loading dashboard" className="space-y-6">
+      <span className="sr-only">Loading dashboard…</span>
+      <div className="space-y-2">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-8 w-72" />
+        <Skeleton className="h-4 w-full max-w-xl" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        {Array.from({ length: 5 }, (_, i) => (
+          <Skeleton key={i} className="h-[4.5rem] rounded-xl" />
+        ))}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-56 rounded-xl" />
+        ))}
+      </div>
+    </div>
   );
 }
