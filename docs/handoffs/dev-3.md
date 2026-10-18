@@ -184,3 +184,15 @@ NEXT SMALLEST ACTION: when 2(c)/2(d) land, run T-MS-13 (offer, YES, claim over r
 - Tick route: 403 without the secret, 200 with it. If the app goes down the worker keeps running, logs `tick failed: <error> (<cause code>)` each interval (for example `TypeError (ECONNREFUSED)`), and recovers by itself when the app is back.
 - A stale `last_tick_at` on the dashboard is not a dead worker until 2(c) `setLastTick` lands.
 
+
+## 2026-10-17 20:00 PDT — Photo path: every link refusal is answered, only a system fault is retried (FAKE core test world)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / fix/messaging-link-refusals / see the commit that adds this entry
+DELIVERED: src/workflows/photo.ts. A refusal from core.issueVerificationLink (NOT_IMPLEMENTED, INVALID_TRANSITION, CONFLICT such as donor_not_joined, NOT_FOUND) no longer throws. The donor gets "we got your photo, but the checklist link isn't available yet. Please use the web upload." and the relay's cursor moves on. Only INTERNAL (a fault on our side) is still thrown and retried. The log line carries the error code and a plain `details.reason`, never the message id, handle or token.
+EVIDENCE (commands, passed/failed, real vs mock): typecheck 0 errors, lint 0 errors (1 existing warning), test 86 files passed / 2 skipped, 2307 passed / 32 skipped, build ok. FAKE: the link function is a double in tests/messaging/photo.test.ts; not run against real Photon or the real 2(d).
+CONTRACT CHANGES OR REQUESTS: none. Findings on Dev 2's #41 (lock order in the link submit, the raw token stored in outbound_messages.text) are in that PR's review.
+BLOCKERS + SAFETY RISKS: T-MS-19 still needs #40 and #41 on main. A repeated issueVerificationLink revokes the previous live link (confirmed in #41); the draft_ready reply is keyed on the draft id, so one message is sent per draft.
+INTEGRATION STEPS: none.
+NEXT SMALLEST ACTION: when #40 and #41 are on main, re-run the id check and run T-MS-13 and T-MS-19 with the real couriers and donor.
+```
