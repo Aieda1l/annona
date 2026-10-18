@@ -46,7 +46,7 @@ const card = (over: Partial<DonationCard> = {}): DonationCard => ({
   ...over,
 });
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
-const bad = (code: "VALIDATION_FAILED" | "NOT_AUTHORIZED" | "INTERNAL" | "NOT_IMPLEMENTED"): Result<never> => ({
+const bad = (code: "VALIDATION_FAILED" | "NOT_AUTHORIZED" | "INTERNAL" | "NOT_IMPLEMENTED" | "NOT_FOUND" | "INVALID_TRANSITION" | "CONFLICT"): Result<never> => ({
   ok: false,
   error: { code, message: code, retryable: false },
 });
@@ -178,16 +178,22 @@ describe("T-MS-18 failures before a draft exists", () => {
     await expect(handle(DONOR, msg(image()))).rejects.toThrow(/issueVerificationLink/);
   });
 
-  it("answers instead of retrying forever while the link function is not built (NOT_IMPLEMENTED), so the relay moves on", async () => {
-    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { handle } = setup({ issueLink: async () => bad("NOT_IMPLEMENTED") });
-    const reply = await handle(DONOR, msg(image()));
-    expect(reply).toMatchObject({ purpose: "intake_failed", idempotency_key: "reply:pho_msg_photo1:v1" });
-    expect(reply?.text).toContain("web upload");
-    expect(reply?.text).not.toContain(TOKEN);
-    expect(logged.mock.calls.flat().join(" ")).toContain("issueVerificationLink");
-    logged.mockRestore();
-  });
+  it.each(["NOT_IMPLEMENTED", "INVALID_TRANSITION", "CONFLICT", "NOT_FOUND"] as const)(
+    "answers instead of retrying forever when core refuses to issue a link (%s), so the relay moves on",
+    async (code) => {
+      const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const { handle } = setup({ issueLink: async () => bad(code) });
+      const reply = await handle(DONOR, msg(image()));
+      expect(reply).toMatchObject({ purpose: "intake_failed", idempotency_key: "reply:pho_msg_photo1:v1" });
+      expect(reply?.text).toContain("web upload");
+      expect(reply?.text).not.toContain(TOKEN);
+      const line = logged.mock.calls.flat().join(" ");
+      logged.mockRestore();
+      expect(line).toContain("issueVerificationLink");
+      expect(line).toContain(code);
+      expect(line).not.toContain("pho_msg_photo1");
+    },
+  );
 
   it("does no work at all when the app's public URL is not configured, and says so loudly for the operator", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);

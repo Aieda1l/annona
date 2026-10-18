@@ -34,6 +34,9 @@ export type PhotoDeps = {
 /** Errors that mean "this photo cannot become a draft": the donor gets intake_failed. Everything else is retried. */
 const REFUSALS = new Set(["VALIDATION_FAILED", "NOT_AUTHORIZED"]);
 
+/** The only issueVerificationLink results worth a retry: a fault on our side, not a decision about this donation. */
+const RETRIED_LINK_FAULTS = new Set(["INTERNAL"]);
+
 export function createPhotoHandler(deps: PhotoDeps) {
   return async function handlePhoto(identity: IdentityView, msg: InboundMessage): Promise<PhotoReply> {
     const base = deps.appBaseUrl()?.replace(/\/+$/, "");
@@ -80,13 +83,15 @@ export function createPhotoHandler(deps: PhotoDeps) {
 
     const link = await deps.issueLink({ donation_id: card.id });
     if (!link.ok) {
-      // Until core's 2(d) is built, throwing would make the relay retry this photo forever and hold every later inbound
-      // message (a courier's YES included) behind it. Answer instead, so the cursor moves on.
-      if (link.error.code === "NOT_IMPLEMENTED") {
-        console.error("[photo] core.issueVerificationLink is not implemented yet (slice 2(d)); the donor was pointed to the web upload");
-        return { purpose: "intake_failed", text: linkUnavailableText(), idempotency_key: failed.idempotency_key };
-      }
-      throw new Error(`issueVerificationLink failed: ${link.error.code}`);
+      // Core refusing to issue a link (not built yet, donation no longer open, donor not joined, not found) will not change
+      // on a retry, and throwing would make the relay redeliver this photo forever and hold every later inbound message (a
+      // courier's YES included) behind it. Answer instead, so the cursor moves on. Only a system fault (INTERNAL) is retried.
+      if (RETRIED_LINK_FAULTS.has(link.error.code)) throw new Error(`issueVerificationLink failed: ${link.error.code}`);
+      const reason = link.error.details?.reason;
+      console.error(
+        `[photo] issueVerificationLink refused: ${link.error.code}${typeof reason === "string" && /^[a-z_]{1,40}$/.test(reason) ? ` (${reason})` : ""}; the donor was pointed to the web upload`,
+      );
+      return { purpose: "intake_failed", text: linkUnavailableText(), idempotency_key: failed.idempotency_key };
     }
 
     const view: DraftReadyView = {

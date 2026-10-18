@@ -24,13 +24,23 @@ import { runtime } from "./runtime";
 // writes donation rows directly. Time comes only from the injected Clock.
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+// HEIC/HEIF is what iPhones take and iMessage sends. Whether a given source may submit it is Dev 1's intake policy
+// (messaging only, behind HEIC_ACCEPTED); the core only has to be able to store it safely. No conversion is done.
+const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
+
+/** Major brands of the HEIF family (still images, image sequences, HEVC-coded). Video, AVIF and QuickTime brands are not here. */
+const HEIF_BRANDS = new Set(["heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1"]);
 
 const startsWith = (bytes: Uint8Array, at: number, sig: number[]) => sig.every((b, i) => bytes[at + i] === b);
 function looksLike(mime: string, bytes: Uint8Array): boolean {
   if (mime === "image/png") return startsWith(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   if (mime === "image/jpeg") return startsWith(bytes, 0, [0xff, 0xd8, 0xff]);
   if (mime === "image/webp") return bytes.length >= 12 && startsWith(bytes, 0, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes, 8, [0x57, 0x45, 0x42, 0x50]);
+  if (mime === "image/heic" || mime === "image/heif") {
+    // An ISO-BMFF file starts with a box: 4 bytes of size, then "ftyp", then the major brand. The brand must be a HEIF one,
+    // so an MP4/MOV video or an AVIF cannot pass as a photo just by being labelled image/heic.
+    return bytes.length >= 12 && startsWith(bytes, 4, [0x66, 0x74, 0x79, 0x70]) && HEIF_BRANDS.has(String.fromCharCode(bytes[8]!, bytes[9]!, bytes[10]!, bytes[11]!));
+  }
   return false;
 }
 

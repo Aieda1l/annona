@@ -12,6 +12,7 @@ import {
 } from "@/contracts";
 import { VisionSuggestion as VisionSuggestionSchema } from "@/contracts";
 import { validateImage, type ImageSource } from "./image-validation";
+import { stripImageMetadata } from "./strip-metadata";
 import { computeEditedFromAi, parseVerifiedFacts } from "./verified-facts";
 
 // Lane-private intake service. It validates, calls injected core functions and vision, and never writes
@@ -112,10 +113,12 @@ export function createIntakeService(config: {
     const valid = validateImage(input.image, input.source);
     if (!valid.ok) return valid;
 
-    const stored = await core.storeDonationImage(
-      { mime: valid.data.mime, bytes: Buffer.from(input.image.bytes_base64, "base64") },
-      deps,
-    );
+    // Location metadata never reaches storage or the model. Unreadable containers are refused (fail closed).
+    const clean = stripImageMetadata(valid.data.mime, Buffer.from(input.image.bytes_base64, "base64"));
+    if (!clean.ok) return clean;
+    const cleanBase64 = Buffer.from(clean.data).toString("base64");
+
+    const stored = await core.storeDonationImage({ mime: valid.data.mime, bytes: clean.data }, deps);
     if (!stored.ok) return stored;
 
     const draft = await core.createDraft(
@@ -126,7 +129,7 @@ export function createIntakeService(config: {
     // Idempotent repeat (same source_ref): the AI step already ran, so do not call vision again.
     if (draft.data.ai_status !== "pending") return draft;
 
-    const analysis = await analyze(deps?.vision ?? vision, { mime: valid.data.mime, bytes_base64: input.image.bytes_base64 }, timeout_ms);
+    const analysis = await analyze(deps?.vision ?? vision, { mime: valid.data.mime, bytes_base64: cleanBase64 }, timeout_ms);
     return core.attachAiResult(
       {
         donation_id: draft.data.id,
