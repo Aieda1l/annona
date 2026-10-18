@@ -88,3 +88,16 @@ Inbound texts other than a command (JOIN, STOP, HELP, YES <code>) or a photo are
 ## How to re-check
 
 Anyone with the project key can list the same messages with `GET /v1/projects/<project id>/messages?platform=imessage&createdSince=2026-10-18T07:30:00.000Z&order=asc&pageSize=50` and match the ids above. The key is not in the repo.
+
+## Addendum: the repeated-JOIN reply, checked live after #74 was deployed
+
+The table above is from the first run, where a repeated JOIN got the full welcome again. After #74 ("already opted in") was merged and deployed, an already-joined courier phone texted JOIN twice more and Photon's record shows the new reply each time, both delivered within 1 s:
+
+| Time (UTC) | Direction | What | Photon message id | Status | Delivered at |
+|---|---|---|---|---|---|
+| 09:03:13 | courier phone 1 -> Annona | JOIN | `pho_msg_2p64sx9xe9hxbaa3d9fs2q87tg` | received | |
+| 09:03:15 | Annona -> courier phone 1 | join_ack (already opted in) | `pho_msg_5fb88r2v6ahyjrys9mymb9kyyv` | delivered | 09:03:16 |
+| 09:03:23 | courier phone 1 -> Annona | JOIN | `pho_msg_4zy9kbv4gwgssbv6w7rdq8xcta` | received | |
+| 09:03:25 | Annona -> courier phone 1 | join_ack (already opted in) | `pho_msg_1a4ddfezvrhnnt0khcb0ct90ed` | delivered | 09:03:25 |
+
+For the record: earlier checks of the same phone at 08:53 and 08:58 still got the old welcome, because the deployed site was running an older build than `main`; the first deploys after the merge did not take. It matched `main` by 09:03. Nothing in the app code was wrong.
