@@ -135,3 +135,23 @@ Full eval on the committed fixtures (Vertex ADC, `gemini-3.5-flash-lite`, 3 runs
 ## 2026-10-17 evening: HEIC_ACCEPTED = true (feat/intake-heic)
 
 Flipped per CONTRACTS §9.3 on the SP-14 result above (real Photon-downloaded HEIC, 1,456,484 B, parsed by `gemini-3.5-flash-lite`). Intake now accepts `image/heic|heif` from `messaging` only, 5 MB cap. **Not yet end to end:** core `storeDonationImage` still refuses HEIC (request: `docs/requests/intake-heic-core-allowlist.md`), and the stored HEIC may not render in non-Safari browsers. Dev 3's `photo.ts` passes Photon's content-type through unfiltered and does not sniff.
+
+## 2026-10-17 evening: Cyrus's #30 re-review items (feat/intake-gating)
+
+- **`fixture_id` gate (HIGH):** `POST /api/intake/drafts` refuses `{ fixture_id }` with `NOT_FOUND` unless the provider is `fake` or `ANNONA_DEMO_MODE=1`. With `VISION_PROVIDER=gemini`, the demo needs `ANNONA_DEMO_MODE=1` for fixture drafts. Normal web uploads are unaffected. Workflows and the simulated phone call `createDraftFromImage` directly, not this route.
+- **Magic bytes (HIGH):** core's `storeDonationImage` checks the declared type against the first bytes and runs before vision. `tests/intake/real-core.test.ts` now proves an HTML file labelled `image/jpeg` is refused (`VALIDATION_FAILED`), vision is not called and no draft row is left.
+- **Paid-call multiplication (MEDIUM):** web and fixture drafts have no `source_ref` (CONTRACTS §3.2), so `createIntakeService` shares the in-flight result per donor, source and photo bytes. Nothing is reused after it settles (review: a stored card went stale after verification or a demo reset), so a repeat after completion is a new draft and a retry after a failure runs at once. Messaging stays on core's `source_ref` idempotency. The cache is in memory per server instance (one process in the demo; serverless instances do not share it). A durable key would need a contract change.
+- **Tests added:** gate (4), dedupe (8), non-donor with the real service triggers no vision call or store (3), empty `possible_allergens` leaves every allergen `unknown` with no hint, magic-byte case above. Two of the review's "missing tests" already existed (escalated answer with a claim word or unusable output keeps the first answer; misconfigured real provider returns `PROVIDER_UNAVAILABLE`, `retryable: false`, `mode: real`). Mode mismatch under a real service is in `service.test.ts`.
+- **Not done (LOW):** cap and sanitize `model`, reject URLs and control characters in free text, per-donor drafts-per-minute cap.
+- Deployment: `GEMINI_API_KEY` on the host is still to be set by the captain.
+
+## Notes for the next agent session (replaces the separate agent handoff file)
+
+- Read `CLAUDE.md`, then this file. Lane: `src/features/intake/**`, `src/lib/ai/**`, `tests/intake/**`, intake prompts and fixtures; propose cross-lane changes in `docs/requests/`.
+- `pnpm` is not installed on Colin's machine: use `npx -y pnpm@10.33.3 <cmd>` (`typecheck`, `lint src tests`, `vitest run`, `eval:intake`). Bare `pnpm lint` trips on `.claude/worktrees` and `.spikes-local`.
+- Shell is zsh: an unquoted variable holding several words is not split. macOS `sed` is BSD (`sed -i ''`); prefer the Edit tool or Python.
+- Before every push run the canonical secret scan in `docs/ARCHITECTURE.md` section 9. Never commit `.env*`, keys, or `.spikes-local/`.
+- Gemini auth: production uses an API key. Colin keeps a free-tier AI Studio key in the macOS Keychain (item `annona-gemini`, read inside a script, never printed); be conservative with calls. Local evals can use Vertex AI with gcloud ADC (`location=global`).
+- Real-model calls stall occasionally; the adapter retries once. Evals are noisy (3 runs vary by 1 to 2 cases). No prompt version passes all eight cases; the default stays v1.
+- Eval photos live in the gitignored `fixtures/intake/eval-local/` (D-040); the eval and smoke tests skip when they are absent.
+- Open: link-path real-core tests wait on Dev 2's 2(d); HEIC works in intake but core's `storeDonationImage` still refuses it (`docs/requests/intake-heic-core-allowlist.md`).

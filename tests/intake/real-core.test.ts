@@ -162,4 +162,14 @@ describe("intake service against the real core", () => {
     const other = donorActor("00000000-0000-4000-8000-0000000000bb");
     expect((await core.getDonationCard(other, d.id, w.deps())).ok).toBe(false);
   });
+  it("a non-image labelled image/jpeg is refused by core before vision runs and leaves no draft behind", async () => {
+    const analyze = vi.fn(createFakeVisionProvider().analyzeFoodImage);
+    const s = createIntakeService({ core, vision: { ...createFakeVisionProvider(), analyzeFoodImage: analyze } });
+    const before = (await w.db.select().from(donations)).length;
+    const html = { mime: "image/jpeg", bytes_base64: Buffer.from("<html><script>alert(1)</script></html>").toString("base64") };
+    const r = await s.createDraftFromImage({ actor: donorActor(), image: html, source: "web_upload" }, w.deps());
+    expect(r).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
+    expect(analyze).not.toHaveBeenCalled();
+    expect((await w.db.select().from(donations)).length).toBe(before);
+  });
 });

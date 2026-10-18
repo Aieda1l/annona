@@ -261,3 +261,14 @@ describe("accessibility", () => {
     }
   });
 });
+
+describe("an AI suggestion with no possible allergens", () => {
+  it("leaves every allergen unset (unknown): silence from the AI is not an absence", () => {
+    renderForm({ suggestion: { ...scene1_vision_suggestion, possible_allergens: [] } });
+    for (const allergen of ALLERGENS) {
+      const group = screen.getByRole("group", { name: NAMES[allergen] });
+      expect(within(group).getByRole("radio", { checked: true })).toHaveAttribute("value", "unknown");
+      expect(within(group).queryByTestId(`ai-hint-allergen-${allergen}`)).toBeNull();
+    }
+  });
+});

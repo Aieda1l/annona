@@ -128,3 +128,58 @@ describe("error mapping (CONTRACTS §3.15)", () => {
     expect((await body(res)).error?.code).toBe(code);
   });
 });
+
+describe("fixture_id is a demo feature (review: it triggers paid calls with a real key)", () => {
+  const fixture = { fixture_id: "sandwich_platter" };
+  const post = async (env: Record<string, string | undefined>) => {
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    const { POST, createDraftFromImage } = setup();
+    const res = await POST(jsonRequest(URL_, fixture, await cookieFor("donor_rainier")));
+    return { res, createDraftFromImage };
+  };
+
+  it("is refused with a real provider and demo mode off, and never reaches the service", async () => {
+    const { res, createDraftFromImage } = await post({ VISION_PROVIDER: "gemini", ANNONA_DEMO_MODE: undefined });
+    expect(res.status).toBe(404);
+    expect((await body(res)).error?.code).toBe("NOT_FOUND");
+    expect(createDraftFromImage).not.toHaveBeenCalled();
+  });
+
+  it("is allowed with a real provider when demo mode is explicitly on", async () => {
+    const { res, createDraftFromImage } = await post({ VISION_PROVIDER: "gemini", ANNONA_DEMO_MODE: "1" });
+    expect(res.status).toBe(200);
+    expect(createDraftFromImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("is allowed with the fake provider even when demo mode is off (no paid call possible)", async () => {
+    const { res } = await post({ VISION_PROVIDER: "fake", ANNONA_DEMO_MODE: undefined });
+    expect(res.status).toBe(200);
+  });
+
+  it("does not affect a normal web upload with a real provider and demo mode off", async () => {
+    process.env.VISION_PROVIDER = "gemini";
+    delete process.env.ANNONA_DEMO_MODE;
+    const { POST, createDraftFromImage } = setup();
+    const res = await POST(jsonRequest(URL_, { image }, await cookieFor("donor_rainier")));
+    expect(res.status).toBe(200);
+    expect(createDraftFromImage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a non-donor never triggers a vision call (real service wiring)", () => {
+  it.each(["operator", "courier_a", "recipient_eastlake"])("%s", async (key) => {
+    const { createIntakeService } = await import("@/features/intake/service");
+    const { createCoreDouble } = await import("./doubles/core");
+    const analyzeFoodImage = vi.fn(async () => err("PROVIDER_UNAVAILABLE", "unused"));
+    const d = createCoreDouble();
+    const service = createIntakeService({ core: d.core, vision: { mode: "real", model: "m", status: "ok", analyzeFoodImage } });
+    const POST = createDraftsHandler({ createDraftFromImage: (input, deps) => service.createDraftFromImage(input, deps) });
+    const res = await POST(jsonRequest(URL_, { image }, await cookieFor(key)));
+    expect(res.status).toBe(403);
+    expect(analyzeFoodImage).not.toHaveBeenCalled();
+    expect(d.core.storeDonationImage).not.toHaveBeenCalled();
+  });
+});

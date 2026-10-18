@@ -7,7 +7,7 @@ import {
   type VerificationLinkView,
 } from "@/contracts";
 import { getServices } from "@/server/container";
-import { createIntakeService } from "./service";
+import { createDedupeCache, createIntakeService } from "./service";
 
 // Server-side barrel owned by Dev 1 after the baseline (keep exported names stable). CONTRACTS §9.2.
 // UI components live in ./components (client-safe barrel) and are imported by Dev 4 only from there.
@@ -16,8 +16,10 @@ export type ImageInput = { mime: string; bytes_base64: string };
 
 // Bound to the real core and the composition root's vision provider. Core functions are stubs until
 // Dev 2's sub-PR 2(a) merges, so these return NOT_IMPLEMENTED from core until then.
+// The dedupe cache outlives a single call (a new service is built per call), so a double click is seen.
+const dedupe = createDedupeCache();
 function service(deps?: Deps) {
-  return createIntakeService({ core, vision: deps?.vision ?? getServices().vision });
+  return createIntakeService({ core, vision: deps?.vision ?? getServices().vision, dedupe });
 }
 
 export async function createDraftFromImage(
