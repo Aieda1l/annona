@@ -157,3 +157,30 @@ BLOCKERS + SAFETY RISKS: still open for Dev 2 and the captain: (a) does a repeat
 INTEGRATION STEPS: none new.
 NEXT SMALLEST ACTION: Dev 3 asks Dev 2 about item (4) and the two core questions, then rebases the photo branch onto main once #16 merges.
 ```
+
+## 2026-10-17 17:45 PDT — Core adapter, barrel wiring and the HEIC byte check (FAKE core test world, no new real Photon calls)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / feat/messaging-adapter / see the commits on the branch
+DELIVERED:
+ - src/workflows/core-binding.ts: bindCore(deps) maps Dev 2's @/core onto MessagingCore, DispatchCore and DeliveryCore. Identities and offers are narrowed to this lane's types; an identity that does not parse is treated as missing. core.setLastTick is still a stub (2(c)), so a tick tolerates its NOT_IMPLEMENTED error with one console warning instead of failing after it has sent offers.
+ - src/workflows/index.ts: handleInbound, handleDeliveryStatus, tick and dispatchDonation are real. Handlers are built per call from the caller's deps (or the composition root). The donor photo path is wired: Photon attachments in real mode, allowlisted fixtures in fake mode, createDraftFromImage, core.issueVerificationLink.
+ - Delivery events: recordDeliveryStatus now runs for every event, first or duplicate (Dev 2 handoff, answer 2), so a crash between the ledger row and the offer update cannot lose the update.
+ - claimOffer / declineOffer can now throw on a system fault (unreadable data, a gate exception). The inbound handler answers "something went wrong on our side, please try again", saves the result and logs the fault without handle or text, so one bad row cannot stall the relay behind it.
+ - Photon attachments: the image type is named from the file's first bytes (JPEG, PNG, WebP, HEIC/HEIF brands). Photon's reported type was unconfirmed at SP-14. A prefix check only; unknown bytes keep the label and intake still refuses them. A `mif1` brand is labelled HEIF, so an AVIF with that brand would be mislabelled and fail later in intake (fails closed; accepted for the demo).
+ - TickReport is the contract's type.
+EVIDENCE (commands, passed/failed, real vs mock): pnpm typecheck 0 errors, pnpm lint 0 errors (1 existing warning in tests/ui), pnpm test 73 files passed / 1 skipped, 1929 passed / 30 skipped, pnpm build 0. New tests run the real core on the PGlite world (tests/messaging/core-binding.test.ts, barrel.test.ts): dispatch and send, JOIN, unknown sender, failed delivery event. This is NOT real Photon evidence; T-MS-13 and T-MS-19 are still to run.
+CONTRACT CHANGES OR REQUESTS: none.
+BLOCKERS + SAFETY RISKS: (a) a donor photo needs core.issueVerificationLink (2(d)); until it lands the donor gets "we got your photo, but the checklist link isn't available yet, please use the web upload" (no retry, so the relay is not held up; found in Dev 2's review of #37). Demo-day checklist: do not run the real-mode photo demo until 2(d) is merged. (b) last_tick_at does not update until setLastTick (2(c)); tick logs one warning, so a stale tick time on the dashboard is not a dead worker. (c) HEIC reaches core only after intake PR #33 and Dev 2's core allowlist change. (d) The audit guard rejects any value with 7+ digits; confirm a real Photon message id passes before the live run.
+INTEGRATION STEPS: none for other lanes beyond 2(c)/2(d) landing.
+NEXT SMALLEST ACTION: when 2(c)/2(d) land, run T-MS-13 (offer, YES, claim over real Photon) and T-MS-19 (photo, link) with the real couriers and donor.
+```
+
+### Demo-laptop worker checklist (checked 2026-10-17 in fake mode against a throwaway database; real Photon polling not exercised)
+
+- `.env.local` needs: `MESSAGING_PROVIDER=photon`, `PHOTON_PROJECT_ID`, `PHOTON_API_KEY`, `PHOTON_INBOUND_MODE=poll`, `ANNONA_INTERNAL_SECRET` (the same value for the app and the worker), `APP_BASE_URL`, `SESSION_SECRET`, `DEMO_PASSCODE`, and the three `DEMO_*_HANDLE` values for the seed.
+- Order: `pnpm db:migrate`, `pnpm db:seed`, `pnpm start`, then `pnpm worker`.
+- The worker refuses to start, with a clear message, when the internal secret or `APP_BASE_URL` is missing, or when photon mode has no project id or key.
+- Tick route: 403 without the secret, 200 with it. If the app goes down the worker keeps running, logs `tick failed: <error> (<cause code>)` each interval (for example `TypeError (ECONNREFUSED)`), and recovers by itself when the app is back.
+- A stale `last_tick_at` on the dashboard is not a dead worker until 2(c) `setLastTick` lands.
+

@@ -186,7 +186,9 @@ export function createDispatchDouble(clock: TestClock, base = createCoreDouble()
       statusCalls.push(evt);
       const o = [...offers.values()].find((x) => x.provider_message_id === evt.provider_message_id);
       if (!o) return { ok: true, data: { offer_id: null, offer_status: null } };
-      o.delivery_status = evt.status;
+      // Like core: monotonic (accepted < delivered < failed), so a late "accepted" never undoes "delivered".
+      const rank = { unknown: 0, accepted: 1, delivered: 2, failed: 3 } as const;
+      if (rank[evt.status] > (rank[o.delivery_status as keyof typeof rank] ?? 0)) o.delivery_status = evt.status;
       return { ok: true, data: { offer_id: o.offer_id, offer_status: o.status } };
     },
   };

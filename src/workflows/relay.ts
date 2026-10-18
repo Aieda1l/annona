@@ -29,7 +29,13 @@ export function createRelay(deps: RelayDeps) {
   const log = deps.log ?? ((line: string) => console.log(line));
   // The server dedupes on provider_message_id; this only avoids re-posting an overlapping window.
   const seen = new Set<string>();
-  const errorName = (error: unknown) => (error instanceof Error ? error.name : "error");
+  // The class name, plus the network cause code when there is a plain one (ECONNREFUSED, ETIMEDOUT, ...). Never the message:
+  // it can echo an address or a URL.
+  const errorName = (error: unknown) => {
+    if (!(error instanceof Error)) return "error";
+    const code = (error.cause as { code?: unknown } | null | undefined)?.code;
+    return typeof code === "string" && /^[A-Z0-9_]{3,40}$/.test(code) ? `${error.name} (${code})` : error.name;
+  };
 
   // The cursor lives in a local file; a read-only or locked directory must degrade the relay, never end the worker.
   async function loadCursor(): Promise<string | null> {

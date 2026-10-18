@@ -127,3 +127,23 @@ describe("switching donations", () => {
     expect(screen.getByLabelText(/I attest/i)).not.toBeChecked();
   });
 });
+
+describe("duplicate AI strings", () => {
+  it("render every note without a React key collision", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      renderReview({
+        suggestion: {
+          ...scene1_vision_suggestion,
+          uncertainty_notes: ["Cannot see inside.", "Cannot see inside."],
+          questions_for_donor: ["Any nuts?", "Any nuts?"],
+        },
+      });
+      expect(screen.getAllByText("Cannot see inside.")).toHaveLength(2);
+      expect(screen.getAllByText("Any nuts?")).toHaveLength(2);
+      expect(spy.mock.calls.flat().join(" ")).not.toMatch(/same key|unique "key"/i);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

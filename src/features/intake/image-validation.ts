@@ -6,10 +6,11 @@ import { err, ok, type Result } from "@/contracts";
 export type ImageSource = "web_upload" | "messaging" | "fixture";
 
 /**
- * HEIC/HEIF are accepted only from messaging, and only while this is true. Default false: flip it only in a
- * reviewed PR citing the SP-14 result (see docs/handoffs/dev-1.md). No HEIC conversion is added in P0.
+ * HEIC/HEIF are accepted only from messaging, and only while this is true. Flipped to true in a reviewed PR citing
+ * SP-14 (docs/handoffs/dev-1.md): a Photon-downloaded HEIC, unchanged, was accepted and parsed by Gemini. Core's
+ * storeDonationImage has its own allowlist (docs/requests/intake-heic-core-allowlist.md). No HEIC conversion in P0.
  */
-export const HEIC_ACCEPTED = false;
+export const HEIC_ACCEPTED = true;
 
 export const MAX_WEB_BYTES = 1.5 * 1024 * 1024; // web_upload and fixture, after client-side downscale
 export const MAX_MESSAGING_BYTES = 5 * 1024 * 1024; // messaging, no server-side resize in P0

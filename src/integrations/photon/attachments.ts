@@ -24,6 +24,25 @@ export type AttachmentFetcherOptions = {
   baseUrl?: string;
 };
 
+const ascii = (bytes: Uint8Array, from: number, to: number): string => String.fromCharCode(...bytes.slice(from, to));
+
+/**
+ * The image type named by the file's own first bytes, or null when they are not a type intake knows. Photon's reported
+ * type was unconfirmed at the SP-14 spike, and an iPhone HEIC can arrive labelled as something else, so the bytes decide.
+ * A prefix check only; core and intake still validate what they are handed.
+ */
+export function sniffImageMime(bytes: Uint8Array): string | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length >= 8 && ascii(bytes, 1, 4) === "PNG" && bytes[0] === 0x89) return "image/png";
+  if (bytes.length >= 12 && ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 12) === "WEBP") return "image/webp";
+  if (bytes.length >= 12 && ascii(bytes, 4, 8) === "ftyp") {
+    const brand = ascii(bytes, 8, 12);
+    if (["heic", "heix", "hevc", "hevx"].includes(brand)) return "image/heic";
+    if (["mif1", "msf1", "heif"].includes(brand)) return "image/heif";
+  }
+  return null;
+}
+
 const fail = (reason: Extract<FetchImageResult, { ok: false }>["reason"]): FetchImageResult => ({ ok: false, reason });
 
 export function createAttachmentFetcher(config: { project_id: string; api_key: string }, options: AttachmentFetcherOptions = {}) {
@@ -74,7 +93,7 @@ export function createAttachmentFetcher(config: { project_id: string; api_key: s
           const mime = (response.headers.get("content-type") ?? declaredType).split(";")[0]?.trim().toLowerCase() ?? declaredType;
           // The metadata said image; re-check what was actually served, which is what intake will be handed.
           if (!mime.startsWith("image/")) return fail("not_image");
-          return { ok: true, image: { mime, bytes } };
+          return { ok: true, image: { mime: sniffImageMime(bytes) ?? mime, bytes } };
         }
         return fail("not_ready");
       } catch {
