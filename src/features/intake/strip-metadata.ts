@@ -48,11 +48,21 @@ function stripJpeg(b: Uint8Array): Uint8Array {
       i++; // fill byte
       continue;
     }
-    if (marker === 0xd9 || marker === 0xda) {
-      // EOI, or the start of scan: everything from here is picture data and is copied as is.
-      if (marker === 0xda && i + 4 > b.length) fail("jpeg scan header");
-      out.push(b.subarray(i));
+    if (marker === 0xd9) {
+      out.push(b.subarray(i, i + 2)); // EOI: whatever follows (a second image, MPF payload, trailers) is dropped
       return concat(out);
+    }
+    if (marker === 0xda) {
+      if (i + 4 > b.length) fail("jpeg scan header");
+      const headerEnd = i + 2 + be16(b, i + 2);
+      if (be16(b, i + 2) < 2 || headerEnd > b.length) fail("jpeg scan header");
+      // Entropy-coded data runs to the next marker that is not a stuffed FF00, a fill FFFF or a restart RSTn.
+      let j = headerEnd;
+      while (j + 1 < b.length && !(b[j] === 0xff && b[j + 1] !== 0x00 && b[j + 1] !== 0xff && !(b[j + 1]! >= 0xd0 && b[j + 1]! <= 0xd7))) j++;
+      if (j + 1 >= b.length) fail("jpeg without EOI");
+      out.push(b.subarray(i, j));
+      i = j;
+      continue;
     }
     if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
       out.push(b.subarray(i, i + 2));
@@ -198,13 +208,15 @@ function metadataItemIds(b: Uint8Array, iinf: Box): Set<number> {
 
 function stripHeic(b: Uint8Array): Uint8Array {
   const top = readBoxes(b, 0, b.length);
-  const meta = top.find((x) => x.type === "meta");
-  if (!meta) return fail("no meta box");
+  if (top.some((x) => x.type === "uuid")) fail("top-level uuid box (possible XMP)");
+  const metas = top.filter((x) => x.type === "meta");
+  if (metas.length !== 1) return fail("meta box count");
+  const meta = metas[0]!;
   const children = readBoxes(b, meta.payload + 4, meta.end);
   const iinf = children.find((x) => x.type === "iinf");
   const iloc = children.find((x) => x.type === "iloc");
   const idat = children.find((x) => x.type === "idat");
-  if (!iinf) return b.slice(); // no item table: no Exif item either
+  if (!iinf) return fail("no item table"); // cannot say there is no Exif item
   const targets = metadataItemIds(b, iinf);
   if (targets.size === 0) return b.slice();
   if (!iloc) return fail("metadata item without iloc");
@@ -218,10 +230,17 @@ function stripHeic(b: Uint8Array): Uint8Array {
   const lengthSize = b[p]! & 15;
   const baseSize = b[p + 1]! >> 4;
   const indexSize = version >= 1 ? b[p + 1]! & 15 : 0;
+  for (const size of [offsetSize, lengthSize, baseSize, indexSize]) if (size !== 0 && size !== 4 && size !== 8) fail("iloc field size");
   p += 2;
+  const idSize = version < 2 ? 2 : 4;
+  if (p + (version < 2 ? 2 : 4) > iloc.end) fail("iloc header");
   const count = version < 2 ? be16(b, p) : be32(b, p);
   p += version < 2 ? 2 : 4;
+  const entryMin = idSize + (version >= 1 ? 2 : 0) + 2 + baseSize + 2;
+  if (count * entryMin > iloc.end - p) fail("iloc count");
+  const extentSize = indexSize + offsetSize + lengthSize;
   for (let n = 0; n < count; n++) {
+    if (p + entryMin > iloc.end) fail("iloc entry past end");
     const id = version < 2 ? be16(b, p) : be32(b, p);
     p += version < 2 ? 2 : 4;
     let method = 0;
@@ -234,6 +253,7 @@ function stripHeic(b: Uint8Array): Uint8Array {
     p += baseSize;
     const extents = be16(b, p);
     p += 2;
+    if (extents > 0 && (extentSize === 0 || extents * extentSize > iloc.end - p)) fail("iloc extents");
     for (let e = 0; e < extents; e++) {
       p += indexSize;
       const offset = readUint(b, p, offsetSize);

@@ -164,6 +164,35 @@ describe("HEIC / HEIF", () => {
   });
 });
 
+describe("hostile containers", () => {
+  it("drops a second JPEG after the first EOI (iPhone MPO) along with its GPS", () => {
+    const out = ok("image/jpeg", concat(jpegWithExif(), jpegWithExif()));
+    expect(contains(out, GPS_MARKER)).toBe(false);
+    expect(contains(out, JPEG_SCAN)).toBe(true);
+    expect(out.subarray(out.length - 2)).toEqual(Uint8Array.of(0xff, 0xd9));
+  });
+
+  it("refuses a JPEG with no EOI", () => {
+    const input = jpegWithExif();
+    refused("image/jpeg", input.subarray(0, input.length - 2));
+  });
+
+  it("refuses an iloc whose item count is larger than the box can hold", () => {
+    const input = heicWithExif();
+    const iloc = new TextDecoder("latin1").decode(input).indexOf("iloc");
+    const version = input[iloc + 4]!;
+    const at = iloc + 4 + 4 + 2; // fourcc, version+flags, size nibbles
+    const bad = input.slice();
+    bad.fill(0xff, at, at + (version < 2 ? 2 : 4));
+    refused("image/heic", bad);
+  });
+
+  it("refuses a HEIC with a top-level uuid box", () => {
+    const uuid = concat(Uint8Array.of(0, 0, 0, 24), new TextEncoder().encode("uuid"), new Uint8Array(16));
+    refused("image/heic", concat(heicWithExif(), uuid));
+  });
+});
+
 describe("other types", () => {
   it("refuses a type it does not know how to read, rather than passing it through", () => {
     refused("image/gif", Uint8Array.of(1, 2, 3));
