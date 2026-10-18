@@ -381,3 +381,40 @@ describe("T-MS-10 delivery receipts in poll mode", () => {
     expect(sinces).toContain("2026-10-17T21:55:00.000Z");
   });
 });
+
+describe("request time limits", () => {
+  // The inbound route can run 30 s on the deployed app (maxDuration, #62): a donor photo waits on the vision model. The
+  // worker must wait longer than that, or it abandons a slow photo at 10 s and re-sends it while the server still works.
+  const timeouts = () => {
+    const spy = vi.spyOn(AbortSignal, "timeout");
+    return { spy, calls: () => spy.mock.calls.map((c) => c[0]) };
+  };
+  const message = {
+    id: "pho_msg_slow1",
+    platform: "imessage",
+    status: "received",
+    createdAt: "2026-10-17T21:59:00.000Z",
+    content: { type: "attachment" },
+    sentBy: { id: "pho_usr_h", handle: "donor@example.invalid", kind: "human" },
+    space: { id: "pho_spc_1" },
+  };
+
+  it("waits 35 s for the app's inbound route, longer than its 30 s function limit", async () => {
+    const { spy, calls } = timeouts();
+    const { relay } = setup({ routes: (u) => (isPhoton(u) ? json(200, { items: [message] }) : json(200, { received: true })) });
+    await relay.pollOnce();
+    expect(calls()).toContain(35_000);
+    spy.mockRestore();
+  });
+
+  it("keeps 10 s for the tick call and the Photon polls", async () => {
+    const { spy, calls } = timeouts();
+    const { relay } = setup({ routes: (u) => (isPhoton(u) ? json(200, { items: [] }) : json(200, { ok: true, data: {} })) });
+    await relay.tickOnce();
+    await relay.pollOnce();
+    await relay.statusOnce();
+    expect(calls().length).toBeGreaterThanOrEqual(3);
+    expect(calls().every((ms) => ms === 10_000)).toBe(true);
+    spy.mockRestore();
+  });
+});

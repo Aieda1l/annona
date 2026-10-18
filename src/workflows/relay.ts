@@ -10,6 +10,10 @@ const DEFAULT_RETRY_AFTER_MS = 5000;
 const BACKFILL_MS = 10 * 60 * 1000; // ASSUMPTION (ARCHITECTURE §6): ten minutes
 const SEEN_CAP = 500;
 const REQUEST_TIMEOUT_MS = 10_000;
+// The app's inbound route can run for 30 s (maxDuration): a donor photo waits on the vision model. The worker must wait
+// longer than that, or it abandons a slow photo at 10 s and re-sends it while the server is still working on it. The
+// server dedupes the re-send, but it would waste a model call each time.
+const INBOUND_TIMEOUT_MS = 35_000;
 // Delivery receipts: our own sends show up on GET /messages as "delivered" or "failed" a few seconds after we send them,
 // by which time the inbound cursor has already moved past them. So they come from a short look-back window instead.
 const STATUS_INTERVAL_MS = 10_000;
@@ -95,7 +99,7 @@ export function createRelay(deps: RelayDeps) {
         method: "POST",
         headers: { "content-type": "application/json", "x-annona-internal-secret": deps.internalSecret },
         body: JSON.stringify(envelope),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(INBOUND_TIMEOUT_MS),
       });
       if (!response.ok) log(`[worker] relay rejected: HTTP ${response.status}`);
       return response.ok;
