@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { ALLERGENS, err } from "@/contracts";
 import * as core from "@/core";
 import { audit_events, donation_images, donations } from "@/db/schema";
-import { GPS_MARKER, contains, heicWithExif, jpegWithExif } from "./doubles/images";
+import { GPS_MARKER, HEIC_PIXELS, JPEG_SCAN, concat, contains, heicWithExif, jpegWithExif } from "./doubles/images";
 import { createIntakeService } from "@/features/intake/service";
 import { createFakeVisionProvider } from "@/lib/ai/fake";
 import { donorActor, factsAt, makeWorld, type World } from "../core/helpers/world";
@@ -176,16 +176,29 @@ describe("intake service against the real core", () => {
   it.each([
     ["a JPEG", "image/jpeg", () => jpegWithExif(), "messaging"],
     ["a HEIC", "image/heic", () => heicWithExif(), "messaging"],
-  ] as const)("%s with GPS in its metadata is stored without it", async (_label, mime, make, source) => {
-    const vision = createFakeVisionProvider();
-    const s = createIntakeService({ core, vision });
+  ] as const)("%s with GPS in its metadata is stored without it, picture data intact", async (_label, mime, make, source) => {
+    const s = createIntakeService({ core, vision: createFakeVisionProvider() });
     const r = await s.createDraftFromImage(
       { actor: donorActor(), image: { mime, bytes_base64: Buffer.from(make()).toString("base64") }, source, source_ref: `fake:exif-${mime}` },
       w.deps(),
     );
-    // core may refuse a mime it does not accept yet (HEIC allowlist is Dev 2's); either way no GPS is ever stored
-    const rows = await w.db.select().from(donation_images);
+    expect(r.ok).toBe(true);
+    const rows = (await w.db.select().from(donation_images)).filter((row) => row.mime === mime);
+    expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) expect(contains(new Uint8Array(row.bytes), GPS_MARKER)).toBe(false);
-    if (mime === "image/jpeg") expect(r.ok).toBe(true);
+    const picture = mime === "image/heic" ? HEIC_PIXELS : JPEG_SCAN;
+    expect(rows.some((row) => contains(new Uint8Array(row.bytes), picture))).toBe(true);
+  });
+
+  it("an MP4 labelled image/heic is refused by core and leaves no draft", async () => {
+    const mp4 = concat(Uint8Array.of(0, 0, 0, 24), new TextEncoder().encode("ftypisom"), new Uint8Array(12));
+    const before = (await w.db.select().from(donations)).length;
+    const s = createIntakeService({ core, vision: createFakeVisionProvider() });
+    const r = await s.createDraftFromImage(
+      { actor: donorActor(), image: { mime: "image/heic", bytes_base64: Buffer.from(mp4).toString("base64") }, source: "messaging", source_ref: "fake:mp4-1" },
+      w.deps(),
+    );
+    expect(r.ok).toBe(false);
+    expect((await w.db.select().from(donations)).length).toBe(before);
   });
 });
