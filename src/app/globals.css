@@ -133,6 +133,37 @@
   html {
     @apply font-sans;
   }
+  body {
+    line-height: 1.6;
+  }
+  a, button, summary, select, label[for], [role="button"] {
+    cursor: pointer;
+  }
+  time, code, .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 2px solid var(--annona-leaf);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+  /* Live indicator: a soft pulse, off under reduced motion. */
+  .annona-live {
+    width: 0.5rem; height: 0.5rem; border-radius: 9999px;
+    background: var(--annona-mint);
+    animation: annona-pulse 2s ease-in-out infinite;
+  }
+  @keyframes annona-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(141 191 122 / 0.6); }
+    50% { box-shadow: 0 0 0 6px rgb(141 191 122 / 0); }
+  }
   h1, h2, h3 {
     font-family: var(--font-heading);
     color: var(--annona-forest);

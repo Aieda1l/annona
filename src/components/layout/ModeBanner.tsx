@@ -42,6 +42,7 @@ export function ModeBanner({ modes, generated_at }: { modes: SystemModes; genera
       aria-label="System mode"
       className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-[#24523a] bg-[#24523a] px-4 py-2"
     >
+      <span aria-hidden="true" className="annona-live" />
       {chip(ai.text, ai.warn)}
       {chip(msg.text, msg.warn)}
       {chip(`Store: ${modes.store}`, false)}

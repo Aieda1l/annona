@@ -56,7 +56,7 @@ const ALLERGEN_CHOICES = [
 ] as const;
 
 const SELECT_CLASS =
-  "h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+  "h-11 w-full cursor-pointer rounded-lg border border-input bg-white px-2 text-base outline-none transition-colors duration-200 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-10 sm:text-sm";
 
 export type VerificationFormProps = {
   /** Shown only as unverified hints beside the donor's own fields. Never used to pre-fill. */
@@ -76,6 +76,23 @@ function Field({ label, htmlFor, hint, children }: { label: string; htmlFor: str
       {children}
       {hint}
     </div>
+  );
+}
+
+function Section({ step, title, children }: { step: number; title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-4 rounded-2xl border border-[#c9dac6] bg-white p-5 shadow-sm">
+      <h2 className="flex items-center gap-3 text-xl font-bold">
+        <span
+          aria-hidden="true"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#24523a] font-sans text-sm font-semibold text-white"
+        >
+          {step}
+        </span>
+        {title}
+      </h2>
+      {children}
+    </section>
   );
 }
 
@@ -138,11 +155,12 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-5">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-base text-muted-foreground">
         Please answer from your own records. Anything you are not sure about, leave as &ldquo;I don&apos;t know&rdquo;;
         the team will review it.
       </p>
 
+      <Section step={1} title="About the food">
       <Field
         label="Dish name"
         htmlFor={id("dish_name")}
@@ -187,22 +205,27 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         />
       </Field>
 
+      </Section>
+
+      <Section step={2} title="Allergens">
       <div className="flex flex-col gap-3">
-        <h3 className="text-sm font-semibold">Major allergens</h3>
+        <h3 className="text-base font-semibold">Major allergens</h3>
         <p className="text-xs text-muted-foreground">
           For each, say whether it is in the ingredients you listed. &ldquo;Not in my listed ingredients&rdquo; is your
           statement about your list; it is not a guarantee.
         </p>
+        <div className="grid gap-3 sm:grid-cols-2">
         {ALLERGENS.map((a) => (
-          <fieldset key={a} className="flex flex-col gap-1">
-            <legend className="text-sm font-medium">{ALLERGEN_NAMES[a]}</legend>
+          <fieldset key={a} className="flex flex-col gap-1 rounded-xl border border-[#c9dac6] bg-[#f6faf4] p-3">
+            <legend className="px-1 text-sm font-semibold text-[#24523a]">{ALLERGEN_NAMES[a]}</legend>
             {aiAllergens.has(a) && (
               <Hint id={`allergen-${a}`}>AI: possible — {aiAllergens.get(a)} (unverified)</Hint>
             )}
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
               {ALLERGEN_CHOICES.map((c) => (
-                <label key={c.value} className="flex items-center gap-1.5 text-sm">
+                <label key={c.value} className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-8">
                   <input
+                    className="size-4 cursor-pointer accent-[#2f7d4f]"
                     type="radio"
                     name={id(`allergen-${a}`)}
                     value={c.value}
@@ -215,6 +238,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
             </div>
           </fieldset>
         ))}
+        </div>
       </div>
 
       <Field label="Cross-contact status" htmlFor={id("cross_contact_status")}>
@@ -239,8 +263,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         <legend className="text-sm font-medium">Allergens that may have touched this food</legend>
         <div className="flex flex-wrap gap-4">
           {ALLERGENS.map((a) => (
-            <label key={a} className="flex items-center gap-1.5 text-sm">
+            <label key={a} className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-8">
               <input
+                className="size-4 cursor-pointer accent-[#2f7d4f]"
                 type="checkbox"
                 aria-label={`${ALLERGEN_NAMES[a]} cross-contact`}
                 disabled={!declared}
@@ -259,7 +284,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           ))}
         </div>
       </fieldset>
+      </Section>
 
+      <Section step={3} title="Handling">
       <Field label="How is this food being held right now?" htmlFor={id("handling_mode")}>
         {select("handling_mode", HANDLING_MODES, HANDLING_LABELS)}
       </Field>
@@ -291,6 +318,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         {select("covered_food_grade_containers", YES_NO_UNKNOWN, YNU_LABELS)}
       </Field>
 
+      </Section>
+
+      <Section step={4} title="Pickup">
       <Field label="Discard-by time from your kitchen's own procedure" htmlFor={id("discard_by")}>
         <Input
           id={id("discard_by")}
@@ -299,8 +329,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           value={state.discard_by_local}
           onChange={text("discard_by_local")}
         />
-        <label className="flex items-center gap-1.5 text-sm">
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-8">
           <input
+            className="size-4 cursor-pointer accent-[#2f7d4f]"
             type="checkbox"
             checked={state.no_discard_by}
             onChange={(e) => set("no_discard_by", e.target.checked)}
@@ -328,6 +359,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         />
       </Field>
 
+      </Section>
+
+      <Section step={5} title="Confirm and submit">
       <Field label="Your name or role (for the attestation)" htmlFor={id("attested_by_label")}>
         <Input
           id={id("attested_by_label")}
@@ -337,10 +371,10 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           onChange={text("attested_by_label")}
         />
       </Field>
-      <label className="flex items-start gap-2 text-sm">
+      <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-lg bg-[#f6faf4] p-3 text-sm">
         <input
           type="checkbox"
-          className="mt-0.5"
+          className="mt-0.5 size-4 cursor-pointer accent-[#2f7d4f]"
           checked={state.attested}
           onChange={(e) => set("attested", e.target.checked)}
         />
@@ -359,9 +393,10 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         </Alert>
       )}
 
-      <Button type="submit" disabled={submitting}>
+      <Button type="submit" size="lg" disabled={submitting}>
         {submitting ? "Submitting…" : "Submit for review"}
       </Button>
+      </Section>
     </form>
   );
 }

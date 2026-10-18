@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fira_Code, Fira_Sans } from "next/font/google";
 import "./globals.css";
 import { LiveModeBanner } from "@/components/layout/LiveModeBanner";
 import { SignOutButton } from "@/components/layout/SignOutButton";
 
-const geistSans = Geist({
+// Fira pairing from the ui-ux-pro-max dashboard recommendation: Fira Sans for text, Fira Code for ids and times.
+const geistSans = Fira_Sans({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
+const geistMono = Fira_Code({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });

@@ -25,8 +25,10 @@ export function StatusBadge({ status }: { status: DonationStatus }) {
     <span
       data-testid="status-badge"
       data-status={status}
-      className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${s.className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${s.className}`}
     >
+      {/* Shape plus text label: color is never the only cue. */}
+      <span aria-hidden="true" className="size-1.5 rounded-sm bg-current" />
       {s.label}
     </span>
   );

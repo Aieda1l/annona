@@ -36,7 +36,7 @@ export type DraftReviewProps = {
 function AiPanel({ suggestion }: { suggestion: VisionSuggestion }) {
   const label = suggestion.mode === "fake" ? "AI: FAKE" : `AI: ${suggestion.model ?? "real"}`;
   return (
-    <section data-testid="ai-panel" className="flex flex-col gap-3 rounded-lg border p-3">
+    <section data-testid="ai-panel" className="flex flex-col gap-3 rounded-xl border border-[#c9dac6] bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">AI draft (unverified)</h3>
         <Badge variant="outline">{label}</Badge>
