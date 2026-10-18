@@ -42,7 +42,7 @@ flags:
 
 ## 4. Scenes
 
-Narration word counts are budgeted so the default (all flags false) path totals about 330 words ≈ 2:15 of speech, leaving room for pauses and the conditional lines.
+Narration word counts are budgeted so the default (all flags false) path totals about 310 words ≈ 2:05 of speech, leaving room for pauses and the conditional lines.
 
 ```yaml
 scenes:
@@ -182,7 +182,7 @@ scenes:
 7. "Now the part that matters most. A pasta tray that looks great, but it was cooked and cooled, the holding history is unknown, and sesame is unknown. The gate says needs review, in four plain reasons. No offer goes out, and there's no dispatch-anyway button. Unknown means stop."
 8. "AI describes. Humans verify. The backend enforces. Annona is a weekend prototype on synthetic data. It does not certify food safety, and it's built to say no when facts are missing."
 
-Word count (flags false): about 330. Speech ≈ 2:15 at 150 wpm; with scene padding and evidence beats the cut lands near 2:45.
+Word count (flags false): about 310. Speech ≈ 2:05 at 150 wpm; with scene padding and evidence beats the cut lands near 2:45.
 
 ## 6. Capture requirements (for Dev 4 / the capture script)
 
