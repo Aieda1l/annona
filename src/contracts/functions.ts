@@ -177,7 +177,8 @@ export type SetLastTickFn = (at: string, deps?: Deps) => Promise<void>;
 export type GetSystemStatusFn = (
   deps?: Deps,
 ) => Promise<{ last_tick_at: string | null; store: StoreKind; policy_version: string }>;
-export type ResetDemoFn = (input: { keep_identities: true }, deps?: Deps) => Promise<Result<{ reset_at: string }>>;
+// The caller's actor is required: reset deletes every donation, offer, link and photo, and core refuses anyone but an operator.
+export type ResetDemoFn = (input: { keep_identities: true; actor: Actor }, deps?: Deps) => Promise<Result<{ reset_at: string }>>;
 
 // ----- Dev 3 (section 9.4) -----
 export type HandleInboundFn = (msg: InboundMessage, deps?: Deps) => Promise<InboundResult>;
