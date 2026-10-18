@@ -12,6 +12,8 @@ export async function requireDonor(request: Request): Promise<Result<Actor>> {
 
 /** Read and parse a JSON body, rejecting anything over `maxChars` before parsing. */
 export async function readJson(request: Request, maxChars: number): Promise<Result<unknown>> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxChars) return err("VALIDATION_FAILED", "Request body is too large.");
   let text: string;
   try {
     text = await request.text();

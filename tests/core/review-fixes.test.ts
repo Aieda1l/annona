@@ -82,8 +82,8 @@ describe("M-03/M-04 do not rely on the gate having run first (findCandidates is 
     findCandidates({
       donation: { id: "d", donor_location: { lat: 47.6, lng: -122.32 } },
       facts: { ...scene1_eligible_facts, donor_pickup_by: iso(300), discard_by: iso(900), ...facts } as never,
-      recipients, couriers: [courier], identities: [{ id: "i", actor_role: "courier", actor_id: "cA", status: "joined" }],
-      policy, now: NOW, excluded_courier_ids: [], busy_courier_ids: [],
+      recipients, couriers: [courier], identities: [{ actor_role: "courier", actor_id: "cA", status: "joined", provider: "fake" }],
+      policy, now: NOW, excluded_courier_ids: [], busy_courier_ids: [], committed_servings: {}, active_provider: "fake",
     });
   const peanutsExcluded = () => recipient({ excluded_allergens: ["peanuts"] });
   const allergens = (peanuts: string) => ({ allergens: { ...scene1_eligible_facts.allergens, peanuts } });
@@ -104,5 +104,90 @@ describe("M-03/M-04 do not rely on the gate having run first (findCandidates is 
   it("servings at the limits are accepted", () => {
     expect(run({ servings: 1 })).toHaveLength(1);
     expect(run({ servings: DEMO_POLICY.max_servings }, [recipient({ capacity_servings_available: 1000 })])).toHaveLength(1);
+  });
+});
+
+describe("cutoff resolution (CONTRACTS section 7, D-038): stored cutoff, else min(pickup, discard) from the facts, else due", () => {
+  const base = { now: NOW, collected_at: null as string | null };
+  const expires = (extra: Record<string, unknown>) => canTransition({ from: "eligible", to: "expired", trigger: "expireDue", ctx: { ...base, effective_cutoff_at: null, ...extra } as never }).ok;
+  const backToEligible = (extra: Record<string, unknown>) =>
+    canTransition({ from: "offered", to: "eligible", trigger: "expireDue", ctx: { ...base, effective_cutoff_at: null, live_offer_count: 0, ...extra } as never }).ok;
+
+  it("a stored cutoff wins over the facts", () => {
+    expect(expires({ effective_cutoff_at: iso(30), donor_pickup_by: iso(-60) })).toBe(false);
+    expect(expires({ effective_cutoff_at: iso(-1), donor_pickup_by: iso(600) })).toBe(true);
+  });
+  it("with no stored cutoff, the earlier of pickup and discard-by decides", () => {
+    expect(expires({ donor_pickup_by: iso(60), discard_by: iso(-5) })).toBe(true); // discard-by already passed
+    expect(expires({ donor_pickup_by: iso(-5), discard_by: iso(600) })).toBe(true); // pickup already passed
+    expect(expires({ donor_pickup_by: iso(60), discard_by: iso(120) })).toBe(false);
+    expect(backToEligible({ donor_pickup_by: iso(60), discard_by: iso(120) })).toBe(true);
+    expect(backToEligible({ donor_pickup_by: iso(60), discard_by: iso(-5) })).toBe(false);
+  });
+  it("a null, missing or unparseable discard-by is ignored, the pickup time still counts", () => {
+    for (const discard_by of [null, undefined, "junk", "1"]) {
+      expect(expires({ donor_pickup_by: iso(60), discard_by }), String(discard_by)).toBe(false);
+      expect(expires({ donor_pickup_by: iso(-1), discard_by }), String(discard_by)).toBe(true);
+    }
+  });
+  it("no cutoff can be resolved at all: the donation is due, and the guards that need time left refuse", () => {
+    expect(expires({})).toBe(true);
+    expect(expires({ donor_pickup_by: "junk", discard_by: iso(60) })).toBe(true);
+    expect(backToEligible({})).toBe(false);
+  });
+  it("an invalid clock is neither before nor after any cutoff", () => {
+    const now = new Date("nope");
+    expect(canTransition({ from: "eligible", to: "expired", trigger: "expireDue", ctx: { now, effective_cutoff_at: iso(-60), collected_at: null } }).ok).toBe(false);
+    expect(canTransition({ from: "eligible", to: "expired", trigger: "expireDue", ctx: { now, effective_cutoff_at: null, collected_at: null } }).ok).toBe(false);
+    expect(canTransition({ from: "offered", to: "eligible", trigger: "expireDue", ctx: { now, effective_cutoff_at: iso(60), collected_at: null, live_offer_count: 0 } }).ok).toBe(false);
+  });
+});
+
+describe("v0.5 matching inputs: committed servings and the active provider", () => {
+  const loc = { lat: 47.6, lng: -122.32, area_label: "x", address_line: "a" };
+  const rec: RecipientOrg = {
+    id: "r1", display_name: "R", approval_status: "approved", registered_dfdo: true, serves_highly_susceptible_population: false,
+    accepts_handling_modes: ["refrigerated"], excluded_allergens: [], capacity_servings_available: 40, receiving_closes_at: iso(600),
+    location: { ...loc, lat: 47.62 }, is_synthetic: true,
+  };
+  const cou: CourierProfile = {
+    id: "cA", display_name: "C", approval_status: "approved", affiliated_recipient_ids: ["r1"], capabilities: { cold_transport: true },
+    available_until: iso(600), location: { ...loc, lat: 47.61 }, is_synthetic: true,
+  };
+  const run = (over: Record<string, unknown> = {}) =>
+    findCandidates({
+      donation: { id: "d", donor_location: { lat: 47.6, lng: -122.32 } },
+      facts: { ...scene1_eligible_facts, servings: 24, donor_pickup_by: iso(300), discard_by: iso(900) } as never,
+      recipients: [rec], couriers: [cou], identities: [{ actor_role: "courier", actor_id: "cA", status: "joined", provider: "fake" }],
+      policy: DEMO_POLICY, now: NOW, excluded_courier_ids: [], busy_courier_ids: [], committed_servings: {}, active_provider: "fake", ...over,
+    } as never);
+
+  it("M-04 subtracts what the recipient has already committed to (24 needed, 40 free)", () => {
+    expect(run()).toHaveLength(1);
+    expect(run({ committed_servings: { r1: 16 } })).toHaveLength(1); // 24 left, 24 needed: exactly enough
+    expect(run({ committed_servings: { r1: 17 } })).toEqual([]); // 23 left
+    expect(run({ committed_servings: { other: 999 } })).toHaveLength(1); // a missing key means 0
+  });
+  it.each([null, [], "x", { r1: -1 }, { r1: NaN }, { r1: "5" }, undefined])("a malformed committed_servings %j returns no candidates at all", (v) => {
+    expect(run({ committed_servings: v })).toEqual([]);
+  });
+  it("M-05 only counts identities of the active provider", () => {
+    const photonOnly = [{ actor_role: "courier", actor_id: "cA", status: "joined", provider: "photon" }];
+    expect(run({ identities: photonOnly })).toEqual([]); // fake mode, courier only joined on photon
+    expect(run({ identities: photonOnly, active_provider: "photon" })).toHaveLength(1);
+    expect(run({ identities: [...photonOnly, { actor_role: "courier", actor_id: "cA", status: "opted_out", provider: "fake" }] })).toEqual([]);
+  });
+  it.each(["real", "sms", "", null, undefined])("an active_provider of %j returns no candidates (a gateway mode is not a provider)", (v) => {
+    expect(run({ active_provider: v })).toEqual([]);
+  });
+  it("an identity with an unknown provider poisons the whole call: [] never a partial list", () => {
+    expect(run({ identities: [{ actor_role: "courier", actor_id: "cA", status: "joined", provider: "fake" }, { actor_role: "courier", actor_id: "zz", status: "joined", provider: "sms" }] })).toEqual([]);
+  });
+  it("non-array busy or excluded lists return [] (M-08 and M-09 cannot be skipped)", () => {
+    for (const k of ["busy_courier_ids", "excluded_courier_ids"]) {
+      expect(run({ [k]: "cA" })).toEqual([]);
+      expect(run({ [k]: [1] })).toEqual([]);
+      expect(run({ [k]: undefined })).toEqual([]);
+    }
   });
 });

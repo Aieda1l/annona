@@ -47,5 +47,6 @@ node_modules/
 .vercel/
 .claude/settings.local.json
 .claude/worktrees/
-# Eval photos of unverified licence stay on the developer's machine (D-040). Only team-made or CC0 images are committed.
+
+# D-040: eval photos of unverified licence stay local
 fixtures/intake/eval-local/

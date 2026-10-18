@@ -20,6 +20,7 @@ import {
   recipients,
   verification_links,
 } from "@/db/schema";
+import { assertDisposableDatabase } from "./helpers/disposable";
 
 // Each test file starts one or more WASM Postgres instances. Under the parallel full run that can exceed the 5 s default.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -88,7 +89,7 @@ const offerRow = (donation_id: string, courier_id: string, over: Partial<typeof 
   wave_no: 1,
   created_at: NOW,
   provider_mode: "fake",
-  candidate: {},
+  candidate: {} as never,
   // An open offer always carries a deadline (offers_open_has_deadline_check).
   ...(over.status === "open" ? { sent_at: NOW, expires_at: new Date(NOW.getTime() + 60_000) } : {}),
   ...over,
@@ -458,22 +459,6 @@ describe("T-CO-23 seed behavior", () => {
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
 /** The database name in a Postgres URL, or undefined if it cannot be read. */
-function databaseName(url: string): string | undefined {
-  try {
-    return decodeURIComponent(new URL(url).pathname.replace(/^\//, "")) || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Setup commits and overwrites demo rows, so only a database whose name says it is disposable is accepted. */
-function assertDisposableDatabase(url: string): void {
-  const name = databaseName(url);
-  if (!name || !/(^|[_-])(test|tests|disposable)([_-]|$)/i.test(name)) {
-    throw new Error("TEST_DATABASE_URL must point at a disposable database whose name contains 'test' or 'disposable' (e.g. annona_test). Refusing to migrate and seed it.");
-  }
-}
-
 describe("assertDisposableDatabase", () => {
   it("accepts names that say they are disposable and refuses everything else", () => {
     expect(() => assertDisposableDatabase("postgres://u@localhost:5432/annona_test")).not.toThrow();

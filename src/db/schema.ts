@@ -23,6 +23,7 @@ import {
   MESSAGING_IDENTITY_STATUSES,
   OFFER_STATUSES,
   PROVIDER_MODES,
+  type MatchCandidate,
 } from "@/contracts";
 
 // ARCHITECTURE §7. text + CHECK constraints instead of PG enums; timestamptz everywhere.
@@ -166,7 +167,7 @@ export const donations = pgTable(
     latest_decision: jsonb("latest_decision"),
     effective_cutoff_at: tstz("effective_cutoff_at"),
     // Set only by a successful claim (§8). No FK: offers.donation_id already points back (circular), and
-    // only the claim transaction writes it.
+    // only the claim transaction sets it; optOutIdentity clears it (S-15, S-17).
     claimed_offer_id: uuid("claimed_offer_id"),
     collected_at: tstz("collected_at"),
     created_at: tstz("created_at").notNull(),
@@ -238,7 +239,7 @@ export const offers = pgTable(
     provider_mode: text("provider_mode").notNull(),
     provider_message_id: text("provider_message_id"),
     delivery_status: text("delivery_status").notNull().default("unknown"),
-    candidate: jsonb("candidate").notNull(),
+    candidate: jsonb("candidate").$type<MatchCandidate>().notNull(),
   },
   (t) => [
     check("offers_status_check", inList(t.status, OFFER_STATUSES)),
@@ -261,6 +262,8 @@ export const offers = pgTable(
     index("offers_status_expires_idx").on(t.status, t.expires_at),
     index("offers_courier_status_idx").on(t.courier_id, t.status),
     index("offers_donation_status_idx").on(t.donation_id, t.status),
+    // recordDeliveryStatus finds the offer by Photon's message id.
+    index("offers_provider_message_idx").on(t.provider_message_id).where(sql`${t.provider_message_id} is not null`),
   ],
 ).enableRLS();
 

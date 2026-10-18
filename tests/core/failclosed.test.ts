@@ -47,11 +47,13 @@ describe("matching fails closed on malformed numbers and times", () => {
     facts: { ...scene1_eligible_facts, donor_pickup_by: iso(300), discard_by: iso(900) },
     recipients: [recipient],
     couriers: [courier],
-    identities: [{ id: "i", actor_role: "courier", actor_id: "cA", status: "joined" }],
+    identities: [{ actor_role: "courier", actor_id: "cA", status: "joined", provider: "fake" }],
     policy: DEMO_POLICY,
     now: NOW,
     excluded_courier_ids: [],
     busy_courier_ids: [],
+    committed_servings: {},
+    active_provider: "fake",
     ...o,
   });
 
@@ -83,7 +85,7 @@ describe("matching fails closed on malformed numbers and times", () => {
     const ids = ["b", "B", "a"];
     const out = findCandidates(base({
       couriers: ids.map((id) => ({ ...courier, id })),
-      identities: ids.map((id) => ({ id: "i" + id, actor_role: "courier" as const, actor_id: id, status: "joined" as const })),
+      identities: ids.map((id) => ({ actor_role: "courier" as const, actor_id: id, status: "joined" as const, provider: "fake" as const })),
     }));
     expect(out.map((c) => c.courier_id)).toEqual(["B", "a", "b"]);
   });
@@ -184,9 +186,13 @@ describe("times must be UTC ISO strings: Date.parse leniency never passes a rule
     const d = gate({ donor_pickup_by: v });
     expect(d.outcome).toBe("rejected");
   });
-  it("a junk effective_cutoff_at never lets a cutoff guard pass", () => {
+  it("a junk effective_cutoff_at never keeps a donation alive (D-038): expiry fires, guards that need time left refuse", () => {
     const ctx = { now: NOW, effective_cutoff_at: "1", collected_at: null };
-    expect(canTransition({ from: "eligible", to: "expired", trigger: "expireDue", ctx }).ok).toBe(false);
+    expect(canTransition({ from: "eligible", to: "expired", trigger: "expireDue", ctx }).ok).toBe(true);
+    expect(canTransition({ from: "claimed", to: "expired", trigger: "expireDue", ctx }).ok).toBe(true);
     expect(canTransition({ from: "offered", to: "eligible", trigger: "expireDue", ctx: { ...ctx, live_offer_count: 0 } }).ok).toBe(false);
+    expect(canTransition({ from: "claimed", to: "eligible", trigger: "optOutIdentity", ctx }).ok).toBe(false);
+    expect(canTransition({ from: "claimed", to: "collected", trigger: "recordHandoff", ctx: { ...ctx, simulated: true, donor_status: "approved" } }).ok).toBe(false);
+    expect(canTransition({ from: "unmatched", to: "eligible", trigger: "retryMatching", ctx: { ...ctx, gate_outcome: "eligible", actor_role: "operator" } }).ok).toBe(false);
   });
 });
