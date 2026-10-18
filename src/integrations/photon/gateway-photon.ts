@@ -1,4 +1,4 @@
-import type { MessagingGateway, OutboundMessage, SendResult } from "@/contracts";
+import type { MessagePurpose, MessagingGateway, OutboundMessage, SendResult } from "@/contracts";
 
 // Real Photon 2.0 Beta send (prompt §6 step 4; R-PH-4, R-PH-7): POST /v1/projects/{id}/messages over plain fetch.
 // 202 means accepted, not delivered. Photon replays a repeated Idempotency-Key, so the text for a key must be identical.
@@ -12,7 +12,8 @@ const RETRY_DELAY_MS = 500;
 export type PhotonRoute = { space_id: string; sender_id: string };
 
 export type PhotonGatewayOptions = {
-  lookupRoute: (identity_id: string) => Promise<PhotonRoute | null>;
+  /** The purpose is passed so a stop_ack can reach an identity that has just opted out (and nothing else can). */
+  lookupRoute: (identity_id: string, purpose: MessagePurpose) => Promise<PhotonRoute | null>;
   fetch?: typeof fetch;
   timeoutMs?: number;
   baseUrl?: string;
@@ -51,7 +52,7 @@ export function createPhotonGateway(
     async send(message: OutboundMessage): Promise<SendResult> {
       let route: PhotonRoute | null;
       try {
-        route = await options.lookupRoute(message.to_identity_id);
+        route = await options.lookupRoute(message.to_identity_id, message.purpose);
       } catch {
         return failure("PROVIDER_UNAVAILABLE", true);
       }

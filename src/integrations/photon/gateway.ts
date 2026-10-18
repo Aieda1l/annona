@@ -1,18 +1,24 @@
-import type { MessagingGateway, MessagingGatewayConfig } from "@/contracts";
+import type { Deps, MessagePurpose, MessagingGateway, MessagingGatewayConfig } from "@/contracts";
 import { createFakeGateway } from "./gateway-fake";
 import { createPhotonGateway, type PhotonGatewayOptions, type PhotonRoute } from "./gateway-photon";
 
 /**
- * Where a joined identity can be replied to: its Photon space and the line's sender. Resolved through core's barrel
- * (lanes import each other only through barrels). A missing or non-joined identity has no route.
+ * Where an identity can be replied to: its Photon space and the line's sender, resolved through core's barrel (lanes
+ * import each other only through barrels). Only a joined identity has a route, with one exception: the stop_ack that
+ * confirms a STOP goes to someone who has JUST opted out (outbound.ts allows exactly that). Without the exception the
+ * confirmation was dropped on the first live STOP. Any other message to an opted-out or never-joined identity has no route.
  */
-async function coreRouteLookup(identity_id: string): Promise<PhotonRoute | null> {
-  const { getIdentity } = await import("@/core");
-  const identity = await getIdentity(identity_id);
-  if (!identity || identity.status !== "joined") return null;
-  const space = identity.provider_space_id;
-  const sender = identity.provider_sender_id;
-  return typeof space === "string" && typeof sender === "string" ? { space_id: space, sender_id: sender } : null;
+export function createCoreRouteLookup(deps?: Deps) {
+  return async function coreRouteLookup(identity_id: string, purpose: MessagePurpose): Promise<PhotonRoute | null> {
+    const { getIdentity } = await import("@/core");
+    const identity = await getIdentity(identity_id, deps);
+    if (!identity) return null;
+    const reachable = identity.status === "joined" || (identity.status === "opted_out" && purpose === "stop_ack");
+    if (!reachable) return null;
+    const space = identity.provider_space_id;
+    const sender = identity.provider_sender_id;
+    return typeof space === "string" && typeof sender === "string" ? { space_id: space, sender_id: sender } : null;
+  };
 }
 
 /**
@@ -38,5 +44,5 @@ export function createMessagingGateway(
     };
   }
 
-  return createPhotonGateway({ project_id, api_key }, { ...options, lookupRoute: options.lookupRoute ?? coreRouteLookup });
+  return createPhotonGateway({ project_id, api_key }, { ...options, lookupRoute: options.lookupRoute ?? createCoreRouteLookup() });
 }
