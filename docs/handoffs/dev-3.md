@@ -175,3 +175,12 @@ BLOCKERS + SAFETY RISKS: (a) a donor photo needs core.issueVerificationLink (2(d
 INTEGRATION STEPS: none for other lanes beyond 2(c)/2(d) landing.
 NEXT SMALLEST ACTION: when 2(c)/2(d) land, run T-MS-13 (offer, YES, claim over real Photon) and T-MS-19 (photo, link) with the real couriers and donor.
 ```
+
+### Demo-laptop worker checklist (checked 2026-10-17 in fake mode against a throwaway database; real Photon polling not exercised)
+
+- `.env.local` needs: `MESSAGING_PROVIDER=photon`, `PHOTON_PROJECT_ID`, `PHOTON_API_KEY`, `PHOTON_INBOUND_MODE=poll`, `ANNONA_INTERNAL_SECRET` (the same value for the app and the worker), `APP_BASE_URL`, `SESSION_SECRET`, `DEMO_PASSCODE`, and the three `DEMO_*_HANDLE` values for the seed.
+- Order: `pnpm db:migrate`, `pnpm db:seed`, `pnpm start`, then `pnpm worker`.
+- The worker refuses to start, with a clear message, when the internal secret or `APP_BASE_URL` is missing, or when photon mode has no project id or key.
+- Tick route: 403 without the secret, 200 with it. If the app goes down the worker keeps running, logs `tick failed: <error> (<cause code>)` each interval (for example `TypeError (ECONNREFUSED)`), and recovers by itself when the app is back.
+- A stale `last_tick_at` on the dashboard is not a dead worker until 2(c) `setLastTick` lands.
+
