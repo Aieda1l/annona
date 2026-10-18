@@ -306,3 +306,15 @@ BLOCKERS + SAFETY RISKS: until the fix is merged and Vercel redeploys, a STOP is
 INTEGRATION STEPS: merge, let Vercel redeploy, then repeat one STOP.
 NEXT SMALLEST ACTION: repeat the STOP on the deployed app after the redeploy and record the Photon message id of the confirmation.
 ```
+
+## 2026-10-18 01:20 PDT — JOIN from someone already opted in now says so (live finding)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / fix/messaging-join-already-opted-in / see the commit that adds this entry
+DELIVERED: A JOIN from an identity that is already joined now gets "you're already opted in" (still the automated-assistant disclosure and how to opt out), not the full welcome again. It was seen live: one courier texted JOIN three times in three minutes and got the welcome three times. The route (space and line) is still refreshed on every JOIN. A JOIN from a new or opted-out identity is welcomed as before.
+EVIDENCE (commands, passed/failed, real vs mock): live finding REAL (Photon message list, 08:10 to 08:14 UTC); the fix is FAKE evidence (core double). Tests first: inbound.test.ts (already-joined reply, one reply per JOIN message, a duplicate message sends one) and templates.test.ts (the text).
+CONTRACT CHANGES OR REQUESTS: none. The purpose stays join_ack.
+BLOCKERS + SAFETY RISKS: none new.
+INTEGRATION STEPS: merge and redeploy.
+NEXT SMALLEST ACTION: send one JOIN from an already-joined phone after the redeploy and record the reply.
+```
