@@ -1,6 +1,15 @@
-import { notImplemented } from "@/server/http";
+import { toResponse } from "@/server/http";
+import { getDashboardSnapshot } from "../service/dashboard";
+import { NO_STORE, requireActor, type HandlerOptions } from "./common";
 
-// Stub: the owning lane replaces this handler (CONTRACTS §10).
-export async function GET(_request: Request): Promise<Response> {
-  return notImplemented("GET /api/dashboard", "Dev 2");
+// GET /api/dashboard (CONTRACTS section 10): operator only. Dev 4 polls it every 2 s.
+
+export function createDashboardHandler(opts: HandlerOptions = {}) {
+  return async function GET(request: Request): Promise<Response> {
+    const actor = await requireActor(request, opts);
+    if (!actor.ok) return toResponse(actor);
+    return toResponse(await getDashboardSnapshot(actor.data, opts.deps), { headers: NO_STORE });
+  };
 }
+
+export const GET = createDashboardHandler();
