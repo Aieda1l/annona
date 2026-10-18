@@ -34,7 +34,8 @@ const UNKNOWN_SELECTS = [
 
 const renderForm = (props: Partial<React.ComponentProps<typeof VerificationForm>> = {}) => {
   const onSubmit = vi.fn();
-  const utils = render(<VerificationForm suggestion={scene1_vision_suggestion} onSubmit={onSubmit} {...props} />);
+  // These tests cover the empty form; what the AI draft fills (D-042) is covered in verification-form-prefill.test.tsx.
+  const utils = render(<VerificationForm suggestion={null} onSubmit={onSubmit} {...props} />);
   return { onSubmit, ...utils };
 };
 
@@ -66,15 +67,12 @@ describe("defaults (T-IN-12)", () => {
     }
   });
 
-  it("shows the AI guesses as unverified hints, never as field values", () => {
-    const { container } = renderForm();
+  it("shows the AI guesses as unverified hints beside the fields (what it also fills is in verification-form-prefill.test.tsx)", () => {
+    renderForm({ suggestion: scene1_vision_suggestion });
     expect(screen.getByTestId("ai-hint-servings")).toHaveTextContent(/AI estimate.*unverified.*18.*30/i);
     expect(screen.getByTestId("ai-hint-dish_name")).toHaveTextContent(/assorted deli sandwiches and wraps/i);
     expect(screen.getByTestId("ai-hint-allergen-wheat")).toHaveTextContent(/AI.*possible/i);
     expect(screen.queryByTestId("ai-hint-allergen-sesame")).toBeNull();
-    for (const el of container.querySelectorAll("input, textarea, select")) {
-      expect((el as HTMLInputElement).value).not.toMatch(/sandwich|wraps|tortilla/i);
-    }
   });
 
   it("renders no forbidden wording, with or without a suggestion", () => {
@@ -90,7 +88,7 @@ describe("defaults (T-IN-12)", () => {
 describe("submitting", () => {
   it("shows an error and re-enables submit when onSubmit rejects", async () => {
     const onSubmit = vi.fn().mockRejectedValue(new Error("boom"));
-    render(<VerificationForm suggestion={scene1_vision_suggestion} onSubmit={onSubmit} />);
+    render(<VerificationForm suggestion={null} onSubmit={onSubmit} />);
     fillRequired();
     fireEvent.click(screen.getByRole("button", { name: /submit for review/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not be submitted/i);
@@ -151,10 +149,14 @@ describe("submitting", () => {
     expect(decision.reasons.some((r) => r.code === "HANDLING_UNKNOWN")).toBe(true);
   });
 
-  it("the AI suggestion does not change what is submitted", () => {
+  it("the AI draft changes what is submitted only through the fields it filled: once the donor sets those back, the payload is identical", () => {
     const strip = (r: unknown) => ({ ...(r as object), attestation: undefined });
-    const a = renderForm();
-    fillRequired();
+    const a = renderForm({ suggestion: scene1_vision_suggestion });
+    fillRequired(); // dish name and servings typed over the AI's
+    fireEvent.change(screen.getByLabelText(/^Ingredients/i), { target: { value: "" } }); // the donor clears the filled list
+    for (const name of ["Milk", "Wheat", "Eggs"]) {
+      fireEvent.click(within(screen.getByRole("group", { name })).getByRole("radio", { name: /i don't know/i })); // and the pre-selected allergens
+    }
     fireEvent.click(screen.getByRole("button", { name: /submit for review/i }));
     const withAi = strip(a.onSubmit.mock.calls[0]![0]);
     cleanup();

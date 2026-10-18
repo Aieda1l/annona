@@ -257,7 +257,7 @@ Do not copy example parameter values from the 2025 paper (PROMPTING_GUIDE note).
 1. Provider error, HTTP 400 safety block, `finishReason` SAFETY-type, timeout (15 s), quota error or a `misconfigured` provider (key missing) → `PROVIDER_UNAVAILABLE`, `ai_status=failed` (T-IN-05).
 2. Non-JSON, truncated JSON, unknown key (including a provenance key from the model), wrong enum, literal-flag violation or limit violation in the strict `VisionModelOutput` parse → `AI_OUTPUT_INVALID`, `ai_status=failed` (T-IN-02, T-IN-04).
 3. On any failure the donor gets the full manual form. All nine allergens start `unknown`. **No silent fallback to fake output** (CONTRACTS §12).
-4. On success the suggestion is stored as an immutable `ai_suggestion` with `FieldState=suggested`. It never fills `VerifiedFacts`, and the gate never reads it (T-IN-08, T-CO-11).
+4. On success the suggestion is stored as an immutable `ai_suggestion` with `FieldState=suggested`. It never fills `VerifiedFacts` itself, and the gate never reads it (T-IN-08, T-CO-11); the donor form may start from it within the D-042 limits, and only the donor's submitted answers become `VerifiedFacts`.
 5. **REQUIRED (T-IN-11):** the adapter runs the U3 claim-word scan at runtime over every free-text field. A hit (e.g. "nut-free", "allergen-free", "safe to eat", "certified", "shelf life", a temperature or discard claim) → `AI_OUTPUT_INVALID`, `ai_status=failed`, and the manual form stays usable. AI strings are rendered on the dashboard, and T-UI-02 forbids that wording.
 
 ## 9. Data policy
