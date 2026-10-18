@@ -29,7 +29,7 @@ const SYNTHETIC_HANDLE_SUFFIX = "@example.invalid";
 export async function resetDemo(input: { keep_identities: true; actor?: Actor }, deps?: Deps): Promise<Result<{ reset_at: string }>> {
   if (input?.keep_identities !== true) return err("VALIDATION_FAILED", "resetDemo always keeps messaging identities.");
   // The caller must name who is asking, and that must be an operator. (ResetDemoFn in src/contracts has no actor yet; the
-  // request docs/requests/core-reset-actor.md asks the captain to add it. Until then a caller that omits it is refused.)
+  // request docs/requests/dispatch-reset-actor.md asks the captain to add it. Until then a caller that omits it is refused.)
   if (input.actor?.role !== "operator") return err("NOT_AUTHORIZED", "Only an operator can reset the demo.");
   const env = getEnv();
   if (!env.demo_mode) return err("NOT_AUTHORIZED", "Demo reset is only available in demo mode.");

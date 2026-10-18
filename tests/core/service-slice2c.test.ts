@@ -400,6 +400,12 @@ describe("operatorAction", () => {
 });
 
 describe("resetDemo", () => {
+  // Identity rows are shared between tests; put both couriers back to the seed even when an assertion failed.
+  afterEach(async () => {
+    for (const [id, handle] of [[IDENTITY.courier_a, "courier-a@example.invalid"], [IDENTITY.courier_b, "courier-b@example.invalid"]] as const) {
+      await w.db.update(messaging_identities).set({ provider: "fake", handle, status: "joined", opted_out_at: null }).where(eq(messaging_identities.id, id));
+    }
+  });
   it("is refused outside demo mode and deletes nothing", async () => {
     vi.stubEnv("ANNONA_DEMO_MODE", "");
     const id = await makeEligibleDonation(w);
@@ -445,8 +451,6 @@ describe("resetDemo", () => {
     expect(rows.find((i) => i.id === IDENTITY.courier_b)).toMatchObject({ status: "opted_out" });
     const event = (await w.db.select().from(audit_events)).find((e) => e.type === "demo.reset")!;
     expect(event.data).toMatchObject({ deleted: { simulated_identities_restored: 1, opt_outs_kept: 1 } });
-    // Put the seeded identity back so later tests start from the seed.
-    await w.db.update(messaging_identities).set({ provider: "fake", handle: "courier-b@example.invalid", status: "joined", opted_out_at: null }).where(eq(messaging_identities.id, IDENTITY.courier_b));
   });
   it("keeps the inbound ledger: an old message replayed after the reset is still a duplicate", async () => {
     vi.stubEnv("ANNONA_DEMO_MODE", "1");
