@@ -2,7 +2,8 @@
 
 import type { AiStatus, Allergen, VisionSuggestion } from "@/contracts";
 import { FieldStateBadge } from "@/components/dashboard/FieldStateBadge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Sparkles } from "lucide-react";
+import { Notice as Callout } from "@/components/ui/notice";
 import { Badge } from "@/components/ui/badge";
 import { VerificationForm } from "./VerificationForm";
 
@@ -36,9 +37,12 @@ export type DraftReviewProps = {
 function AiPanel({ suggestion }: { suggestion: VisionSuggestion }) {
   const label = suggestion.mode === "fake" ? "AI: FAKE" : `AI: ${suggestion.model ?? "real"}`;
   return (
-    <section data-testid="ai-panel" className="flex flex-col gap-3 rounded-lg border p-3">
+    <section data-testid="ai-panel" className="flex flex-col gap-3 rounded-xl border border-dashed border-input bg-card p-4">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">AI draft (unverified)</h3>
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <Sparkles aria-hidden className="size-4 text-primary" />
+          AI draft (unverified)
+        </h3>
         <Badge variant="outline">{label}</Badge>
       </div>
       <p data-testid="ai-disclaimer" className="text-xs text-muted-foreground">
@@ -60,7 +64,7 @@ function AiPanel({ suggestion }: { suggestion: VisionSuggestion }) {
       {suggestion.possible_allergens.length > 0 && (
         <div className="text-sm">
           <p className="font-medium">Possible allergens (a guess, not a finding):</p>
-          <ul className="list-disc pl-5">
+          <ul className="list-disc pl-5 text-muted-foreground">
             {suggestion.possible_allergens.map((a) => (
               <li key={a.allergen}>
                 {ALLERGEN_NAMES[a.allergen]}: possible — {a.basis}
@@ -95,9 +99,9 @@ function AiPanel({ suggestion }: { suggestion: VisionSuggestion }) {
 
 function Notice({ children }: { children: string }) {
   return (
-    <Alert role="status">
-      <AlertDescription>{children}</AlertDescription>
-    </Alert>
+    <Callout role="status" tone="info">
+      {children}
+    </Callout>
   );
 }
 
@@ -106,11 +110,11 @@ export function DraftReview({ donationId, aiStatus, suggestion, imageUrl = null,
   const ai = aiStatus === "succeeded" ? suggestion : null;
 
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <div className="flex flex-col gap-3">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+      <div className="flex flex-col gap-3 lg:sticky lg:top-20 lg:self-start">
         {imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element -- authenticated API image, not a static asset
-          <img src={imageUrl} alt="Photo you submitted" className="max-h-80 w-full rounded-lg object-contain" />
+          <img src={imageUrl} alt="Photo you submitted" className="max-h-80 w-full rounded-xl bg-muted object-contain ring-1 ring-border" />
         )}
         {aiStatus === "pending" && <Notice>The AI draft is still being prepared. You can start filling in the form now.</Notice>}
         {(aiStatus === "failed" || aiStatus === "skipped" || (aiStatus === "succeeded" && !suggestion)) && (

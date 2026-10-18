@@ -16,9 +16,12 @@ export const metadata: Metadata = {
 
 export default function VerifyPage() {
   return (
-    <main className="mx-auto w-full max-w-xl space-y-4 p-4">
-      <h1 className="text-2xl font-bold text-slate-900">Confirm your donation details</h1>
-      <p className="rounded border border-slate-500 bg-slate-50 p-3 text-sm text-slate-900">
+    <main className="mx-auto w-full max-w-5xl flex-1 space-y-5 px-4 py-6 sm:px-6 sm:py-8">
+      <header className="space-y-1.5">
+        <p className="text-xs font-semibold tracking-wider text-primary uppercase">One-time checklist</p>
+        <h1 className="text-2xl font-semibold sm:text-3xl">Confirm your donation details</h1>
+      </header>
+      <p className="rounded-xl border border-offer-border bg-offer-subtle px-4 py-3 text-sm leading-relaxed text-offer">
         <strong>Synthetic demo.</strong> You are the source of these facts: Annona records what you confirm below and
         does not check it. The AI summary is only a guess to help you fill this in.
       </p>
