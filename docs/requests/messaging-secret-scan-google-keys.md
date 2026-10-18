@@ -1,6 +1,6 @@
 # Request: the secret scan does not match the Google API key now being issued
 
-From: Dev 3 (messaging). To: the captain (owns `docs/ARCHITECTURE.md`, section 9). Status: OPEN. Found 2026-10-17 while setting up the real Gemini run.
+From: Dev 3 (messaging). To: the captain (owns `docs/ARCHITECTURE.md`, section 9). Status: ACCEPTED by the captain (2026-10-18): a captain PR will add a shape-independent pattern (a `*_API_KEY` / `*_SECRET` / `*_TOKEN` / `*_PASSWORD` assignment of 16+ key characters) and a test, so the exact prefix is not needed; until it merges, the rule below stands. Found 2026-10-17 while setting up the real Gemini run.
 
 ## What I found
 

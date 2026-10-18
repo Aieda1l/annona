@@ -206,7 +206,7 @@ DELIVERED:
  - REAL run (T-MS-19, donor photo -> draft -> link): main at f1bc8a7 (2(d) merged via #46). The donor texted JOIN (03:54:30), then a photo (03:55:19). It was downloaded, became a draft (ai_status succeeded) and core issued a real one-time link; the draft_ready reply was delivered at 03:55:23 with the link and its expiry. Vision was FAKE, so the guess was "unidentified food" (the fake only recognises the five fixture photos); the real-Gemini run is still to do with Dev 1. The link could not be opened from the phone: the Wi-Fi isolates clients, so the laptop's LAN address is unreachable from the phone.
  - Fix found by the run: Photon marked every send delivered, but offers stayed delivery_status unknown, because the poll relay forwarded only inbound messages. The relay now also looks back 5 minutes every 10 s for our own sends that are delivered or failed and relays each once as message.delivered / message.failed (id, platform and failure code only; never the text or the space). The inbound cursor is untouched.
 EVIDENCE (commands, passed/failed, real vs mock): REAL as listed above, checked against GET /messages on Photon and the operator dashboard. The receipt fix is FAKE evidence so far (stubbed fetch in tests/messaging/relay.test.ts and the normalizer pin in normalize.test.ts); typecheck 0, lint 0 errors (1 existing warning), test passing, build ok.
-CONTRACT CHANGES OR REQUESTS: for the captain: (1) src/server/health.ts still reports last_tick_at null and policy_version "unavailable" although core's getSystemStatus is on main; (2) "yes, please opt me out" is not an opt-out under D-039 (only STOP, STOPALL, UNSUBSCRIBE and whole-message END/QUIT/CANCEL); decide whether "opt out" should count; (3) the checklist link needs a URL the donor's phone can reach on demo day (deployed URL, or a hotspot shared with the laptop).
+CONTRACT CHANGES OR REQUESTS: for the captain: (1) src/server/health.ts reported last_tick_at null and policy_version "unavailable" although core's getSystemStatus was on main (RESOLVED: the captain's #47 now reads it); (2) "yes, please opt me out" is not an opt-out under D-039 (only STOP, STOPALL, UNSUBSCRIBE and whole-message END/QUIT/CANCEL); decide whether "opt out" should count; (3) the checklist link needs a URL the donor's phone can reach on demo day (deployed URL, or a hotspot shared with the laptop).
 BLOCKERS + SAFETY RISKS: first-claim-wins is still UNVERIFIED on real Postgres (T-CO-17, D-033); the real runs used PGlite and one app process.
 INTEGRATION STEPS: none.
 NEXT SMALLEST ACTION: re-run one offer live to see delivery_status reach delivered, then the real-Gemini photo run with Dev 1.
@@ -232,7 +232,9 @@ INTEGRATION STEPS: captain sets GEMINI_API_KEY, PHOTON_PROJECT_ID, PHOTON_API_KE
 NEXT SMALLEST ACTION: a full dry run on the deployed URL (donor photo, checklist from the donor's phone, offer, claim, late claim, expiry, STOP), then the final session summary.
 ```
 
-## Demo-day runbook: app on Vercel, worker on the demo laptop (written 2026-10-17; the Vercel and Supabase parts are UNTESTED until the captain deploys)
+## Demo-day runbook: app on Vercel, worker on the demo laptop (written 2026-10-17; the Vercel and Supabase parts are UNTESTED by Dev 3)
+
+Status update (after the captain and Dev 2 reviewed #54): production is deployed at the captain's Vercel URL (Supabase, **fake providers** so far). To use real Photon and Gemini the captain sets the Vercel variables in the table below (`MESSAGING_PROVIDER=photon`, the Photon and Gemini keys, `VISION_PROVIDER=gemini`) and a matching `ANNONA_INTERNAL_SECRET` for the worker, kept out of chat. `/api/health` now reports `last_tick_at` and the policy version from core (#47), so a stale `last_tick_at` really does mean no tick has reached the app.
 
 Why this shape: the donor's phone must be able to open the checklist link, so `APP_BASE_URL` has to be the deployed `https://…vercel.app` address (a `localhost` or LAN address cannot be opened from a phone, as both T-MS-19 runs showed). Photon stays in Photon's cloud in every case. The worker (tick and Photon polling) cannot run on Vercel, so it runs on the laptop and calls the deployed app over HTTPS.
 
@@ -258,7 +260,7 @@ So the laptop worker needs only five things: `MESSAGING_PROVIDER=photon`, `PHOTO
 
 ### Order
 
-1. **Captain:** deploy `main` to Vercel, set the Vercel variables above in the project settings, and give Dev 3 the deployed URL. Do not send keys through chat; each person pastes their own from the Keychain.
+1. **Captain:** the app is deployed; switch it from fake to real providers by setting the Vercel variables above in the project settings, and confirm `/api/health` shows `messaging: real` and `vision: real`. Do not send keys through chat; each person pastes their own from the Keychain.
 2. **Database (once, from the laptop):** with `STORE=postgres` and `DATABASE_URL` set in that shell only, run `pnpm db:migrate`, then `pnpm db:seed` with the three handles set. Check `GET <url>/api/health` shows `store: postgres`, `messaging: real`, `vision: real`.
 3. **Laptop `.env.local`:** set the five worker variables. `APP_BASE_URL` and `ANNONA_INTERNAL_SECRET` must equal the Vercel values exactly.
 4. **Cursor:** before the first start, write the current time (UTC, ISO) into `.data/photon-cursor`. Without it the worker replays the last ten minutes of texts, and anyone who texted just before would get an extra reply.
@@ -268,7 +270,7 @@ So the laptop worker needs only five things: `MESSAGING_PROVIDER=photon`, `PHOTO
 ### Checks while it runs
 
 - A line `tick failed: TypeError (ENOTFOUND)` or `(ECONNREFUSED)` means the worker cannot reach the app (wrong `APP_BASE_URL`, no network). `HTTP 403` means the internal secrets differ. `HTTP 5xx` means look at the Vercel logs (they keep one hour on Hobby; `audit_events` is the lasting record).
-- `last_tick_at` on the health page stays null until `src/server/health.ts` reads core's `getSystemStatus` (captain item); it does not mean the worker is dead.
+- `last_tick_at` on `/api/health` comes from core's `getSystemStatus` since #47. It updates on every successful tick, so a value that stops moving means the worker is not reaching the app: check the worker log lines above. (Before #47 it was always null.)
 - Do not have anyone text the Annona lines while the worker is stopped and restarted without step 4.
 
 ### Stop conditions
