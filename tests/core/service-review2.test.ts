@@ -25,11 +25,12 @@ import {
   submitVerification,
 } from "@/core";
 import { writeAudit } from "@/core/service/audit";
-import { audit_events, inbound_messages, messaging_identities, offers } from "@/db/schema";
+import { audit_events, donation_images, inbound_messages, messaging_identities, offers } from "@/db/schema";
 import {
   COURIER_A,
   DONOR,
   IDENTITY,
+  HEIC_BYTES,
   JPEG_BYTES,
   PNG_BYTES,
   T0,
@@ -38,11 +39,13 @@ import {
   courierActor,
   donorActor,
   factsAt,
+  ftyp,
   insertDonation,
   insertOffer,
   makeEligibleDonation,
   makeWorld,
   operatorActor,
+  padded,
   resetWorld,
   type World,
 } from "./helpers/world";
@@ -242,5 +245,53 @@ describe("createDraft does not say whose photo it is", () => {
     const r = await createDraft({ actor: donorActor("00000000-0000-4000-8000-000000000012"), image_id: imgId, source: "messaging", source_ref: ref }, w.deps());
     expect(r).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     expect(JSON.stringify(r)).not.toMatch(/another donation|belongs/i);
+  });
+});
+
+describe("HEIC / HEIF photos (iPhone default; iMessage sends them)", () => {
+  const store = (mime: string, bytes: Uint8Array) => storeDonationImage({ mime, bytes }, w.deps());
+  const text = (s: string) => new TextEncoder().encode(s);
+  it.each(["heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1"])("accepts the HEIF brand %s under image/heic and image/heif", async (brand) => {
+    expect((await store("image/heic", ftyp(brand))).ok, brand).toBe(true);
+    expect((await store("image/heif", ftyp(brand))).ok, brand).toBe(true);
+  });
+  it("keeps the original bytes and the declared mime (no conversion)", async () => {
+    const bytes = padded(HEIC_BYTES, 4096);
+    const r = await store("image/heic", bytes);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const [row] = await w.db.select().from(donation_images).where(eq(donation_images.id, r.data.image_id));
+    expect(row!.mime).toBe("image/heic");
+    expect(Array.from(row!.bytes)).toEqual(Array.from(bytes));
+  });
+  it("refuses other ISO-BMFF files that are not photos or not supported: video, AVIF, QuickTime, 3GP, unknown brands", async () => {
+    for (const brand of ["isom", "mp41", "mp42", "avif", "avis", "qt  ", "3gp4", "M4V ", "XXXX", "    "]) {
+      expect(await store("image/heic", ftyp(brand)), brand).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
+    }
+  });
+  it("refuses a HEIC that is truncated before its brand, or has no ftyp box", async () => {
+    expect(await store("image/heic", HEIC_BYTES.slice(0, 11))).toMatchObject({ ok: false });
+    expect(await store("image/heic", HEIC_BYTES.slice(0, 8))).toMatchObject({ ok: false });
+    const wrongBox = HEIC_BYTES.slice();
+    wrongBox.set(text("moov"), 4);
+    expect(await store("image/heic", wrongBox)).toMatchObject({ ok: false });
+    expect(await store("image/heic", text("<html>not a photo</html>"))).toMatchObject({ ok: false });
+  });
+  it("the types still do not cross: HEIC bytes are not a PNG, JPEG or WebP, and a PNG is not a HEIC", async () => {
+    for (const mime of ["image/png", "image/jpeg", "image/webp"]) expect(await store(mime, HEIC_BYTES), mime).toMatchObject({ ok: false });
+    for (const mime of ["image/heic", "image/heif"]) {
+      expect(await store(mime, PNG_BYTES), mime).toMatchObject({ ok: false });
+      expect(await store(mime, JPEG_BYTES), mime).toMatchObject({ ok: false });
+      expect(await store(mime, WEBP_BYTES), mime).toMatchObject({ ok: false });
+    }
+  });
+  it("is still limited to 5 MB, and the size is checked before the bytes", async () => {
+    expect((await store("image/heic", padded(HEIC_BYTES, 5 * 1024 * 1024))).ok).toBe(true);
+    expect(await store("image/heic", padded(HEIC_BYTES, 5 * 1024 * 1024 + 1))).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
+  });
+  it("a draft can be created from a stored HEIC photo", async () => {
+    const img = await store("image/heic", HEIC_BYTES);
+    const r = await createDraft({ actor: donorActor(), image_id: img.ok ? img.data.image_id : "", source: "messaging", source_ref: `fake:${randomUUID()}` }, w.deps());
+    expect(r).toMatchObject({ ok: true, data: { status: "draft" } });
   });
 });
