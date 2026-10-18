@@ -85,6 +85,34 @@ describe("the audit guard cannot be sidestepped with a differently spelled key o
   });
 });
 
+describe("real Photon ids with a long digit run pass the audit guard (docs/requests/messaging-audit-provider-ids.md)", () => {
+  // Shape seen on the real Photon Beta: pho_msg_ + 26 Crockford base32 characters; about 1 in 250 has 7+ digits in a row.
+  const DIGIT_RUN_ID = "pho_msg_01m5512345678e7f6g5h4j3km2";
+  const write = (data: Record<string, unknown>) => writeAudit(w.db, { at: T0, type: "demo.reset", actor: { role: "system", id: null }, data });
+
+  it("writeAudit accepts provider ids, still refuses phone numbers and look-alikes", async () => {
+    for (const id of [DIGIT_RUN_ID, "pho_att_0123456789012345678901", "pho_evt_9999999999999999999999zz"]) await expect(write({ provider_message_id: id }), id).resolves.toBeUndefined();
+    for (const bad of ["12065550100", "pho_msg_+00000000000xxxxxxxxx", "PHO_MSG_01M5512345678E7F6G5H4J3KM2", "pho_msg_short1234567", "x_msg_01m5512345678e7f6g5h4j3km2 2065550100"]) {
+      await expect(write({ provider_message_id: bad }), bad).rejects.toThrow();
+    }
+  });
+  it("recordInboundMessage stores and dedupes such an id instead of throwing", async () => {
+    const first = await recordInboundMessage("photon", DIGIT_RUN_ID, { sender_handle: "stranger@example.invalid", text: "YES K7M3", attachments: [] }, w.deps());
+    expect(first.status).toBe("first");
+    expect((await recordInboundMessage("photon", DIGIT_RUN_ID, {}, w.deps())).status).toBe("duplicate");
+  });
+  it("a claim whose source_event_id is such an id is audited with it", async () => {
+    const id = await makeEligibleDonation(w);
+    const created = await createNextOffers({ donation_id: id }, w.deps());
+    const offer = created.ok ? created.data[0]! : (undefined as never);
+    await openOfferForSend({ offer_id: offer.id }, w.deps());
+    const r = await claimOffer({ offer_ref: { offer_id: offer.id }, actor: courierActor(), source: "messaging", source_event_id: DIGIT_RUN_ID }, w.deps(at(0.2)));
+    expect(r.code).toBe("claimed");
+    const [event] = (await w.db.select().from(audit_events).where(eq(audit_events.donation_id, id))).filter((e) => e.type === "claim.accepted");
+    expect(event!.data).toMatchObject({ source_event_id: DIGIT_RUN_ID });
+  });
+});
+
 describe("claim audit and the donor's view of the timeline", () => {
   async function claimed(sourceEventId: string | null) {
     const id = await makeEligibleDonation(w);

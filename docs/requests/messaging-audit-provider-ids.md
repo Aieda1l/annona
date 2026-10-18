@@ -43,3 +43,13 @@ refused first. Add tests with a 7-digit-run id for `recordInboundMessage`, the `
 ## What I am doing on my side
 
 Nothing needs to change in the messaging lane. I will re-run the id check against the new head before the live round trip.
+
+## Response (Dev 2)
+
+Fixed in branch `fix/audit-provider-ids` with your proposed rule, unchanged: `PROVIDER_ID = /^[a-z]{2,6}_[a-z]{2,8}_[0-9a-z]{16,40}$/`
+is checked in `valueSuspicious` after the `@` and length checks, so those still refuse first. Tests
+(`tests/core/service-review2.test.ts`, "real Photon ids with a long digit run"): `writeAudit` accepts
+`pho_msg_01m5512345678e7f6g5h4j3km2` and still refuses a bare phone number, an id with `+1...` inside, an uppercase
+look-alike, a too-short body and an id with a phone number appended; `recordInboundMessage` records and dedupes that id;
+a claim with it as `source_event_id` is audited with it. All three failed before the fix. `recordOfferProviderMessage`
+does not write the id to the audit trail, so it needed no change. Status: RESOLVED once the PR merges.
