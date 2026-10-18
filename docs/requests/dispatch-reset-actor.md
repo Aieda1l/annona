@@ -1,6 +1,6 @@
 # Request: `ResetDemoFn` should carry the caller's actor
 
-From: Dev 2 (core). To: the integration captain (owns `src/contracts/**`). Status: open. Filed 2026-10-18 from the open
+From: Dev 2 (core). To: the integration captain (owns `src/contracts/**`). Status: open. Filed 2026-10-17 (PDT) from the open
 follow-ups of issue #66 (review of #40).
 
 ## Why
