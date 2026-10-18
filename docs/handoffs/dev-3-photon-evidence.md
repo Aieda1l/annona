@@ -19,8 +19,8 @@ Written 2026-10-18 by Dev 3 (messaging). Everything below was read back from **P
 - **First claim wins:** courier phone 2 replied `YES <code>` and got the pickup details; courier phone 1's late `YES` on the first offer got "Another courier already claimed this pickup. No assignment was made." with no address.
 - **Repeated claim:** the claiming courier's second `YES` got "You already claimed this pickup" with the same details and changed nothing.
 - **Late YES after the window:** a courier who replied after the 60 s window got "This donation is no longer available. No assignment was made." with no address.
-- **STOP:** the first two STOPs (07:43) were received and applied, but their confirmation was dropped by a bug in our real-gateway route lookup, found by this run and fixed in #73; the rows are in the table with no reply. After the fix, later STOPs were answered with the opt-out confirmation (`stop_ack`) 2 s later. A phone that has opted out is ignored until it texts JOIN again, so its later HELP and YES got no reply; that is by design (the 07:45 rows).
-- **Nothing was sent twice** and no address went to a phone that had not claimed.
+- **STOP:** the first two STOPs (07:43) were received and applied, but their confirmation was dropped by a bug in our real-gateway route lookup, found by this run and fixed in #73; the rows are in the table with no reply. After the fix, later STOPs from a joined phone were answered with the opt-out confirmation (`stop_ack`) 2 s later. The STOP at 08:03:58 has no reply for a different, expected reason: that phone had already opted out at 07:43 and had not texted JOIN again, so Annona ignores it by design (not a repeat of the #73 bug). A phone that has opted out is ignored until it texts JOIN again, so its later HELP and YES got no reply; that is by design (the 07:45 rows).
+- **Nothing was sent twice** and no address went to a phone that had not claimed. Checked against the full text in Photon's record (text not reproduced here): the synthetic pickup address appears in exactly two of the 24 sent messages, both to the courier who claimed (the claim reply at 07:42:08 and the repeat-claim reply at 07:43:04). The losing courier's reply (07:42:17) and the two "no longer available" replies (08:22:22, 08:22:31) contain no address.
 
 ## The record (Photon message ids)
 
@@ -41,7 +41,7 @@ Inbound texts other than a command (JOIN, STOP, HELP, YES <code>) or a photo are
 | 07:42:06 | courier phone 2 -> Annona | YES CPCW | `pho_msg_1083zpqyhfhm9swy53p0hrwjwn` | received |  |
 | 07:42:08 | Annona -> courier phone 2 | claim_result: claimed | `pho_msg_65akwwjb8bhz8am1qw6gfsy8zr` | delivered | 07:42:09 |
 | 07:42:15 | courier phone 1 -> Annona | YES 93AK | `pho_msg_6th981mbz3hjarjd8rk2qqqdnv` | received |  |
-| 07:42:17 | Annona -> courier phone 1 | claim_result: already claimed (same details) | `pho_msg_7qrbh3twxmhztafnff39wmz4w3` | delivered | 07:42:17 |
+| 07:42:17 | Annona -> courier phone 1 | claim_result: late claim refused, no address | `pho_msg_7qrbh3twxmhztafnff39wmz4w3` | delivered | 07:42:17 |
 | 07:43:02 | courier phone 2 -> Annona | YES CPCW | `pho_msg_3c5jsme7mahe1rwkfn4k7vwe02` | received |  |
 | 07:43:04 | Annona -> courier phone 2 | claim_result: already claimed (same details) | `pho_msg_6p9fq4yeq2g96tgd6bfpnsh24e` | delivered | 07:43:05 |
 | 07:43:15 | courier phone 1 -> Annona | STOP | `pho_msg_0b6zfpj6nggkn90zvrzhth5vj8` | received |  |
