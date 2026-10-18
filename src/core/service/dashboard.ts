@@ -1,7 +1,7 @@
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { DONATION_STATUSES, err, ok, type Actor, type DashboardSnapshot, type Deps, type DonationStatus, type IdentitySummary, type Result } from "@/contracts";
 import { couriers, donations, donors, messaging_identities } from "@/db/schema";
-import { buildCard } from "./cards";
+import { buildCards } from "./cards";
 import { isoOrNull, maskHandle } from "./map";
 import { runtime } from "./runtime";
 import { systemModes } from "./status";
@@ -25,8 +25,7 @@ export async function getDashboardSnapshot(actor: Actor, deps?: Deps): Promise<R
     for (const g of grouped) if (g.status in counts) counts[g.status as DonationStatus] = Number(g.n);
 
     const rows = await tx.select().from(donations).orderBy(desc(donations.updated_at), desc(donations.id)).limit(DASHBOARD_CARD_LIMIT);
-    const cards = [];
-    for (const row of rows) cards.push(await buildCard(tx, row, "operator"));
+    const cards = await buildCards(tx, rows, "operator");
 
     const identityRows = await tx
       .select({

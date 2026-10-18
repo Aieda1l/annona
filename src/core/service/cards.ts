@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import {
   err,
   ok,
@@ -67,71 +67,113 @@ const donorOfferSummary = (s: OfferSummary): OfferSummary => ({
 const isActive = (o: OfferJoined) =>
   o.offer.status === "pending_send" || o.offer.status === "open" || (o.offer.status === "accepted" && o.offer.close_reason === null);
 
-export async function buildCard(q: Q, row: DonationRow, view: CardView): Promise<DonationCard> {
-  const [donor] = await q.select().from(donors).where(eq(donors.id, row.donor_id));
-  const joined: OfferJoined[] = (
-    await q
-      .select({ offer: offers, courier_name: couriers.display_name, recipient_name: recipients.display_name })
-      .from(offers)
-      .innerJoin(couriers, eq(offers.courier_id, couriers.id))
-      .innerJoin(recipients, eq(offers.recipient_id, recipients.id))
-      .where(eq(offers.donation_id, row.id))
-      .orderBy(asc(offers.created_at), asc(offers.id))
-  ).map((r) => ({ offer: r.offer, courier_name: r.courier_name, recipient_name: r.recipient_name }));
+/** The most recent audit events shown per card (the card schema allows at most 30). */
+const TIMELINE_LIMIT = 30;
 
+/**
+ * Cards for many donations with a fixed number of queries (donors, offers, timeline, delivery time), not four per card:
+ * the operator dashboard polls this with up to 100 cards every few seconds. Order follows `rows`.
+ */
+export async function buildCards(q: Q, rows: DonationRow[], view: CardView): Promise<DonationCard[]> {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+
+  const donorById = new Map(
+    (await q.select().from(donors).where(inArray(donors.id, [...new Set(rows.map((r) => r.donor_id))]))).map((d) => [d.id, d]),
+  );
+
+  const offersByDonation = new Map<string, OfferJoined[]>();
+  const joinedRows = await q
+    .select({ offer: offers, courier_name: couriers.display_name, recipient_name: recipients.display_name })
+    .from(offers)
+    .innerJoin(couriers, eq(offers.courier_id, couriers.id))
+    .innerJoin(recipients, eq(offers.recipient_id, recipients.id))
+    .where(inArray(offers.donation_id, ids))
+    .orderBy(asc(offers.created_at), asc(offers.id));
+  for (const r of joinedRows) {
+    const list = offersByDonation.get(r.offer.donation_id) ?? [];
+    list.push({ offer: r.offer, courier_name: r.courier_name, recipient_name: r.recipient_name });
+    offersByDonation.set(r.offer.donation_id, list);
+  }
+
+  // The newest TIMELINE_LIMIT events of each donation: rank within the donation, keep rank <= the limit.
+  const ranked = q
+    .select({
+      id: audit_events.id,
+      n: sql<number>`row_number() over (partition by ${audit_events.donation_id} order by ${audit_events.at} desc, ${audit_events.id} desc)`.as("n"),
+    })
+    .from(audit_events)
+    .where(inArray(audit_events.donation_id, ids))
+    .as("ranked");
   const timelineRows = await q
-    .select()
+    .select({ event: audit_events })
     .from(audit_events)
-    .where(eq(audit_events.donation_id, row.id))
-    .orderBy(desc(audit_events.at), desc(audit_events.id))
-    .limit(30);
-  let timeline = timelineRows.map(auditFromRow).reverse();
-  if (view === "donor") {
-    // The donor learns that things happened, not who did them: courier and offer ids and the claim's source are hidden.
-    timeline = timeline
-      .filter((e) => DONOR_TIMELINE.some((re) => re.test(e.type)))
-      .map((e) => ({ ...e, offer_id: null, actor: e.actor.role === "donor" ? e.actor : { role: e.actor.role, id: null }, data: e.type === "claim.accepted" ? {} : e.data }));
+    .innerJoin(ranked, eq(audit_events.id, ranked.id))
+    .where(lte(ranked.n, TIMELINE_LIMIT))
+    .orderBy(desc(audit_events.at), desc(audit_events.id));
+  const timelineByDonation = new Map<string, ReturnType<typeof auditFromRow>[]>();
+  for (const { event } of timelineRows) {
+    if (event.donation_id === null) continue;
+    const list = timelineByDonation.get(event.donation_id) ?? [];
+    list.push(auditFromRow(event));
+    timelineByDonation.set(event.donation_id, list);
   }
 
-  const [deliveredEvent] = await q
-    .select({ at: audit_events.at })
+  const deliveredRows = await q
+    .select({ donation_id: audit_events.donation_id, at: sql`max(${audit_events.at})`.mapWith(audit_events.at) })
     .from(audit_events)
-    .where(and(eq(audit_events.donation_id, row.id), eq(audit_events.type, "handoff.recorded"), sql`${audit_events.data}->>'step' = 'delivered'`))
-    .orderBy(desc(audit_events.at))
-    .limit(1);
+    .where(and(inArray(audit_events.donation_id, ids), eq(audit_events.type, "handoff.recorded"), sql`${audit_events.data}->>'step' = 'delivered'`))
+    .groupBy(audit_events.donation_id);
+  const deliveredAt = new Map(deliveredRows.map((d) => [d.donation_id, d.at]));
 
-  const active = joined.filter(isActive).map(summary);
-  const history = joined.filter((o) => !isActive(o)).map(summary);
-  const claimedOffer = joined.find((o) => o.offer.status === "accepted" && o.offer.close_reason === null);
-  const hasAssignment = claimedOffer && ["claimed", "collected", "delivered"].includes(row.status);
+  return rows.map((row) => {
+    const donor = donorById.get(row.donor_id);
+    const joined = offersByDonation.get(row.id) ?? [];
+    let timeline = (timelineByDonation.get(row.id) ?? []).reverse();
+    if (view === "donor") {
+      // The donor learns that things happened, not who did them: courier and offer ids and the claim's source are hidden.
+      timeline = timeline
+        .filter((e) => DONOR_TIMELINE.some((re) => re.test(e.type)))
+        .map((e) => ({ ...e, offer_id: null, actor: e.actor.role === "donor" ? e.actor : { role: e.actor.role, id: null }, data: e.type === "claim.accepted" ? {} : e.data }));
+    }
 
-  const card: DonationCard = {
-    id: row.id,
-    status: row.status as DonationCard["status"],
-    version: row.version,
-    donor_display_name: donor?.display_name ?? "",
-    donor_area_label: donor?.location.area_label ?? "",
-    image_url: row.image_id ? `/api/images/${row.image_id}` : null,
-    ai_status: row.ai_status as DonationCard["ai_status"],
-    ai_suggestion: (row.ai_suggestion as VisionSuggestion | null) ?? null,
-    verified_facts: (row.verified_facts as VerifiedFacts | null) ?? null,
-    edited_from_ai: row.edited_from_ai,
-    decision: (row.latest_decision as EligibilityDecision | null) ?? null,
-    effective_cutoff_at: isoOrNull(row.effective_cutoff_at),
-    active_offers: active,
-    offer_history: history,
-    assignment: hasAssignment ? { courier_display_name: claimedOffer.courier_name, recipient_display_name: claimedOffer.recipient_name } : null,
-    handoff: { collected_at: isoOrNull(row.collected_at), delivered_at: isoOrNull(deliveredEvent?.at ?? null), simulated: true },
-    timeline,
-    is_synthetic: true,
-  };
+    const active = joined.filter(isActive).map(summary);
+    const history = joined.filter((o) => !isActive(o)).map(summary);
+    const claimedOffer = joined.find((o) => o.offer.status === "accepted" && o.offer.close_reason === null);
+    const hasAssignment = claimedOffer && ["claimed", "collected", "delivered"].includes(row.status);
 
-  if (view === "donor") {
-    // Before a claim the donor sees neither who was offered the food nor the provider message ids.
-    card.active_offers = card.active_offers.map(donorOfferSummary);
-    card.offer_history = card.offer_history.map(donorOfferSummary);
-  }
-  return card;
+    const card: DonationCard = {
+      id: row.id,
+      status: row.status as DonationCard["status"],
+      version: row.version,
+      donor_display_name: donor?.display_name ?? "",
+      donor_area_label: donor?.location.area_label ?? "",
+      image_url: row.image_id ? `/api/images/${row.image_id}` : null,
+      ai_status: row.ai_status as DonationCard["ai_status"],
+      ai_suggestion: (row.ai_suggestion as VisionSuggestion | null) ?? null,
+      verified_facts: (row.verified_facts as VerifiedFacts | null) ?? null,
+      edited_from_ai: row.edited_from_ai,
+      decision: (row.latest_decision as EligibilityDecision | null) ?? null,
+      effective_cutoff_at: isoOrNull(row.effective_cutoff_at),
+      active_offers: active,
+      offer_history: history,
+      assignment: hasAssignment ? { courier_display_name: claimedOffer.courier_name, recipient_display_name: claimedOffer.recipient_name } : null,
+      handoff: { collected_at: isoOrNull(row.collected_at), delivered_at: isoOrNull(deliveredAt.get(row.id) ?? null), simulated: true },
+      timeline,
+      is_synthetic: true,
+    };
+
+    if (view === "donor") {
+      // Before a claim the donor sees neither who was offered the food nor the provider message ids.
+      card.active_offers = card.active_offers.map(donorOfferSummary);
+      card.offer_history = card.offer_history.map(donorOfferSummary);
+    }
+    return card;
+  });
+}
+
+export async function buildCard(q: Q, row: DonationRow, view: CardView): Promise<DonationCard> {
+  return (await buildCards(q, [row], view))[0]!;
 }
 
 /** Which projection an actor gets for a donation, or null when the actor may not see it (section 11). */
@@ -147,7 +189,8 @@ export async function getDonationCard(actor: Actor, id: string, deps?: Deps): Pr
   if (!isUuid(id)) return err("NOT_FOUND", "Donation not found.");
   const { db } = await runtime(deps);
   const [row] = await db.select().from(donations).where(eq(donations.id, id));
-  if (!row) return err("NOT_FOUND", "Donation not found.");
+  // A donor gets the same answer for a missing donation and for someone else's (no id probing).
+  if (!row) return actor.role === "operator" ? err("NOT_FOUND", "Donation not found.") : err("NOT_AUTHORIZED", "You can't view this donation.");
   const view = viewFor(actor, row);
   if (!view) return err("NOT_AUTHORIZED", "You can't view this donation.");
   return ok(await buildCard(db, row, view));

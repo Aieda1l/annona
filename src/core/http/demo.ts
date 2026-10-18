@@ -16,7 +16,7 @@ export function createDemoResetHandler(opts: HandlerOptions = {}) {
     const body = await readJsonBody(request, 64);
     if (!body.ok) return toResponse(body);
     if (body.data !== undefined && !isEmptyObject(body.data)) return toResponse(err("VALIDATION_FAILED", "Demo reset takes no body."));
-    return toResponse(await resetDemo({ keep_identities: true }, opts.deps), { headers: NO_STORE });
+    return toResponse(await resetDemo({ keep_identities: true, actor: actor.data }, opts.deps), { headers: NO_STORE });
   };
 }
 
