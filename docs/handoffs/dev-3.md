@@ -196,3 +196,19 @@ BLOCKERS + SAFETY RISKS: T-MS-19 still needs #40 and #41 on main. A repeated iss
 INTEGRATION STEPS: none.
 NEXT SMALLEST ACTION: when #40 and #41 are on main, re-run the id check and run T-MS-13 and T-MS-19 with the real couriers and donor.
 ```
+
+## 2026-10-17 21:10 PDT — T-MS-13 and T-MS-19 over REAL Photon; delivery receipts in poll mode
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / fix/messaging-poll-delivery / see the commit that adds this entry
+DELIVERED:
+ - REAL run (T-MS-13, offer -> YES -> claim): main at 875e125, real Photon Beta in poll mode, a throwaway PGlite database seeded with the three opted-in teammate phones, vision fake. Both couriers texted JOIN and got one reply each (03:47:09 / 03:47:24 UTC). One synthetic eligible donation was created through the donor web flow; the next tick sent offer EY4T to courier A with no address (03:48:52, delivered). Courier A replied YES EY4T at 03:49:45, 7 s before the 60 s demo deadline; the claim reply with the synthetic pickup and recipient details was delivered at 03:49:47 and the donation became claimed (one claim.accepted). Courier B's late YES EY4T got the generic "no assignment" reply with no address (03:51:18); courier A's repeated YES EY4T got "You already claimed this pickup" with the same details and changed nothing (03:51:39). Every inbound text got exactly one reply; nothing was sent twice; a courier's photo was treated as an unknown command.
+ - REAL run (T-MS-19, donor photo -> draft -> link): main at f1bc8a7 (2(d) merged via #46). The donor texted JOIN (03:54:30), then a photo (03:55:19). It was downloaded, became a draft (ai_status succeeded) and core issued a real one-time link; the draft_ready reply was delivered at 03:55:23 with the link and its expiry. Vision was FAKE, so the guess was "unidentified food" (the fake only recognises the five fixture photos); the real-Gemini run is still to do with Dev 1. The link could not be opened from the phone: the Wi-Fi isolates clients, so the laptop's LAN address is unreachable from the phone.
+ - Fix found by the run: Photon marked every send delivered, but offers stayed delivery_status unknown, because the poll relay forwarded only inbound messages. The relay now also looks back 5 minutes every 10 s for our own sends that are delivered or failed and relays each once as message.delivered / message.failed (id, platform and failure code only; never the text or the space). The inbound cursor is untouched.
+EVIDENCE (commands, passed/failed, real vs mock): REAL as listed above, checked against GET /messages on Photon and the operator dashboard. The receipt fix is FAKE evidence so far (stubbed fetch in tests/messaging/relay.test.ts and the normalizer pin in normalize.test.ts); typecheck 0, lint 0 errors (1 existing warning), test passing, build ok.
+CONTRACT CHANGES OR REQUESTS: for the captain: (1) src/server/health.ts still reports last_tick_at null and policy_version "unavailable" although core's getSystemStatus is on main; (2) "yes, please opt me out" is not an opt-out under D-039 (only STOP, STOPALL, UNSUBSCRIBE and whole-message END/QUIT/CANCEL); decide whether "opt out" should count; (3) the checklist link needs a URL the donor's phone can reach on demo day (deployed URL, or a hotspot shared with the laptop).
+BLOCKERS + SAFETY RISKS: first-claim-wins is still UNVERIFIED on real Postgres (T-CO-17, D-033); the real runs used PGlite and one app process.
+INTEGRATION STEPS: none.
+NEXT SMALLEST ACTION: re-run one offer live to see delivery_status reach delivered, then the real-Gemini photo run with Dev 1.
+```
+

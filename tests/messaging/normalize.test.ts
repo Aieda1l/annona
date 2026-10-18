@@ -187,3 +187,27 @@ describe("T-MS-14 ignored and rejected input", () => {
     expect(r).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED", retryable: false } });
   });
 });
+
+describe("the poll relay's receipt envelope (T-MS-10 in poll mode)", () => {
+  it("normalizes to a delivery status event keyed by the relay's event id", () => {
+    const envelope = {
+      id: "poll_pho_msg_a_delivered",
+      type: "message.delivered",
+      apiVersion: "2026-07-01",
+      source: "imessage.photon",
+      timestamp: "2026-10-17T21:58:03.000Z",
+      data: { projectId: "pho_prj_test", object: { id: "pho_msg_a", platform: "imessage" } },
+    };
+    expect(normalizePhotonEvent(envelope, { clock: { now: () => new Date("2026-10-17T22:00:00.000Z") } })).toEqual({
+      ok: true,
+      data: {
+        provider: "photon",
+        provider_event_id: "poll_pho_msg_a_delivered",
+        provider_message_id: "pho_msg_a",
+        status: "delivered",
+        failure_code: null,
+        at: "2026-10-17T22:00:00.000Z",
+      },
+    });
+  });
+});
