@@ -54,7 +54,7 @@ const donationRow = (over: Partial<typeof donations.$inferInsert> = {}): typeof 
 });
 const offerRow = (donation_id: string, over: Partial<typeof offers.$inferInsert> = {}): typeof offers.$inferInsert => ({
   id: randomUUID(), donation_id, recipient_id: EASTLAKE, courier_id: COURIER_A, short_code: "K7M3", status: "pending_send", wave_no: 1,
-  created_at: NOW, provider_mode: "fake", candidate: {}, ...over,
+  created_at: NOW, provider_mode: "fake", candidate: {} as never, ...over,
 });
 
 describe("row-level security (Supabase exposes the public schema through a public anon key)", () => {
@@ -132,7 +132,7 @@ describe("verification link tokens are stored only as a hash", () => {
 describe("indexes for the queries the claim, sibling-supersede and dashboard paths run", () => {
   it("exist", async () => {
     const names = (rowsOf(await storeInternals(store).db.execute(sql`select indexname from pg_indexes where schemaname = 'public'`)) as { indexname: string }[]).map((r) => r.indexname);
-    expect(names).toEqual(expect.arrayContaining(["offers_donation_status_idx", "donations_donor_idx"]));
+    expect(names).toEqual(expect.arrayContaining(["offers_donation_status_idx", "donations_donor_idx", "offers_provider_message_idx"]));
   });
 });
 

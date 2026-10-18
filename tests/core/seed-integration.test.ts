@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEMO_ACTORS, type DispatchStore } from "@/contracts";
 import { scene1_eligible_facts } from "@/contracts/fixtures/scenes";
 import { evaluateEligibility, findCandidates } from "@/core";
-import { DEMO_POLICY, type CourierProfile, type DonorProfile, type MessagingIdentityLite, type RecipientOrg } from "@/core/types";
+import { DEMO_POLICY, type CourierProfile, type DonorProfile, type MatchIdentity, type RecipientOrg } from "@/core/types";
 import { createDispatchStore } from "@/db";
 import { closeStore, storeInternals } from "@/db/internal";
 import { runMigrations } from "@/db/run-migrations";
@@ -45,10 +45,10 @@ async function load() {
     is_synthetic: true,
   }));
   const policyRow = (await db.select().from(policy_config)).find((p) => p.active)!;
-  const identities: MessagingIdentityLite[] = (await db.select().from(messaging_identities)).map((i) => ({
-    id: i.id,
-    actor_role: i.actor_role as MessagingIdentityLite["actor_role"],
+  const identities: MatchIdentity[] = (await db.select().from(messaging_identities)).map((i) => ({
+    actor_role: i.actor_role as MatchIdentity["actor_role"],
     actor_id: i.actor_id,
+    provider: i.provider as MatchIdentity["provider"],
     status: "joined", // both couriers have sent JOIN
   }));
   return { donorList, recipientList, courierList, policy: policyRow.config as typeof DEMO_POLICY, identities };
@@ -87,7 +87,7 @@ describe("seeded rows run through the real gate and matcher", () => {
     const out = findCandidates({
       donation: { id: "d1", donor_location: donor.location },
       facts: facts() as never, recipients: recipientList, couriers: courierList, identities, policy, now: NOW,
-      excluded_courier_ids: [], busy_courier_ids: [],
+      excluded_courier_ids: [], busy_courier_ids: [], committed_servings: {}, active_provider: "fake" as const,
     });
     expect(out.map((c) => [c.recipient_id, c.courier_id])).toEqual(
       expect.arrayContaining([[actor("recipient_eastlake"), actor("courier_a")], [actor("recipient_eastlake"), actor("courier_b")]]),
@@ -106,7 +106,7 @@ describe("seeded rows run through the real gate and matcher", () => {
     const peanutFacts = facts({ allergens: { ...scene1_eligible_facts.allergens, peanuts: "present" } });
     const out = findCandidates({
       donation: { id: "d2", donor_location: donor.location }, facts: peanutFacts as never,
-      recipients: recipientList, couriers: courierList, identities, policy, now: NOW, excluded_courier_ids: [], busy_courier_ids: [],
+      recipients: recipientList, couriers: courierList, identities, policy, now: NOW, excluded_courier_ids: [], busy_courier_ids: [], committed_servings: {}, active_provider: "fake" as const,
     });
     expect(new Set(out.map((c) => c.recipient_id))).toEqual(new Set([actor("recipient_eastlake")]));
   });
@@ -115,13 +115,13 @@ describe("seeded rows run through the real gate and matcher", () => {
     const { donorList, recipientList, courierList, policy } = await load();
     const donor = donorList.find((d) => d.id === actor("donor_rainier"))!;
     const { db } = storeInternals(store);
-    const seeded: MessagingIdentityLite[] = (await db.select().from(messaging_identities)).map((i) => ({
-      id: i.id, actor_role: i.actor_role as MessagingIdentityLite["actor_role"], actor_id: i.actor_id, status: i.status as MessagingIdentityLite["status"],
+    const seeded: MatchIdentity[] = (await db.select().from(messaging_identities)).map((i) => ({
+      actor_role: i.actor_role as MatchIdentity["actor_role"], actor_id: i.actor_id, provider: i.provider as MatchIdentity["provider"], status: i.status as MatchIdentity["status"],
     }));
     expect(seeded.every((i) => i.status === "awaiting_join")).toBe(true);
     const out = findCandidates({
       donation: { id: "d3", donor_location: donor.location }, facts: facts() as never,
-      recipients: recipientList, couriers: courierList, identities: seeded, policy, now: NOW, excluded_courier_ids: [], busy_courier_ids: [],
+      recipients: recipientList, couriers: courierList, identities: seeded, policy, now: NOW, excluded_courier_ids: [], busy_courier_ids: [], committed_servings: {}, active_provider: "fake" as const,
     });
     expect(out).toEqual([]);
   });
@@ -134,7 +134,7 @@ describe("seeded rows run through the real gate and matcher", () => {
       findCandidates({
         donation: { id: "d4", donor_location: donor.location },
         facts: facts({ donor_pickup_by: iso(new Date(now.getTime() + 2 * 3_600_000)), discard_by: iso(new Date(now.getTime() + 9 * 3_600_000)) }) as never,
-        recipients: recipientList, couriers: courierList, identities, policy, now, excluded_courier_ids: [], busy_courier_ids: [],
+        recipients: recipientList, couriers: courierList, identities, policy, now, excluded_courier_ids: [], busy_courier_ids: [], committed_servings: {}, active_provider: "fake" as const,
       });
     expect(run(at(0))).toHaveLength(2);
     expect(run(at(3))).toHaveLength(2);

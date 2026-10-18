@@ -80,3 +80,52 @@ DEFERRED ON PURPOSE (needs slice 2 or a captain decision; none blocks this PR):
 INTEGRATION STEPS: none for other lanes yet; no core function uses the store until slice 2(a). Supabase: migrations enable row-level security with no policies; connect as the owner role (the default `postgres` user).
 
 NEXT SMALLEST ACTION: slice 2(a): `storeDonationImage`, `createDraft` (source_ref idempotency), `attachAiResult`, `submitVerification` (session path), `getDonationCard`.
+
+---
+
+Slice 2(a) intake-facing and 2(b) dispatch-facing core (PR 1c contract v0.5 folded in)
+
+LANE / BRANCH / COMMIT: Dev 2 / feat/dispatch-slice2 / see PR head
+
+DELIVERED (all in `src/core/service/*`, exported from `@/core`; every function takes the optional trailing `deps` and uses only the injected Clock):
+- **2(a) intake:** `storeDonationImage` (JPEG/PNG/WebP, first bytes must match the declared type, <= 5 MB), `createDraft` (S-01, `(source, source_ref)` idempotent, ON CONFLICT DO NOTHING), `attachAiResult` (S-02, immutable snapshot, invalid suggestion = AI_OUTPUT_INVALID), `submitVerification` session path (S-03: server-stamped `attested_at`, gate with server time, `effective_cutoff_at = min(pickup, discard)`, other live links revoked), `getDonationCard` (operator full; owning donor projection). The link path of `submitVerification` returns NOT_IMPLEMENTED until 2(d).
+- **2(b) messaging ledger:** `resolveIdentityByHandle`, `getIdentity`, `joinIdentity`, `findOpenOffersForCourier`, `recordInboundMessage` (30 s reclaim; a stranger's handle and text are never stored), `saveInboundResult`, `recordIgnoredInbound`, `recordOutboundMessage`, `hasOutboundMessage`, `listMessages`, `recordStatusEvent`, `recordDeliveryStatus`.
+- **2(b) dispatch:** `createNextOffers` (S-04/S-05/S-18), `openOfferForSend`, `markOfferSendFailed`, `recordOfferProviderMessage`, `expireDue` (S-06/S-08/S-16), `listPendingSendOffers`, `listDispatchableDonations`.
+- **2(b) claim:** `claimOffer` (CONTRACTS 8.1 steps 1-9 in order), `declineOffer` (full result matrix), `optOutIdentity` (S-15/S-16/S-17, donor link revocation).
+- **PR 1c (contract v0.5):** `findCandidates` takes the shared `MatchInput` (`committed_servings`, `active_provider`, bad input returns `[]`); state guards resolve a missing cutoff as stored, else min(pickup, discard) from the facts, else due (D-038); `src/core/types.ts` re-exports the contract types.
+- **Gated test written, NOT RUN:** `tests/core/claim-race-postgres.test.ts` (T-CO-17: independent postgres.js connections racing one donation, 20 rounds, plus competing dispatch and duplicate inbound). Runs only with `TEST_DATABASE_URL` pointing at a disposable database.
+
+ANSWERS TO DEV 3 (docs/requests/messaging-core-idempotency-lookup.md):
+1. `hasOutboundMessage(key)` exists and is true only when the provider ACCEPTED the message (a failed or skipped attempt does not count), so a reprocessed row retries a failed reply. `recordOutboundMessage` with the same key fills in a provider id on a later success and never erases one.
+2. `recordDeliveryStatus` is idempotent and monotonic (accepted < delivered < failed): call it for EVERY event, `first` or `duplicate`; a crash between the two calls loses nothing. It only matches an offer of the same provider.
+3. `recordDeliveryStatus` returns `{ offer_id, offer_status }` (nulls for a message that is not an offer). It never closes the offer itself; on `failed` with `offer_status === "open"` call `markOfferSendFailed` once.
+4. `openOfferForSend` for a courier who has not joined (or has opted out): the offer becomes `send_failed` (`courier_not_joined`), the donation returns to eligible if it was the last live offer, and the result is `{ ok: false, error: { code: "CONFLICT", details: { reason: "courier_not_joined", offer_id } } }`. Other non-OK results: `CONFLICT` with `details.reason` `no_time_left` or `cutoff_reached` (the offer is closed), `CONFLICT` if the offer is not `pending_send`, and `INVALID_TRANSITION` if the donation is no longer offered (the offer is cancelled). `markOfferSendFailed` is idempotent and returns the offer; a late failure for an already answered offer is `INVALID_TRANSITION` (ignore it).
+Also: `listPendingSendOffers`/`findOpenOffersForCourier` return full `Offer` objects (use `.id`); `optOutIdentity`/`joinIdentity` return the identity (with its handle, server side only); `claimOffer` replays only an ACTIVE assignment, so a courier replaying an ended one gets no address: `donation_unavailable`, or `offer_closed` / `offer_expired` / `already_claimed` if the donation moved on.
+
+EVIDENCE (commands run locally; PGlite only, nothing real):
+- `pnpm typecheck` 0 errors; `pnpm lint` clean; `pnpm build` ok; `pnpm db:generate`: no drift (migrations 0000, 0001, 0002).
+- `pnpm test`: 60 files, 1,681 passed, 30 skipped (the gated Postgres tests), 1 todo, identical on repeated runs.
+- Invariant fuzz (`tests/core/service-invariants.test.ts`): 30 seeds x 80 steps by default; 300 seeds (about 24,000 random operations including interleaved claims, STOP, time jumps and approval changes; the interleaving is Promise.all on ONE PGlite connection, which is not concurrency evidence) run once and clean. Properties: at most one active assignment per donation, one live offer per courier, no live offers on finished donations, capacity never exceeded, claimed/collected donations match their accepted offer.
+- ECC review rounds (code, security, database): findings fixed with failing tests first. Notable: an ended assignment was replayed with addresses; two dispatch rounds could deadlock on real Postgres (now serialized through the policy row, plus retry on 40P01/40001); an offer could open after `discard_by`; STOP could race a dispatch (now two transactions); the audit guard was bypassable; malformed ids threw driver errors.
+- NOT RUN / UNVERIFIED: **T-CO-17 on real Postgres. First-claim-wins is NOT shown race-safe (D-033).** Also: the Postgres half of T-CO-23, real Supabase pooler behavior, all HTTP handlers (2(c)), `recordHandoff`, `operatorAction`, `getDashboardSnapshot`, verification links (2(d)).
+
+CONTRACT CHANGES OR REQUESTS (captain):
+- `docs/requests/dev2-donor-offer-projection.md`: the strict `DonationCard` cannot express the owning donor's "reduced" offers, so the donor projection fills hidden fields with placeholders (zero UUID, short code `AAAA`, empty names). A `DonorOfferSummary` type would be cleaner.
+- Routes owned by other lanes MUST: gate `listMessages` and the simulated routes to the operator in fake mode only (it takes no actor); derive `findOpenOffersForCourier`'s courier id from the verified messaging identity, never from input; rate-limit short-code guessing on any endpoint that reaches `claimOffer`/`declineOffer` (the contract keeps `offer_not_found` and `not_authorized` distinct; 22^4 codes); serve `/api/images/:id` with `X-Content-Type-Options: nosniff` and the stored mime.
+- `getEnv()` handle names: done by the captain (PR #14); the seed CLI now uses them (request closed).
+
+BLOCKERS + SAFETY RISKS:
+- T-CO-17 needs a disposable Postgres. Until it passes, nobody may say claims are race-safe or concurrency-tested (README, pitch, video, Devpost).
+- Dev 3's OK on the gate and expiry rules (OWNERSHIP section 6) is still outstanding.
+- No `lock_timeout`/`statement_timeout` is set; consider adding one to the Supabase connection options.
+
+INTEGRATION STEPS: Dev 3 can swap its in-memory double for the real functions behind `src/workflows/core-port.ts` (adapter notes above). Dev 4: `getDonationCard` is ready for the donor and operator pages; `getDashboardSnapshot` is 2(c).
+
+NEXT SMALLEST ACTION: 2(c) read models and handlers: `getDashboardSnapshot`, `getSystemStatus`, `setLastTick`, `recordHandoff`, `operatorAction`, `resetDemo`, then the HTTP handlers (empty-body demo reset, T-CO-29), then 2(d) verification links.
+
+REVIEW FOLLOW-UPS (captain's list from #21, Dev 3's review of #29):
+- Done here: PGlite creates its missing parent folder (a fresh checkout can `db:migrate`/`db:seed`); seed handles in photon mode must be E.164 or an email (emails lowercased; the error names the variable and never echoes the value); the stale-identity warning names a real remedy (SQL to put the identity back to `awaiting_join`, then `pnpm db:seed` and JOIN again); the seed reads its handles through `getEnv()`; the `offers.provider_message_id` index (migration 0002); a claim never reports success without the assignment details; an unreadable policy, facts or gate exception fails the call without cancelling the offer; only a violation of the one-active-assignment index counts as "someone else won"; overclaiming comments and docs corrected.
+- Runtime database role (captain item 5): row-level security is on with no policies, so the app must connect as the role that OWNS the tables (the default `postgres` user on Supabase, the same one `pnpm db:migrate` uses). A restricted or anon role would see no rows.
+- Deliberate trade-off (Dev 3 item 8): `recordInboundMessage` keeps the payload of any seeded identity, whatever its status, until `recordIgnoredInbound` scrubs it, so the simulated phone can show a JOIN from an `awaiting_join` identity. Changing it to joined-only would hide that line; the window is one request.
+- Not done, follow-ups: stronger fuzz assertions (claim by the wrong courier, claim at the cutoff, opted-out courier holding an offer), more cutoff-boundary and STOP-then-replay tests, a deterministic test of the 23505 race fallback, DB CHECKs tying `sent_at`/`responded_at` to offer status, a unique index on `(provider, lower(handle))`, parsing jsonb on read instead of casting, rejecting (not silently replacing) malformed delivery-event fields, and HEIC support (Dev 1 will flip the intake and `storeDonationImage` sides together).
+
