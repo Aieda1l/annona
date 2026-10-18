@@ -22,6 +22,8 @@ const EnvSchema = z.object({
   VISION_PROVIDER: optional(z.enum(["fake", "gemini"])),
   GEMINI_API_KEY: optional(z.string()),
   GEMINI_MODEL: optional(z.string()),
+  // Optional second-opinion model for unconfident drafts; the literal "off" disables it (Dev 1 owns the meaning).
+  GEMINI_ESCALATION_MODEL: optional(z.string()),
   MESSAGING_PROVIDER: optional(z.enum(["fake", "photon"])),
   PHOTON_PROJECT_ID: optional(z.string()),
   PHOTON_API_KEY: optional(z.string()),
@@ -50,6 +52,7 @@ export type Env = {
   vision_provider: "fake" | "gemini";
   gemini_api_key: string | undefined;
   gemini_model: string | undefined;
+  gemini_escalation_model: string | undefined;
   messaging_provider: "fake" | "photon";
   photon_project_id: string | undefined;
   photon_api_key: string | undefined;
@@ -79,6 +82,7 @@ export function getEnv(source: NodeJS.ProcessEnv = process.env): Env {
     vision_provider: raw.VISION_PROVIDER ?? "fake",
     gemini_api_key: raw.GEMINI_API_KEY,
     gemini_model: raw.GEMINI_MODEL,
+    gemini_escalation_model: raw.GEMINI_ESCALATION_MODEL,
     messaging_provider: raw.MESSAGING_PROVIDER ?? "fake",
     photon_project_id: raw.PHOTON_PROJECT_ID,
     photon_api_key: raw.PHOTON_API_KEY,

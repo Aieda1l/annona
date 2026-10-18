@@ -363,6 +363,7 @@ Offer transitions (CONTRACTS §4.2): `→pending_send` T-CO-14, T-MS-06; `pendin
 2. No faces, people, brand logos, real business labels, addresses, phone numbers or license plates. The T-PE-07 label is team-made and unbranded.
 3. `fixtures/intake/PROVENANCE.md` lists each file: who made it, when, license, and a "checked: no personal or brand content" line.
 4. Images are inputs to a free-tier model whose inputs may be used to improve Google products. Treat every committed image as public (the repo is public from kickoff, D-023).
+5. **Eval photos of unknown or unverified licence are never committed (D-040).** They live in `fixtures/intake/eval-local/`, which is gitignored; the eval tests and the real-model eval skip cleanly when those files are absent. Only images that meet rule 1 are committed, including every image the fake provider hashes or a demo scene uses.
 
 ## 8. Evidence recording format
 
