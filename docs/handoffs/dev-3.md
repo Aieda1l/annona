@@ -206,9 +206,83 @@ DELIVERED:
  - REAL run (T-MS-19, donor photo -> draft -> link): main at f1bc8a7 (2(d) merged via #46). The donor texted JOIN (03:54:30), then a photo (03:55:19). It was downloaded, became a draft (ai_status succeeded) and core issued a real one-time link; the draft_ready reply was delivered at 03:55:23 with the link and its expiry. Vision was FAKE, so the guess was "unidentified food" (the fake only recognises the five fixture photos); the real-Gemini run is still to do with Dev 1. The link could not be opened from the phone: the Wi-Fi isolates clients, so the laptop's LAN address is unreachable from the phone.
  - Fix found by the run: Photon marked every send delivered, but offers stayed delivery_status unknown, because the poll relay forwarded only inbound messages. The relay now also looks back 5 minutes every 10 s for our own sends that are delivered or failed and relays each once as message.delivered / message.failed (id, platform and failure code only; never the text or the space). The inbound cursor is untouched.
 EVIDENCE (commands, passed/failed, real vs mock): REAL as listed above, checked against GET /messages on Photon and the operator dashboard. The receipt fix is FAKE evidence so far (stubbed fetch in tests/messaging/relay.test.ts and the normalizer pin in normalize.test.ts); typecheck 0, lint 0 errors (1 existing warning), test passing, build ok.
-CONTRACT CHANGES OR REQUESTS: for the captain: (1) src/server/health.ts still reports last_tick_at null and policy_version "unavailable" although core's getSystemStatus is on main; (2) "yes, please opt me out" is not an opt-out under D-039 (only STOP, STOPALL, UNSUBSCRIBE and whole-message END/QUIT/CANCEL); decide whether "opt out" should count; (3) the checklist link needs a URL the donor's phone can reach on demo day (deployed URL, or a hotspot shared with the laptop).
+CONTRACT CHANGES OR REQUESTS: for the captain: (1) src/server/health.ts reported last_tick_at null and policy_version "unavailable" although core's getSystemStatus was on main (RESOLVED: the captain's #47 now reads it); (2) "yes, please opt me out" is not an opt-out under D-039 (only STOP, STOPALL, UNSUBSCRIBE and whole-message END/QUIT/CANCEL); decide whether "opt out" should count; (3) the checklist link needs a URL the donor's phone can reach on demo day (deployed URL, or a hotspot shared with the laptop).
 BLOCKERS + SAFETY RISKS: first-claim-wins is still UNVERIFIED on real Postgres (T-CO-17, D-033); the real runs used PGlite and one app process.
 INTEGRATION STEPS: none.
 NEXT SMALLEST ACTION: re-run one offer live to see delivery_status reach delivered, then the real-Gemini photo run with Dev 1.
 ```
 
+
+## 2026-10-17 21:40 PDT — Real Gemini photo runs: JPEG and iPhone HEIC through the whole messaging path (REAL Photon, REAL Gemini)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / docs/dev3-gemini-heic-results / this entry (evidence only, no code change)
+DELIVERED: Nothing new in code. Two real photo runs of T-MS-19 with VISION_PROVIDER=gemini (gemini-3.5-flash-lite), real Photon Beta in poll mode, a throwaway PGlite database, main at 50303e4.
+ - JPEG (a food photo from the joined donor phone): photo received 04:31:32 UTC, draft_ready reply delivered 04:31:36. Draft: ai_status succeeded, provider gemini, top dish "chicken burrito bowl" (high), possible allergens soybeans, wheat, sesame, status draft (not verified, not eligible). Stored as image/jpeg, served with nosniff; no Exif, GPS or XMP markers left in the stored bytes.
+ - iPhone HEIC (a normal full-quality camera photo, brand heic, 2,201,254 bytes): received 04:32:46, reply delivered 04:32:53. Photon's attachment type reached core as image/heic (the byte check in attachments.ts and the core allowlist from #44 both accepted it). Draft: provider gemini, top dish "butter chicken or creamy curry" (high), possible allergens milk, tree nuts, wheat. Stored as image/heic, same size as the original.
+ - HEIC metadata: compared the original attachment downloaded from Photon with the stored copy. The original held one TIFF/Exif payload with "Apple" and "iPhone" strings. In the stored copy that payload is gone: same size, 1,810 bytes changed, every changed byte is now zero, no TIFF header and no Apple/iPhone string remain. The empty "Exif" label stays in the item table, which is expected. This closes the "no real iPhone HEIC has been through the stripper or core" item of IB-12 for the messaging path. The downloaded original was deleted afterwards (it still had the real Exif).
+ - Cost: two Gemini calls.
+EVIDENCE (commands, passed/failed, real vs mock): REAL as listed, checked against GET /messages on Photon (timings) and the operator donation card and /api/images route (draft and stored bytes). The Gemini key was read only from the macOS Keychain into the server process and a git-ignored .env.local; it was never printed, committed or sent anywhere except the Gemini API.
+CONTRACT CHANGES OR REQUESTS: docs/requests/messaging-secret-scan-google-keys.md (captain): the ARCHITECTURE section 9 secret scan only matches Google keys that start with AIza; the key issued for this project does not start that way, so a leaked copy would not be caught.
+BLOCKERS + SAFETY RISKS:
+ - The checklist link could not be opened from the donor's phone in either run. The first run used the laptop's LAN address, the Gemini run used localhost (APP_BASE_URL), so only the first was a fair test; both failed or were unreachable on the phone. The laptop could reach its own LAN address. The demo plan is to deploy on Vercel (D-017), which makes the link https://<deployment>/v#<token> and removes the problem. Not yet tested against a deployed URL.
+ - On Vercel the Photon project key and the Gemini key must be set in the Vercel project's environment (server-only), because the inbound route downloads attachments and the tick route sends messages. The worker on the laptop needs the same ANNONA_INTERNAL_SECRET, the deployed APP_BASE_URL and the Photon key to poll. STORE must be postgres (a PGlite directory cannot be shared between Vercel and the laptop), which also means the T-CO-17 real-Postgres run (D-033) matters before any race-safety claim.
+ - First-claim-wins is still UNVERIFIED on real Postgres. A failed Gemini call and an over-size photo were not exercised live.
+INTEGRATION STEPS: captain sets GEMINI_API_KEY, PHOTON_PROJECT_ID, PHOTON_API_KEY, ANNONA_INTERNAL_SECRET, SESSION_SECRET, DEMO_PASSCODE and DATABASE_URL in the Vercel project settings, not in the repo; Dev 3 points the worker at the deployed URL.
+NEXT SMALLEST ACTION: a full dry run on the deployed URL (donor photo, checklist from the donor's phone, offer, claim, late claim, expiry, STOP), then the final session summary.
+```
+
+## Demo-day runbook: app on Vercel, worker on the demo laptop (written 2026-10-17; the Vercel and Supabase parts are UNTESTED by Dev 3)
+
+Status update (after the captain and Dev 2 reviewed #54): production is deployed at the captain's Vercel URL (Supabase, **fake providers** so far). To use real Photon and Gemini the captain sets the Vercel variables in the table below (`MESSAGING_PROVIDER=photon`, the Photon and Gemini keys, `VISION_PROVIDER=gemini`) and a matching `ANNONA_INTERNAL_SECRET` for the worker, kept out of chat. `/api/health` now reports `last_tick_at` and the policy version from core (#47), so a stale `last_tick_at` really does mean no tick has reached the app.
+
+Why this shape: the donor's phone must be able to open the checklist link, so `APP_BASE_URL` has to be the deployed `https://…vercel.app` address (a `localhost` or LAN address cannot be opened from a phone, as both T-MS-19 runs showed). Photon stays in Photon's cloud in every case. The worker (tick and Photon polling) cannot run on Vercel, so it runs on the laptop and calls the deployed app over HTTPS.
+
+### What each side needs (names only; values go in the Vercel project settings or the laptop's git-ignored `.env.local`, never the repo or a chat)
+
+| Variable | Vercel (deployed app) | Laptop worker | Notes |
+|---|---|---|---|
+| `STORE` | `postgres` | not read | PGlite cannot be shared between Vercel and the laptop |
+| `DATABASE_URL` | Supabase transaction pooler (port 6543) | only for `db:migrate` / `db:seed` | the pooler needs `prepare: false` (R-INF-7); the code already does this |
+| `MESSAGING_PROVIDER` | `photon` | `photon` | `fake` shows the labeled simulated phone instead |
+| `PHOTON_PROJECT_ID`, `PHOTON_API_KEY` | yes | yes | the app downloads photos and sends offers; the worker polls |
+| `VISION_PROVIDER`, `GEMINI_API_KEY` | `gemini`, key | not read | optional `GEMINI_MODEL` |
+| `ANNONA_DEMO_MODE` | `1` | not read | the demo actors and fixture drafts need it |
+| `ANNONA_INTERNAL_SECRET` | yes | yes, **identical** | the worker's tick and relay calls are refused without it; whitespace is trimmed |
+| `APP_BASE_URL` | the deployed `https://…` | the same value | the worker posts to it; the checklist link is built from it |
+| `SESSION_SECRET`, `DEMO_PASSCODE` | yes | not read | operator and donor demo logins |
+| `TICK_INTERVAL_MS` | not read | `5000` (minimum 500) | |
+| `DEMO_DONOR_HANDLE`, `DEMO_COURIER_A_HANDLE`, `DEMO_COURIER_B_HANDLE` | not needed | only for `db:seed` | real opted-in phones, E.164 (`+1…`); the seed refuses another shape |
+| `PHOTON_INBOUND_MODE` | not read | not read | has no effect: the worker polls whenever Photon credentials are set |
+| `PHOTON_WEBHOOK_SECRET` | leave empty | leave empty | the webhook signature scheme is UNVERIFIED, so only the worker's internal secret is accepted |
+
+So the laptop worker needs only five things: `MESSAGING_PROVIDER=photon`, `PHOTON_PROJECT_ID`, `PHOTON_API_KEY`, `ANNONA_INTERNAL_SECRET`, `APP_BASE_URL` (plus optional `TICK_INTERVAL_MS`). It needs no database, Gemini or session secret.
+
+### Order
+
+1. **Captain:** the app is deployed; switch it from fake to real providers by setting the Vercel variables above in the project settings, and confirm `/api/health` shows `messaging: real` and `vision: real`. Do not send keys through chat; each person pastes their own from the Keychain.
+2. **Database (once, from the laptop):** with `STORE=postgres` and `DATABASE_URL` set in that shell only, run `pnpm db:migrate`, then `pnpm db:seed` with the three handles set. Check `GET <url>/api/health` shows `store: postgres`, `messaging: real`, `vision: real`.
+3. **Laptop `.env.local`:** set the five worker variables. `APP_BASE_URL` and `ANNONA_INTERNAL_SECRET` must equal the Vercel values exactly.
+4. **Cursor:** before the first start, write the current time (UTC, ISO) into `.data/photon-cursor`. Without it the worker replays the last ten minutes of texts, and anyone who texted just before would get an extra reply.
+5. **Start:** `pnpm worker`. Expect `[worker] started: tick every 5000 ms, polling Photon`. If it prints `Not starting`, the line says which variable is missing.
+6. **Smoke test, in this order:** each courier texts `JOIN` and gets one reply; the donor texts `JOIN`; the operator dashboard shows three `joined`; the donor sends one photo and the reply link opens **on the donor's phone**; the donor completes the checklist; an offer reaches courier A with no address; `YES <code>` returns the pickup details; courier B's late `YES <code>` gets the generic no-assignment reply; the dashboard shows `claimed` and the offer's `delivery_status` reads `delivered`.
+
+### Checks while it runs
+
+- A line `tick failed: TypeError (ENOTFOUND)` or `(ECONNREFUSED)` means the worker cannot reach the app (wrong `APP_BASE_URL`, no network). `HTTP 403` means the internal secrets differ. `HTTP 5xx` means look at the Vercel logs (they keep one hour on Hobby; `audit_events` is the lasting record).
+- `last_tick_at` on `/api/health` comes from core's `getSystemStatus` since #47. It updates on every successful tick, so a value that stops moving means the worker is not reaching the app: check the worker log lines above. (Before #47 it was always null.)
+- Do not have anyone text the Annona lines while the worker is stopped and restarted without step 4.
+
+### Stop conditions
+
+Stop the worker (`Ctrl-C`) at once if any text goes out twice, a reply carries an address to someone who has not claimed, or a message goes to a number that is not one of the three opted-in phones.
+
+### Things to confirm on Vercel (UNVERIFIED, not claimed)
+
+- **Function time limit.** In our runs a photo took 4 to 7 seconds end to end (download, Gemini, reply). Check the project's limit; if it is short, export `maxDuration` from `src/app/api/messaging/photon/inbound/route.ts` (that file belongs to the captain's integration surface, so it is a request, not something Dev 3 changes).
+- **Bundled files.** `next.config.ts` traces `fixtures/intake/images/**` and the prompts into the inbound route; confirm the deployed photo route can read the prompts.
+- **First-claim-wins on Postgres** is still UNVERIFIED (T-CO-17, D-033). The first live claim on Supabase is not evidence of race-safety.
+
+### Teardown after the event
+
+Revoke or delete the event's Gemini key in Google AI Studio and the Photon project key (Photon dashboard), delete the Keychain items (`photon-beta-annona`, `gemini-annona`), delete the Vercel project's environment variables, and remove the laptop's `.env.local`.
