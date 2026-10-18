@@ -7,7 +7,7 @@ import { createDispatchStore } from "@/db";
 import { closeStore, storeInternals } from "@/db/internal";
 import { runMigrations } from "@/db/run-migrations";
 import { donations, messaging_identities, offers, policy_config } from "@/db/schema";
-import { assertDisposableDatabase, databaseName } from "./helpers/disposable";
+import { assertDisposableDatabase, emptyDisposableDatabase } from "./helpers/disposable";
 import { COURIER_A, IDENTITY, at, courierActor, makeEligibleDonation, resetWorld, type World } from "./helpers/world";
 
 // T-CO-17 (REQUIRED by D-033 for any race-safety claim; CONTRACTS 8.1 "Verification rule"): independent postgres.js
@@ -17,7 +17,8 @@ import { COURIER_A, IDENTITY, at, courierActor, makeEligibleDonation, resetWorld
 //
 // Runs ONLY when TEST_DATABASE_URL is set; otherwise it is skipped and first-claim-wins stays UNVERIFIED (AC-06 not done).
 // The database is migrated, seeded and, in afterAll, emptied by this test: point it at a disposable one whose name says so.
-// The Postgres half of T-CO-23 (tests/core/db.test.ts) uses the same database, so run the gated files one at a time:
+// The Postgres half of T-CO-23 (tests/core/db.test.ts) uses the same database and empties it before it starts, so run the
+// gated files one at a time (either order works):
 //   pnpm vitest run --no-file-parallelism tests/core/claim-race-postgres.test.ts tests/core/db.test.ts
 
 // A 20-round test takes about 200 s through the pooler; 600 s leaves room for a slow network.
@@ -48,14 +49,7 @@ describe.skipIf(!URL)("T-CO-17: first-claim-wins on real Postgres, independent c
   });
   afterAll(async () => {
     // Leave the disposable database empty, so the Postgres half of T-CO-23 (which needs an empty database) can run next.
-    if (stores.length > 0) {
-      const db = storeInternals(stores[0]!).db;
-      const [row] = (await db.execute(sql`select current_database() as name`)) as unknown as { name: string }[];
-      if (row?.name !== databaseName(URL!)) throw new Error("T-CO-17 cleanup: connected to an unexpected database; nothing was dropped");
-      await db.execute(sql.raw("drop schema if exists drizzle cascade"));
-      await db.execute(sql.raw("drop schema public cascade"));
-      await db.execute(sql.raw("create schema public"));
-    }
+    if (stores.length > 0) await emptyDisposableDatabase(storeInternals(stores[0]!).db, URL!);
     for (const s of stores) await closeStore(s);
   });
 

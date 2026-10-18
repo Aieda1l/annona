@@ -20,7 +20,7 @@ import {
   recipients,
   verification_links,
 } from "@/db/schema";
-import { assertDisposableDatabase } from "./helpers/disposable";
+import { assertDisposableDatabase, emptyDisposableDatabase } from "./helpers/disposable";
 
 // Each test file starts one or more WASM Postgres instances. Under the parallel full run that can exceed the 5 s default.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -476,6 +476,8 @@ describe.skipIf(!TEST_DATABASE_URL)("T-CO-23 migrate + seed on Postgres (TEST_DA
   beforeAll(async () => {
     assertDisposableDatabase(TEST_DATABASE_URL!);
     store = createDispatchStore({ kind: "postgres", database_url: TEST_DATABASE_URL, pglite_dir: undefined });
+    // T-CO-23 starts from an empty database; T-CO-17 (or an earlier run) may have left rows behind.
+    await emptyDisposableDatabase(storeInternals(store).db, TEST_DATABASE_URL!);
     await runMigrations(store);
     await seedStore(store, { now: NOW, messaging_provider: "fake" });
   });
