@@ -32,13 +32,17 @@ export const IDENTITY = SEED_IDENTITY_IDS;
 export const PNG_BYTES = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0);
 export const JPEG_BYTES = Uint8Array.of(0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01);
 export const WEBP_BYTES = Uint8Array.of(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20);
+/** An ISO-BMFF box header: size, "ftyp", then the major brand (4 ASCII characters) and a minor version. */
+export const ftyp = (brand: string): Uint8Array =>
+  Uint8Array.of(0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, ...Array.from(brand).map((c) => c.charCodeAt(0)), 0, 0, 0, 0, 0x6d, 0x69, 0x66, 0x31, 0x68, 0x65, 0x69, 0x63);
+export const HEIC_BYTES = ftyp("heic");
 /** A header followed by filler up to `size` bytes. */
 export const padded = (header: Uint8Array, size: number): Uint8Array => {
   const out = new Uint8Array(Math.max(size, header.length));
   out.set(header);
   return out;
 };
-export const HEADER_BY_MIME: Record<string, Uint8Array> = { "image/png": PNG_BYTES, "image/jpeg": JPEG_BYTES, "image/webp": WEBP_BYTES };
+export const HEADER_BY_MIME: Record<string, Uint8Array> = { "image/png": PNG_BYTES, "image/jpeg": JPEG_BYTES, "image/webp": WEBP_BYTES, "image/heic": HEIC_BYTES, "image/heif": ftyp("mif1") };
 
 export type World = {
   store: DispatchStore;

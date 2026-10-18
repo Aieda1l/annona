@@ -37,7 +37,7 @@ const auditTypes = async (id: string) => (await w.db.select().from(audit_events)
 const countDonations = async () => (await w.db.select().from(donations)).length;
 
 describe("storeDonationImage", () => {
-  it.each(["image/jpeg", "image/png", "image/webp"])("stores %s byte for byte with its sha-256 and the clock's time", async (mime) => {
+  it.each(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"])("stores %s byte for byte with its sha-256 and the clock's time", async (mime) => {
     const bytes = padded(HEADER_BY_MIME[mime]!, 300);
     const deps = w.deps();
     const r = await storeDonationImage({ mime, bytes }, deps);
@@ -48,7 +48,7 @@ describe("storeDonationImage", () => {
     expect(row!.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(row!.created_at.toISOString()).toBe(T0.toISOString());
   });
-  it.each(["image/gif", "image/heic", "image/svg+xml", "application/pdf", "", "IMAGE/PNG", "image/png; charset=x"])("refuses mime %j", async (mime) => {
+  it.each(["image/gif", "image/avif", "image/tiff", "video/mp4", "image/svg+xml", "application/pdf", "", "IMAGE/PNG", "image/png; charset=x"])("refuses mime %j", async (mime) => {
     const r = await storeDonationImage({ mime, bytes: png() }, w.deps());
     expect(r).toMatchObject({ ok: false, error: { code: "VALIDATION_FAILED" } });
   });
