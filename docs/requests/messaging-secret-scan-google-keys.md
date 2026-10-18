@@ -4,7 +4,7 @@ From: Dev 3 (messaging). To: the captain (owns `docs/ARCHITECTURE.md`, section 9
 
 ## What I found
 
-`SECRET_RE` in ARCHITECTURE section 9 matches Google API keys with `AIza[0-9A-Za-z_-]{35}`. The Gemini key issued for this project does **not** start with `AIza` (it is longer, 53 characters, and begins with a different prefix), so a line holding it, for example `GEMINI_API_KEY=<key>` in a diff, is **not matched** by the current scan. I checked this locally against the real key and printed only the result (not matched). Nothing was committed: the key lives in the macOS Keychain and in a git-ignored `.env.local`.
+`SECRET_RE` in ARCHITECTURE section 9 matches Google API keys with `AIza[0-9A-Za-z_-]{35}`. The Gemini key issued for this project does **not** start with `AIza` (it has a different prefix), so a line holding it, for example `GEMINI_API_KEY=<key>` in a diff, is **not matched** by the current scan. I checked this locally against the real key and printed only the result (not matched). Nothing was committed: the key lives in the macOS Keychain and in a git-ignored `.env.local`.
 
 ## Why it matters
 
