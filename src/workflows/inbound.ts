@@ -16,6 +16,7 @@ import {
   formatClaimReply,
   genericNoAssignmentText,
   helpText,
+  tryAgainText,
   joinAckText,
   stopAckText,
 } from "./templates";
@@ -110,8 +111,21 @@ export function createInboundHandler(deps: {
           source: msg.provider === "fake" ? "simulated_messaging" : "messaging",
           source_event_id: msg.provider_message_id,
         };
+        // A throw here is a system fault in core (unreadable data, an exception in the gate), not a "no" for the courier.
+        // Redelivery would hit the same fault forever and stall the relay behind this message, so the courier is told to
+        // reply again and the result is saved. Nothing was claimed: core rolled the transaction back.
+        const failed = async (purpose: "claim_result" | "decline_ack", error: unknown): Promise<InboundResult> => {
+          const name = purpose === "claim_result" ? "claimOffer" : "declineOffer";
+          console.error(`[inbound] ${name} failed: ${error instanceof Error ? error.message.slice(0, 200) : "unknown error"}`);
+          return { outcome: "rejected", command, reply: await reply(identity, msg, purpose, tryAgainText()) };
+        };
         if (command === "accept") {
-          const claim_result = await core.claimOffer(cmd);
+          let claim_result;
+          try {
+            claim_result = await core.claimOffer(cmd);
+          } catch (error) {
+            return failed("claim_result", error);
+          }
           const refused = claim_result.code === "not_authorized" || claim_result.code === "offer_not_found";
           const text = refused ? genericNoAssignmentText() : formatClaimReply(claim_result);
           return {
@@ -121,7 +135,12 @@ export function createInboundHandler(deps: {
             reply: await reply(identity, msg, "claim_result", text),
           };
         }
-        const decline_result = await core.declineOffer(cmd);
+        let decline_result;
+        try {
+          decline_result = await core.declineOffer(cmd);
+        } catch (error) {
+          return failed("decline_ack", error);
+        }
         const refused = decline_result.code === "not_authorized" || decline_result.code === "offer_not_found";
         const acknowledged = decline_result.code === "declined" || decline_result.code === "already_declined";
         const text = refused

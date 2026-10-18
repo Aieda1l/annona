@@ -78,6 +78,9 @@ export const askForCodeText = (): string =>
 export const genericNoAssignmentText = (): string =>
   "Annona: we couldn't match that to an offer for you. No assignment was made.";
 
+/** A fault on our side while answering YES or NO: nothing is revealed, and the courier is told to send it again. */
+export const tryAgainText = (): string => "Annona: something went wrong on our side. Please try again in a minute.";
+
 /**
  * The reply to a claim. Addresses and pickup instructions appear only for `claimed` and `already_claimed_by_you`
  * (CONTRACTS §11), even if core handed back an assignment for another code.
