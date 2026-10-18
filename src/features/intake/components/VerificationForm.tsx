@@ -146,7 +146,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
   const [initial] = useState(() => prefillFromSuggestion(initialFormState(), suggestion));
   const [state, setState] = useState<FormState>(initial.state);
   const [aiFilled, setAiFilled] = useState<AiFilled>(initial.filled);
-  const appliedFor = useRef<VisionSuggestion | null>(suggestion);
+  const appliedFor = useRef<string | null>(suggestion ? JSON.stringify(suggestion) : null);
   const stateRef = useRef(state);
   stateRef.current = state;
   const [errors, setErrors] = useState<string[]>([]);
@@ -161,8 +161,11 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
   // Start from the AI draft once per suggestion, filling only what the donor has not touched yet (a draft that arrives
   // after the donor began typing never overwrites their text).
   useEffect(() => {
-    if (!suggestion || appliedFor.current === suggestion) return;
-    appliedFor.current = suggestion;
+    if (!suggestion) return;
+    // Keyed by content: a fresh object with the same draft (a refetch) must not re-fill a field the donor cleared.
+    const key = JSON.stringify(suggestion);
+    if (appliedFor.current === key) return;
+    appliedFor.current = key;
     const out = prefillFromSuggestion(stateRef.current, suggestion);
     setState(out.state);
     setAiFilled((f) => ({
@@ -265,7 +268,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           id={id("ingredients_text")}
           maxLength={1000}
           value={state.ingredients_text}
-          onChange={text("ingredients_text")}
+          onChange={(e) => setState((s) => ({ ...s, ingredients_text: e.target.value, ingredients_checked: false }))}
         />
         {stillAi("ingredients_text") && (
           <>

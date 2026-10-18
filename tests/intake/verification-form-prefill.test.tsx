@@ -145,6 +145,35 @@ describe("the donor stays in control", () => {
   });
 });
 
+describe("follow-ups from Dev 1's review of #77", () => {
+  it("a tick given to the AI's list does not carry over after the donor edits the list and retypes the AI's text", () => {
+    const { onSubmit } = renderForm();
+    fillTheDonorsOwnFacts();
+    const aiList = "sliced bread sandwiches, tortilla wraps, lettuce, sliced cheese";
+    fireEvent.click(screen.getByLabelText(/checked this ingredient list/i)); // ticked for the AI's list
+    fireEvent.change(screen.getByLabelText(/^Ingredients/i), { target: { value: "something else entirely" } });
+    fireEvent.change(screen.getByLabelText(/^Ingredients/i), { target: { value: aiList } }); // back to the AI's exact text
+    fireEvent.click(screen.getByRole("button", { name: /submit for review/i }));
+    expect(onSubmit).not.toHaveBeenCalled(); // the old tick no longer counts
+    expect(screen.getByLabelText(/checked this ingredient list/i)).not.toBeChecked();
+  });
+
+  it("a fresh suggestion object with the same content does not re-fill a field the donor cleared", () => {
+    const onSubmit = vi.fn();
+    const { rerender } = render(<VerificationForm suggestion={scene1_vision_suggestion} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText(/^Dish name/i), { target: { value: "" } }); // the donor clears it on purpose
+    rerender(<VerificationForm suggestion={structuredClone(scene1_vision_suggestion)} onSubmit={onSubmit} />);
+    expect(screen.getByLabelText(/^Dish name/i)).toHaveValue("");
+  });
+
+  it("a genuinely different suggestion still fills the fields the donor has not touched", () => {
+    const onSubmit = vi.fn();
+    const { rerender } = render(<VerificationForm suggestion={null} onSubmit={onSubmit} />);
+    rerender(<VerificationForm suggestion={{ ...scene1_vision_suggestion, dish_suggestions: [{ name: "pasta tray", confidence: "high" }] }} onSubmit={onSubmit} />);
+    expect(screen.getByLabelText(/^Dish name/i)).toHaveValue("pasta tray");
+  });
+});
+
 describe("the ingredients fill needs an explicit check", () => {
   it("blocks submit with a plain message until the donor ticks that they checked the list", () => {
     const { onSubmit } = renderForm();

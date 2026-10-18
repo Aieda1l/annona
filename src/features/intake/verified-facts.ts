@@ -31,7 +31,8 @@ export function computeEditedFromAi(suggestion: VisionSuggestion | null, facts: 
   if (!suggestion.dish_suggestions.some((d) => norm(d.name) === dish)) edited.push("dish_name");
 
   const est = suggestion.estimated_servings;
-  if (est && !(est.min === facts.servings && est.max === facts.servings)) edited.push("servings");
+  // The form fills the LOWER bound of the estimate (D-042), so a donor who keeps it has not departed from the AI.
+  if (est && facts.servings !== est.min) edited.push("servings");
 
   const aiListed = new Set(suggestion.possible_allergens.map((a) => a.allergen));
   for (const allergen of ALLERGENS) {
