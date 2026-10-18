@@ -55,6 +55,7 @@ export async function handleInbound(msg: InboundMessage, deps?: Deps): Promise<I
     core: boundCore,
     gateway,
     photo: photoHandler(deps, boundCore.hasOutboundMessage),
+    demoMode: () => getEnv().demo_mode,
   });
   return handler(msg);
 }

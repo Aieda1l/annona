@@ -35,6 +35,11 @@ export function bindCore(deps?: Deps): BoundCore {
     joinIdentity: (input) => core.joinIdentity(input, deps),
     optOutIdentity: (input) => core.optOutIdentity(input, deps),
     findOpenOffersForCourier: async (courier_id) => (await core.findOpenOffersForCourier(courier_id, deps)).map((offer) => ({ offer_id: offer.id })),
+    findRecipientNotice: async (offer_id) => {
+      const found = await core.findRecipientNoticeForOffer(offer_id, deps);
+      const identity = found ? view(found.identity) : null;
+      return found && identity ? { identity, courier_display_name: found.courier_display_name } : null;
+    },
     claimOffer: (command) => core.claimOffer(command, deps),
     declineOffer: (command) => core.declineOffer(command, deps),
     recordIgnoredInbound: (input) => core.recordIgnoredInbound(input, deps),

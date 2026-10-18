@@ -104,3 +104,15 @@ export function formatClaimReply(result: ClaimResult): string {
     `Deliver to: ${recipient.display_name}, ${recipient.address_line}.`,
   ].join("\n");
 }
+
+/**
+ * To the recipient org when a courier first claims a pickup for it (purpose `recipient_update`). No address and no
+ * contact details: the recipient knows its own address, and the donor's stays with the courier.
+ */
+export function formatRecipientNotice(input: { recipient_display_name: string; donor_display_name: string; courier_display_name: string; donor_pickup_by: string; demo_mode: boolean }): string {
+  return [
+    `Annona (${disclosure(input.demo_mode)}): a courier claimed a donation for ${input.recipient_display_name}.`,
+    `Courier: ${input.courier_display_name}. Pickup from ${input.donor_display_name} by ${laTime(input.donor_pickup_by)}, then on to you.`,
+    "Please inspect the food when it arrives before you accept it. No reply needed.",
+  ].join("\n");
+}

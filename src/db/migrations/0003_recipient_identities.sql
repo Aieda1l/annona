@@ -1,0 +1,2 @@
+ALTER TABLE "messaging_identities" DROP CONSTRAINT "messaging_identities_role_check";--> statement-breakpoint
+ALTER TABLE "messaging_identities" ADD CONSTRAINT "messaging_identities_role_check" CHECK ("actor_role" in ('courier', 'donor', 'recipient'));

@@ -49,6 +49,8 @@ export type MessagingCore = {
   }): Promise<Result<unknown>>;
   optOutIdentity(input: { identity_id: string }): Promise<Result<unknown>>;
   findOpenOffersForCourier(courier_id: string): Promise<{ offer_id: string }[]>;
+  /** The recipient org to tell about a claimed offer, or null (no identity, or the offer is not accepted). Optional so test doubles need not supply it. */
+  findRecipientNotice?(offer_id: string): Promise<{ identity: IdentityView; courier_display_name: string } | null>;
   claimOffer(command: ClaimCommand): Promise<ClaimResult>;
   declineOffer(command: DeclineCommand): Promise<DeclineResult>;
   recordIgnoredInbound(input: {

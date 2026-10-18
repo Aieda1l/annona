@@ -14,6 +14,7 @@ runCli(() =>
         donor: env.demo_donor_handle,
         courier_a: env.demo_courier_a_handle,
         courier_b: env.demo_courier_b_handle,
+        recipient: env.demo_recipient_handle,
       },
     });
     console.log(`seeded (${store.kind}, messaging ${env.messaging_provider})`);

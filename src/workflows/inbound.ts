@@ -1,5 +1,6 @@
 import type {
   ClaimCommand,
+  ClaimResult,
   InboundMessage,
   InboundResult,
   MessagingGateway,
@@ -14,6 +15,7 @@ import {
   askForCodeText,
   declineAckText,
   formatClaimReply,
+  formatRecipientNotice,
   genericNoAssignmentText,
   helpText,
   tryAgainText,
@@ -33,6 +35,8 @@ export function createInboundHandler(deps: {
   gateway: MessagingGateway;
   /** Donor photo intake (T-MS-18). Without it a joined donor's photo is acknowledged but not acted on. */
   photo?: (identity: IdentityView, msg: InboundMessage) => Promise<PhotoReply>;
+  /** Labels the recipient notice as a demo; true unless the caller says otherwise. */
+  demoMode?: () => boolean;
 }) {
   const { core, gateway } = deps;
   const send = createOutboundSender({ core, gateway });
@@ -54,6 +58,34 @@ export function createInboundHandler(deps: {
     };
     if (!(await core.hasOutboundMessage(message.idempotency_key))) await send(message);
     return message;
+  }
+
+  /**
+   * Tells the recipient org once that a courier claimed its pickup (keyed by offer, so a reprocessed or repeated YES
+   * never sends twice). Best effort: the claim is already committed, so a failure here is logged and never undoes it.
+   */
+  async function notifyRecipient(claim: ClaimResult): Promise<void> {
+    if (claim.code !== "claimed" || claim.offer_id === null || claim.assignment === null || !core.findRecipientNotice) return;
+    try {
+      const found = await core.findRecipientNotice(claim.offer_id);
+      if (found === null) return;
+      const message: OutboundMessage = {
+        to_identity_id: found.identity.id,
+        text: formatRecipientNotice({
+          recipient_display_name: claim.assignment.recipient.display_name,
+          donor_display_name: claim.assignment.pickup.display_name,
+          courier_display_name: found.courier_display_name,
+          donor_pickup_by: claim.assignment.pickup.donor_pickup_by,
+          demo_mode: deps.demoMode?.() ?? true,
+        }),
+        purpose: "recipient_update",
+        correlation: { donation_id: claim.assignment.donation_id, offer_id: claim.offer_id },
+        idempotency_key: `recipient_update:${claim.offer_id}:v1`,
+      };
+      if (!(await core.hasOutboundMessage(message.idempotency_key))) await send(message);
+    } catch (error) {
+      console.error(`[inbound] recipient notice failed: ${error instanceof Error ? error.name : "unknown error"}`);
+    }
   }
 
   async function offerRef(identity: IdentityView, short_code: string | null): Promise<ClaimCommand["offer_ref"] | null> {
@@ -135,11 +167,13 @@ export function createInboundHandler(deps: {
           }
           const refused = claim_result.code === "not_authorized" || claim_result.code === "offer_not_found";
           const text = refused ? genericNoAssignmentText() : formatClaimReply(claim_result);
+          const courierReply = await reply(identity, msg, "claim_result", text);
+          await notifyRecipient(claim_result);
           return {
             outcome: refused ? "rejected" : "processed",
             command,
             claim_result,
-            reply: await reply(identity, msg, "claim_result", text),
+            reply: courierReply,
           };
         }
         let decline_result;

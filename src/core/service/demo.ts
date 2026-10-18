@@ -62,7 +62,12 @@ export async function resetDemo(input: { keep_identities: true; actor?: Actor },
   await seedStore(store, {
     now,
     messaging_provider: provider,
-    handles: { donor: env.demo_donor_handle, courier_a: env.demo_courier_a_handle, courier_b: env.demo_courier_b_handle },
+    handles: {
+      donor: env.demo_donor_handle,
+      courier_a: env.demo_courier_a_handle,
+      courier_b: env.demo_courier_b_handle,
+      recipient: env.demo_recipient_handle,
+    },
   });
   await writeAudit(db, { at: now, type: "demo.reset", actor: SYSTEM_ACTOR, mode: { messaging: provider === "photon" ? "real" : "fake" }, data: { deleted } });
   return ok({ reset_at: now.toISOString() });

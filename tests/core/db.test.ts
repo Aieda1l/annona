@@ -315,9 +315,9 @@ function schemaChecks(getStore: () => DispatchStore) {
         await tx.insert(messaging_identities).values(row);
       });
     });
-    it("a recipient identity is not allowed in P0", async () => {
+    it("an operator identity violates the role CHECK (recipient identities are allowed since migration 0003)", async () => {
       await expectCode(getStore(), CHECK, async (tx) => {
-        await tx.insert(messaging_identities).values({ actor_role: "recipient", actor_id: EASTLAKE, provider: "fake", handle: "r@example.invalid", status: "awaiting_join" });
+        await tx.insert(messaging_identities).values({ actor_role: "operator", actor_id: EASTLAKE, provider: "fake", handle: "r@example.invalid", status: "awaiting_join" });
       });
     });
   });
