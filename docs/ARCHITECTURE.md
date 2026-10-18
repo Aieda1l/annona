@@ -229,12 +229,12 @@ A real provider error **never** silently falls back to fake (CONTRACTS §12). Th
 - **Photon ToS hygiene.** Opt-in by JOIN, STOP honored, automated-assistant disclosure in `join_ack` and offers.
 - **Secrets and public repo (D-023).** The repo is public from kickoff. Secrets live in server env only. Before **every** push, run the single canonical scan:
   ```bash
-  SECRET_RE='pho_sk_[A-Za-z0-9]{16,}|pho_ask_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35}|sk-ant-[A-Za-z0-9_-]{20,}|whsec_[A-Za-z0-9+/=]{16,}|postgres(ql)?://[^ :/]+:[^ @]+@|\+1[2-9][0-9]{9}'
+  SECRET_RE='pho_sk_[A-Za-z0-9]{16,}|pho_ask_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35}|sk-ant-[A-Za-z0-9_-]{20,}|whsec_[A-Za-z0-9+/=]{16,}|postgres(ql)?://[^ :/]+:[^ @]+@|\+1[2-9][0-9]{9}|[A-Z][A-Z0-9_]*(API_KEY|SECRET|TOKEN|PASSWORD|PASSCODE)[^A-Za-z0-9_ ]? *[:=] *[^A-Za-z0-9 ]?[A-Za-z0-9._~+/-]{20,}'
   git diff --cached -- . ':!.env.example' | grep -nE "$SECRET_RE"   # staged changes; exit 1 = clean
   git log -p origin/main..HEAD -- . ':!.env.example' | grep -nE "$SECRET_RE"   # unpushed commits; exit 1 = clean
   git ls-files | grep -E '^\.env' | grep -v '^\.env\.example$'      # must print nothing
   ```
-  The regex matches key *bodies*, not prefixes mentioned in prose. This block is the **only** canonical scan; other docs cite it rather than restating it. Before the first push (no `origin/main` yet), scan the whole history with `git log -p -- . ':!.env.example'`. Synthetic handles in source, tests and fixtures are `@example.invalid` emails, never phone-number literals.
+  The regex matches key *bodies*, not prefixes mentioned in prose. The last branch is shape-independent: any `NAME_API_KEY`, `_SECRET`, `_TOKEN`, `_PASSWORD` or `_PASSCODE` assigned a value of 20 or more key characters, so a key whose format we do not know (for example the newer Google key shape) is still caught. A few test fixtures hold obviously fake values and will match (`tests/contracts/env.test.ts`, `tests/contracts/session.test.ts`, `tests/intake/doubles/http.ts`, `tests/intake/link-verification.test.tsx`, plus fake `postgres://` and `+1206555…` literals in `tests/`); in a diff or the full-history scan, a hit is acceptable only if it is one of those; anything else is a leak. `tests/contracts/secret-scan.test.ts` reads this regex from this file and checks it. This block is the **only** canonical scan; other docs cite it rather than restating it. Before the first push (no `origin/main` yet), scan the whole history with `git log -p -- . ':!.env.example'`. Synthetic handles in source, tests and fixtures are `@example.invalid` emails, never phone-number literals.
   Run the same grep over the full history (`git log -p`) on Sun 9:00 AM. Teammates' real phone handles live only in env (`DEMO_COURIER_*_HANDLE`, D-024).
 - **Abuse.** The tick and relay routes require the internal secret. Demo routes are disabled unless `ANNONA_DEMO_MODE=1`.
 
