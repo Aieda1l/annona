@@ -1,16 +1,4 @@
-import {
-  notImplementedError,
-  notImplementedResult,
-  type Actor,
-  type DashboardSnapshot,
-  type Deps,
-  type DonationCard,
-  type HandoffStep,
-  type OperatorAction,
-  type Result,
-  type StoreKind,
-  type VerificationLinkView,
-} from "@/contracts";
+import { notImplementedResult, type Deps, type Result, type VerificationLinkView } from "@/contracts";
 
 // Barrel owned by Dev 2 after the baseline (keep exported names stable). CONTRACTS §9.3.
 // Core functions get time from the injected Clock; none accepts a client timestamp.
@@ -55,9 +43,6 @@ export {
 export { storeDonationImage, createDraft, attachAiResult, submitVerification } from "./service/intake";
 export { getDonationCard } from "./service/cards";
 
-
-
-
 // ----- verification links -----
 export async function issueVerificationLink(
   _input: { donation_id: string },
@@ -77,59 +62,9 @@ export async function getVerificationLinkImage(
   return notImplementedResult(OWNER, "getVerificationLinkImage");
 }
 
-// ----- dispatch -----
-
-
-
-
-
-
-
-
-
-
-
-// ----- messaging identities and logs -----
-
-
-
-
-
-
-
-
-
-
-// ----- handoff, operator, read models -----
-export async function recordHandoff(
-  _input: { actor: Actor; donation_id: string; step: HandoffStep; simulated: true },
-  _deps?: Deps,
-): Promise<Result<DonationCard>> {
-  return notImplementedResult(OWNER, "recordHandoff");
-}
-
-export async function operatorAction(
-  _input: { actor: Actor; donation_id: string; action: OperatorAction; note: string },
-  _deps?: Deps,
-): Promise<Result<DonationCard>> {
-  return notImplementedResult(OWNER, "operatorAction");
-}
-
-
-export async function getDashboardSnapshot(_actor: Actor, _deps?: Deps): Promise<Result<DashboardSnapshot>> {
-  return notImplementedResult(OWNER, "getDashboardSnapshot");
-}
-
-export async function setLastTick(_at: string, _deps?: Deps): Promise<void> {
-  throw notImplementedError(OWNER, "setLastTick");
-}
-
-export async function getSystemStatus(
-  _deps?: Deps,
-): Promise<{ last_tick_at: string | null; store: StoreKind; policy_version: string }> {
-  throw notImplementedError(OWNER, "getSystemStatus");
-}
-
-export async function resetDemo(_input: { keep_identities: true }, _deps?: Deps): Promise<Result<{ reset_at: string }>> {
-  return notImplementedResult(OWNER, "resetDemo");
-}
+// ----- handoff, operator, read models, demo reset, slice 2(c) -----
+export { recordHandoff } from "./service/handoff";
+export { operatorAction } from "./service/operator";
+export { getDashboardSnapshot } from "./service/dashboard";
+export { setLastTick, getSystemStatus } from "./service/status";
+export { resetDemo } from "./service/demo";
