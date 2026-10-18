@@ -125,7 +125,7 @@ describe("createDraftFromImage", () => {
       const { core, service } = setup(provider);
       const r = await service.createDraftFromImage({ actor: DONOR, image: fixture("pasta_tray"), source: "web_upload" });
       expect(r.ok && r.data.ai_status).toBe("failed");
-      expect(core.attachAiResult.mock.calls[0]![0].result).toEqual({ ok: false, error_code: "PROVIDER_UNAVAILABLE" });
+      expect(core.attachAiResult.mock.calls[0]![0].result).toEqual({ ok: false, error_code: "PROVIDER_UNAVAILABLE:provider_threw" });
       expect(JSON.stringify(core.attachAiResult.mock.calls)).not.toContain("sk-secret");
     });
 
@@ -134,6 +134,17 @@ describe("createDraftFromImage", () => {
       const { core, service } = setup(provider);
       await service.createDraftFromImage({ actor: DONOR, image: fixture("pasta_tray"), source: "web_upload" });
       expect(core.attachAiResult.mock.calls[0]![0].result).toEqual({ ok: false, error_code: "PROVIDER_UNAVAILABLE" });
+    });
+
+    it("keeps the provider's coarse reason next to the code, and drops anything unsafe", async () => {
+      const { provider } = spyVision(async () => err("PROVIDER_UNAVAILABLE", "x", { details: { reason: "timeout.http_429" } }));
+      const { core, service } = setup(provider);
+      await service.createDraftFromImage({ actor: DONOR, image: fixture("pasta_tray"), source: "web_upload" });
+      expect(core.attachAiResult.mock.calls[0]![0].result).toEqual({ ok: false, error_code: "PROVIDER_UNAVAILABLE:timeout.http_429" });
+      const bad = spyVision(async () => err("PROVIDER_UNAVAILABLE", "x", { details: { reason: "sk-secret key=abc def" } }));
+      const second = setup(bad.provider);
+      await second.service.createDraftFromImage({ actor: DONOR, image: fixture("pasta_tray"), source: "web_upload" });
+      expect(second.core.attachAiResult.mock.calls[0]![0].result).toEqual({ ok: false, error_code: "PROVIDER_UNAVAILABLE" });
     });
 
     it("T-IN-05: a misconfigured gemini provider fails closed and never yields fake output", async () => {
@@ -254,7 +265,7 @@ describe("createDraftFromImage", () => {
       const r = await pending;
       expect(r.ok && r.data.ai_status).toBe("failed");
       expect(core.attachAiResult).toHaveBeenCalledTimes(1);
-      expect(core.attachAiResult.mock.calls[0]![0].result).toEqual({ ok: false, error_code: "PROVIDER_UNAVAILABLE" });
+      expect(core.attachAiResult.mock.calls[0]![0].result).toEqual({ ok: false, error_code: "PROVIDER_UNAVAILABLE:service_timeout" });
       resolveLate({ ok: true, data: scene1_vision_suggestion as VisionSuggestion });
       await vi.runAllTimersAsync();
       expect(core.attachAiResult).toHaveBeenCalledTimes(1);

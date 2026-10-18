@@ -109,8 +109,18 @@ function unavailable(message: string, retryable: boolean, details?: Record<strin
 function classify(error: unknown): Result<VisionSuggestion> {
   const raw = (error as { status?: unknown } | null)?.status;
   const status = typeof raw === "number" ? raw : undefined;
-  if (status === undefined) return unavailable("Gemini request failed", true);
-  return unavailable(`Gemini request failed (HTTP ${status})`, status === 429 || status >= 500, { status });
+  if (status === undefined) return unavailable("Gemini request failed", true, { reason: "network" });
+  return unavailable(`Gemini request failed (HTTP ${status})`, status === 429 || status >= 500, { status, reason: `http_${status}` });
+}
+
+/**
+ * A coarse, text-free cause for a stored failure (issue #61): `timeout`, `network`, `http_<status>` or `blocked`.
+ * Never the provider's message or block text, which could carry credentials or the photo's content.
+ */
+function reasonOf(result: Result<VisionSuggestion>): string | null {
+  if (result.ok) return null;
+  const reason = result.error.details?.reason;
+  return typeof reason === "string" && /^[a-z0-9_]{1,24}$/.test(reason) ? reason : null;
 }
 
 export type GeminiAttemptEvent = {
@@ -164,7 +174,7 @@ export function createGeminiProvider(config: {
     const timeout = new Promise<Result<VisionSuggestion>>((resolve) => {
       timer = setTimeout(() => {
         controller.abort();
-        resolve(unavailable("Gemini request timed out", true));
+        resolve(unavailable("Gemini request timed out", true, { reason: "timeout" }));
       }, opts.timeoutMs);
     });
 
@@ -192,7 +202,7 @@ export function createGeminiProvider(config: {
           (blockReason && blockReason !== "BLOCKED_REASON_UNSPECIFIED") ||
           (finishReason && BLOCKED_FINISH_REASONS.has(finishReason))
         ) {
-          return unavailable("Gemini declined to process this photo", false, { reason: blockReason ?? finishReason });
+          return unavailable("Gemini declined to process this photo", false, { reason: "blocked", block_reason: blockReason ?? finishReason });
         }
 
         return parseVisionOutput(response.text ?? "", {
@@ -236,10 +246,13 @@ export function createGeminiProvider(config: {
       };
 
       let result: Result<VisionSuggestion> = unavailable("Gemini request failed", true);
+      const trail: string[] = [];
       for (let attempt = 1; attempt <= Math.max(1, max_attempts); attempt++) {
         const started = Date.now();
         result = await attemptOnce(prompt, image);
         report(attempt, result, started, model, false);
+        const cause = reasonOf(result);
+        if (cause) trail.push(cause);
         const failure = result.ok ? null : result.error;
         // Retry only retryable provider failures (stalls, network, 429, 5xx). Never retry a safety block, a 4xx,
         // or bad model output: re-rolling until the output passes would defeat the fail-closed guard.
@@ -257,6 +270,10 @@ export function createGeminiProvider(config: {
           report(1, second, started, escalationModel, true);
           if (second.ok) return second; // same strict parse and claim-word guard as the first answer
         }
+      }
+      // Every attempt's cause, joined with "." (a stall then a fast 429 reads `timeout.http_429`).
+      if (!result.ok && trail.length > 0) {
+        return { ok: false, error: { ...result.error, details: { ...result.error.details, reason: trail.join(".") } } };
       }
       return result;
     },

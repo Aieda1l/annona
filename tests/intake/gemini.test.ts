@@ -508,3 +508,51 @@ describe("bad model output -> AI_OUTPUT_INVALID", () => {
     if (!r.ok) expect(r.error.code).toBe("AI_OUTPUT_INVALID");
   });
 });
+
+// Issue #61: the stored failure needs a coarse cause so a deployed failure can be diagnosed. The trail covers every
+// attempt, because a stall followed by a fast 429 and a plain stall look the same from the outside.
+describe("failure reason trail (details.reason)", () => {
+  const httpErr = (status: number) => Object.assign(new Error("boom AIza-not-a-real-key"), { status });
+  const reasonOf = (r: Awaited<ReturnType<typeof analyze>>) => (r.ok ? undefined : r.error.details?.reason);
+
+  it.each([
+    [429, "http_429.http_429"],
+    [503, "http_503.http_503"],
+  ])("HTTP %i on both attempts", async (status, trail) => {
+    const { provider } = setup(async () => Promise.reject(httpErr(status)));
+    expect(reasonOf(await analyze(provider))).toBe(trail);
+  });
+
+  it("a non-retryable 403 stops after one attempt", async () => {
+    const { provider } = setup(async () => Promise.reject(httpErr(403)));
+    expect(reasonOf(await analyze(provider))).toBe("http_403");
+  });
+
+  it("a network error has no status", async () => {
+    const { provider } = setup(async () => Promise.reject(new TypeError("fetch failed")));
+    expect(reasonOf(await analyze(provider))).toBe("network.network");
+  });
+
+  it("a safety block is 'blocked', without the provider's block text", async () => {
+    const { provider } = setup(async () => ok({ candidates: [{ finishReason: "SAFETY" }] }));
+    expect(reasonOf(await analyze(provider))).toBe("blocked");
+  });
+
+  it("a stall then a fast 429 keeps both causes", async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const { provider } = setup(() => (++n === 1 ? new Promise(() => {}) : Promise.reject(httpErr(429))), { timeout_ms: 7000 });
+      const pending = analyze(provider);
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(reasonOf(await pending)).toBe("timeout.http_429");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never carries error text", async () => {
+    const { provider } = setup(async () => Promise.reject(httpErr(500)));
+    expect(JSON.stringify(await analyze(provider))).not.toMatch(/AIza|boom/);
+  });
+});
