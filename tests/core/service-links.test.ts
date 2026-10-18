@@ -232,7 +232,7 @@ describe("revocation (section 8.4 rule 8)", () => {
     expect((await linksOf(c.id))[0]!.revoked_at).not.toBeNull();
 
     vi.stubEnv("ANNONA_DEMO_MODE", "1");
-    await resetDemo({ keep_identities: true }, { ...w.deps(at(30)), vision: {} as VisionProvider, messaging: { mode: "fake" } as MessagingGateway });
+    await resetDemo({ keep_identities: true, actor: operatorActor }, { ...w.deps(at(30)), vision: {} as VisionProvider, messaging: { mode: "fake" } as MessagingGateway });
     expect(await w.db.select().from(verification_links)).toHaveLength(0);
   });
 });
@@ -315,4 +315,33 @@ describe("review follow-ups for #41", () => {
     expect(r).toMatchObject({ ok: true, data: { card: { status: "rejected" }, resubmit_token: null } });
     expect(await linksOf(id)).toHaveLength(1);
   });
+  it("the cap counts links that were never used; a consumed link was a legitimate use", async () => {
+    const id = await messagingDraft();
+    const filler = (n: number, over: Partial<typeof verification_links.$inferInsert>) =>
+      Array.from({ length: n }, (_, i) => ({ donation_id: id, donor_id: DONOR, token_hash: sha(`${over.consumed_at ? "used" : "revoked"}-${i}`), issued_at: T0, expires_at: at(30), ...over }));
+    await w.db.insert(verification_links).values(filler(LINK_ISSUE_CAP + 3, { consumed_at: at(1) }));
+    expect((await issueVerificationLink({ donation_id: id }, w.deps())).ok).toBe(true);
+    await w.db.insert(verification_links).values(filler(LINK_ISSUE_CAP, { revoked_at: at(1) }));
+    expect(await issueVerificationLink({ donation_id: id }, w.deps())).toMatchObject({ ok: false, error: { code: "CONFLICT", details: { reason: "link_cap_reached" } } });
+  });
+  it("a donor whose STOP has just committed gets no resubmit link, even though the submit itself succeeds", async () => {
+    const id = await messagingDraft();
+    const link = await linkFor(id);
+    // The first half of a STOP (the identity change) has committed; the link revocation has not run yet.
+    await w.db.update(messaging_identities).set({ status: "opted_out", opted_out_at: at(0.5) }).where(eq(messaging_identities.id, IDENTITY.donor));
+    const r = await submit(link.token, id, reviewFacts());
+    expect(r).toMatchObject({ ok: true, data: { card: { status: "needs_review" }, resubmit_token: null } });
+    expect((await linksOf(id)).filter((l) => l.revoked_at === null && l.consumed_at === null)).toHaveLength(0);
+  });
+  it("a bad token never reaches the donation row: refusals come from the read-only check and leave the donation untouched", async () => {
+    const id = await messagingDraft();
+    const link = await linkFor(id);
+    const before = (await w.db.select().from(donations).where(eq(donations.id, id)))[0]!;
+    for (const token of ["C".repeat(43), "short", link.token.slice(1) + "x"]) expect(await submit(token, id)).toMatchObject(refused);
+    const other = await messagingDraft();
+    expect(await submit(link.token, other)).toMatchObject(refused); // a link for X cannot submit Y
+    expect((await w.db.select().from(donations).where(eq(donations.id, id)))[0]).toEqual(before);
+    expect((await linksOf(id))[0]!.consumed_at).toBeNull();
+  });
 });
+

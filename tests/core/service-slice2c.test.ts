@@ -403,7 +403,7 @@ describe("resetDemo", () => {
   it("is refused outside demo mode and deletes nothing", async () => {
     vi.stubEnv("ANNONA_DEMO_MODE", "");
     const id = await makeEligibleDonation(w);
-    expect(await resetDemo({ keep_identities: true }, deps())).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
+    expect(await resetDemo({ keep_identities: true, actor: operatorActor }, deps())).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
     expect(await donationRow(id)).toBeDefined();
   });
   it("deletes donations, offers and links; keeps joined identities and the audit history; frees short codes; re-seeds windows", async () => {
@@ -415,7 +415,7 @@ describe("resetDemo", () => {
     const imagesBefore = (await w.db.select().from(donation_images)).length;
 
     const later = at(600);
-    expect(await resetDemo({ keep_identities: true }, deps(later))).toEqual({ ok: true, data: { reset_at: later.toISOString() } });
+    expect(await resetDemo({ keep_identities: true, actor: operatorActor }, deps(later))).toEqual({ ok: true, data: { reset_at: later.toISOString() } });
     expect(await w.db.select().from(donations)).toHaveLength(0);
     expect(await w.db.select().from(offers)).toHaveLength(0);
     expect(await w.db.select().from(verification_links)).toHaveLength(0);
@@ -438,25 +438,42 @@ describe("resetDemo", () => {
     await optOutIdentity({ identity_id: IDENTITY.courier_a }, w.deps(at(1)));
     await optOutIdentity({ identity_id: IDENTITY.courier_b }, w.deps(at(1)));
     await w.db.update(messaging_identities).set({ provider: "photon", handle: "+12065550123" }).where(eq(messaging_identities.id, IDENTITY.courier_b));
-    const r = await resetDemo({ keep_identities: true }, deps(at(600)));
+    const r = await resetDemo({ keep_identities: true, actor: operatorActor }, deps(at(600)));
     expect(r.ok).toBe(true);
     const rows = await w.db.select().from(messaging_identities);
     expect(rows.find((i) => i.id === IDENTITY.courier_a)).toMatchObject({ status: "joined", opted_out_at: null });
     expect(rows.find((i) => i.id === IDENTITY.courier_b)).toMatchObject({ status: "opted_out" });
     const event = (await w.db.select().from(audit_events)).find((e) => e.type === "demo.reset")!;
-    expect(event.data).toMatchObject({ deleted: { simulated_identities_restored: 1, real_opt_outs_kept: 1 } });
+    expect(event.data).toMatchObject({ deleted: { simulated_identities_restored: 1, opt_outs_kept: 1 } });
+    // Put the seeded identity back so later tests start from the seed.
+    await w.db.update(messaging_identities).set({ provider: "fake", handle: "courier-b@example.invalid", status: "joined", opted_out_at: null }).where(eq(messaging_identities.id, IDENTITY.courier_b));
   });
   it("keeps the inbound ledger: an old message replayed after the reset is still a duplicate", async () => {
     vi.stubEnv("ANNONA_DEMO_MODE", "1");
     expect((await recordInboundMessage("fake", "fake_before_reset", { text: "YES K7M3" }, w.deps(at(1)))).status).toBe("first");
     // A finished message is a duplicate for good; an unfinished one is reclaimed after 30 s (CONTRACTS section 8.2).
     await saveInboundResult({ provider: "fake", provider_message_id: "fake_before_reset", result: { outcome: "rejected", command: "accept", reply: null } }, w.deps(at(1)));
-    await resetDemo({ keep_identities: true }, deps(at(600)));
+    await resetDemo({ keep_identities: true, actor: operatorActor }, deps(at(600)));
     expect((await recordInboundMessage("fake", "fake_before_reset", { text: "YES K7M3" }, w.deps(at(601)))).status).toBe("duplicate");
   });
-  it("a caller that names its actor must be an operator; the check runs before anything is deleted", async () => {
+  it("a fake-provider identity with a real-looking handle is not re-joined by the reset", async () => {
+    vi.stubEnv("ANNONA_DEMO_MODE", "1");
+    // Identity rows are not reset between tests, so set both explicitly.
+    await w.db.update(messaging_identities).set({ provider: "fake", handle: "courier-b@example.invalid" }).where(eq(messaging_identities.id, IDENTITY.courier_b));
+    await optOutIdentity({ identity_id: IDENTITY.courier_a }, w.deps(at(1)));
+    await optOutIdentity({ identity_id: IDENTITY.courier_b }, w.deps(at(1)));
+    await w.db.update(messaging_identities).set({ handle: "+12065550123" }).where(eq(messaging_identities.id, IDENTITY.courier_a));
+    expect((await resetDemo({ keep_identities: true, actor: operatorActor }, deps(at(600)))).ok).toBe(true);
+    const rows = await w.db.select().from(messaging_identities);
+    expect(rows.find((i) => i.id === IDENTITY.courier_a)).toMatchObject({ status: "opted_out" });
+    expect(rows.find((i) => i.id === IDENTITY.courier_b)).toMatchObject({ status: "joined" });
+    const event = (await w.db.select().from(audit_events)).find((e) => e.type === "demo.reset")!;
+    expect(event.data).toMatchObject({ deleted: { simulated_identities_restored: 1, opt_outs_kept: 1 } });
+  });
+  it("a caller must name its actor and it must be an operator; the check runs before anything is deleted", async () => {
     vi.stubEnv("ANNONA_DEMO_MODE", "1");
     const id = await makeEligibleDonation(w);
+    expect(await resetDemo({ keep_identities: true }, deps()), "no actor").toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
     for (const actor of [courierActor(), donorActor(), { role: "system", id: null } as Actor]) {
       expect(await resetDemo({ keep_identities: true, actor }, deps()), actor.role).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
     }

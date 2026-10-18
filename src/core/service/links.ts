@@ -14,9 +14,9 @@ import { runtime, type Q } from "./runtime";
 
 export const LINK_TTL_MS = 30 * 60_000;
 /**
- * At most this many links (live, used or revoked, resubmit links included) exist for one donation when
- * issueVerificationLink is called. Each call revokes the previous live link, so without a cap a repeated caller could
- * keep invalidating a donor's link.
+ * At most this many never-used links (the live one plus revoked ones, resubmit links included) exist for one donation
+ * when issueVerificationLink is called. Each call revokes the previous live link, so without a cap a repeated caller
+ * could keep invalidating a donor's link. A link that was consumed was a legitimate use and does not count.
  */
 export const LINK_ISSUE_CAP = 10;
 /** Every refusal looks the same to the caller (section 8.4 rule 6); the reason goes only to the audit event. */
@@ -76,12 +76,15 @@ export async function issueVerificationLink(input: { donation_id: string }, deps
     const [identity] = await tx
       .select({ id: messaging_identities.id })
       .from(messaging_identities)
-      .where(and(eq(messaging_identities.actor_role, "donor"), eq(messaging_identities.actor_id, row.donor_id), eq(messaging_identities.status, "joined")));
+      .where(and(eq(messaging_identities.actor_role, "donor"), eq(messaging_identities.actor_id, row.donor_id), eq(messaging_identities.status, "joined")))
+      // Shared lock until commit: a donor STOP (which updates this row first) waits for this link to exist and then
+      // revokes it, or commits first and makes this check fail. Either way no link outlives a STOP.
+      .for("share");
     if (!identity) return err("CONFLICT", "The donor has not joined messaging.", { details: { reason: "donor_not_joined" } });
     // Only a donor who may still create drafts (S-01: approved or pending) gets a new link.
     const [donor] = await tx.select({ status: donors.approval_status }).from(donors).where(eq(donors.id, row.donor_id));
     if (!donor || (donor.status !== "approved" && donor.status !== "pending")) return err("CONFLICT", "This donor cannot receive a verification link.", { details: { reason: "donor_not_allowed" } });
-    const [{ n } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(verification_links).where(eq(verification_links.donation_id, row.id));
+    const [{ n } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(verification_links).where(and(eq(verification_links.donation_id, row.id), isNull(verification_links.consumed_at)));
     if (Number(n) >= LINK_ISSUE_CAP) return err("CONFLICT", "Too many links have been issued for this donation.", { details: { reason: "link_cap_reached" } });
     return ok(await issueLinkTx(tx, row, now));
   });
@@ -170,6 +173,21 @@ export async function consumeLinkTx(q: Q, token: string, donation_id: string, no
     )
     .returning();
   return row ?? null;
+}
+
+/**
+ * A read-only check of a token against one donation, with no lock. submitVerification runs it before it locks the donation,
+ * so a caller with a valid donation id and a bad token cannot hold the donation row (an unauthenticated caller must not be
+ * able to stall claims). null means the link looks usable; the conditional UPDATE in consumeLinkTx stays authoritative.
+ */
+export async function linkProblem(q: Q, token: string, donation_id: string, now: Date): Promise<{ reason: LinkRefusal; link?: { id: string; donation_id: string } } | null> {
+  const [link] = await q.select().from(verification_links).where(eq(verification_links.token_hash, hashToken(token)));
+  if (!link) return { reason: "unknown" };
+  if (link.donation_id !== donation_id) return { reason: "donation_mismatch", link };
+  if (link.consumed_at) return { reason: "consumed", link };
+  if (link.revoked_at) return { reason: "revoked", link };
+  if (link.expires_at.getTime() <= now.getTime()) return { reason: "expired", link };
+  return null;
 }
 
 /** Why consumeLinkTx found nothing, for the audit event only. */

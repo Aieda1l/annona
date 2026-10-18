@@ -130,7 +130,9 @@ describe("claim audit and the donor's view of the timeline", () => {
     const id = await claimed(bad);
     const ev = (await w.db.select().from(audit_events).where(eq(audit_events.donation_id, id))).find((e) => e.type === "claim.accepted")!;
     expect((ev.data as { source_event_id: unknown }).source_event_id).toBeNull();
-    expect(JSON.stringify(ev)).not.toContain("555");
+    // Only the phone digits count: the row also holds random UUIDs and timestamps that can contain "555" by chance (#59).
+    expect(JSON.stringify(ev.data)).not.toMatch(/206\s?555\s?0100|2065550100/);
+    expect(JSON.stringify(ev)).not.toContain("2065550100");
   });
   it("a plain source_event_id is kept", async () => {
     const id = await claimed("evt-123_abc");
