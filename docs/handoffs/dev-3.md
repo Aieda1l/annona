@@ -286,3 +286,23 @@ Stop the worker (`Ctrl-C`) at once if any text goes out twice, a reply carries a
 ### Teardown after the event
 
 Revoke or delete the event's Gemini key in Google AI Studio and the Photon project key (Photon dashboard), delete the Keychain items (`photon-beta-annona`, `gemini-annona`), delete the Vercel project's environment variables, and remove the laptop's `.env.local`.
+
+## 2026-10-18 00:50 PDT — First live run on the deployed stack: JOIN, photo, checklist, offer, expiry, claim, late and repeated YES worked; the STOP confirmation was dropped (fixed)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / fix/messaging-stop-ack-route / see the commit that adds this entry
+DELIVERED: REAL run on https://annona-mauve.vercel.app (Vercel + Supabase, real Photon, real Gemini), worker on the captain's laptop, three opted-in phones. All times UTC.
+ - JOIN x3 at 07:36:37 to 07:36:46, one reply each within 1 to 3 s.
+ - Donor photo 07:38:04; draft_ready reply delivered 07:38:13 (9 s) with Gemini's description and the https checklist link; the donor completed the checklist on the phone (no Wi-Fi problem any more).
+ - Offer 93AK to the first courier 07:40:48, no reply inside the 60 s demo window, so it expired; the next tick offered CPCW to the other courier at 07:41:51.
+ - YES CPCW 07:42:06: claimed, details delivered 07:42:08. The first courier's late YES 93AK at 07:42:15 got "Another courier already claimed this pickup. No assignment was made." with no address. A repeated YES CPCW at 07:43:02 got "You already claimed this pickup" with the same details.
+ - Every inbound text got exactly one reply, nothing was sent twice, no address went to anyone who had not claimed.
+ - PROBLEM FOUND: two STOP texts (07:43:15, 07:43:16) were received by Photon and applied, but no confirmation was sent. Vercel showed the inbound route answering 200, so the app had handled them. Cause: createMessagingGateway's route lookup (coreRouteLookup) returned a route only for a JOINED identity, but the stop_ack is sent after the identity has opted out, so the real gateway found no route and dropped it. outbound.ts already allowed a stop_ack to an opted-out identity and the fake gateway has no route lookup, so no test caught it.
+ - FIX: lookupRoute now receives the message purpose; createCoreRouteLookup lets an opted-out identity be reached for stop_ack only, and nothing else. tests/messaging/stop-ack.test.ts covers the route rules and a real-gateway STOP end to end (stubbed network); breaking the fix makes two of its tests fail.
+ - Not a bug: after a STOP the phone is ignored until it texts JOIN again, so a later HELP or YES from it gets no reply (by design).
+EVIDENCE (commands, passed/failed, real vs mock): the run above is REAL (Photon message list, Vercel log). The fix is verified with a stubbed Photon network on the PGlite world, NOT yet against real Photon: after the fix is deployed, one real STOP must be repeated to see the confirmation arrive. Gates: typecheck 0, lint 0 errors (1 existing warning), test 99 files passed / 2 skipped, 2549 passed / 33 skipped, build ok.
+CONTRACT CHANGES OR REQUESTS: none.
+BLOCKERS + SAFETY RISKS: until the fix is merged and Vercel redeploys, a STOP is applied but the person gets no confirmation. The two phones that texted STOP are opted out and must text JOIN again to take part. First-claim-wins on the deployed Postgres rests on Dev 2's T-CO-17 run; this run is one claim, not a race.
+INTEGRATION STEPS: merge, let Vercel redeploy, then repeat one STOP.
+NEXT SMALLEST ACTION: repeat the STOP on the deployed app after the redeploy and record the Photon message id of the confirmation.
+```
