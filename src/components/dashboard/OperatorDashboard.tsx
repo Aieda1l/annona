@@ -56,23 +56,24 @@ export function OperatorDashboard({
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold text-slate-900">Operator dashboard</h1>
-        <p className="text-sm text-slate-700">
+      <header className="annona-hero space-y-1 rounded-2xl px-6 py-5 shadow-sm">
+        <p className="annona-eyebrow text-xs font-semibold tracking-widest uppercase">Annona · Operator</p>
+        <h1 className="text-3xl font-bold">Operator dashboard</h1>
+        <p className="text-sm text-[#cfe3c9]">
           {sourceLabel} · snapshot {formatPacific(snapshot.generated_at)} · policy {snapshot.modes.policy_version}.
           &quot;Eligible&quot; means eligible for dispatch under the prototype operator policy, based on
           donor-attested records.
         </p>
         {snapshot.modes.messaging.mode === "fake" && (
           <p className="text-sm">
-            <a href="/operator/phone" className="font-medium underline">
+            <a href="/operator/phone" className="font-medium text-[#8dbf7a] underline">
               Open the simulated phone
             </a>{" "}
             (fake messaging only)
           </p>
         )}
         {!onAction && (
-          <p className="text-sm font-medium text-slate-900">Read-only: operator actions are not wired to the server yet.</p>
+          <p className="text-sm font-medium text-[#eef4ec]">Read-only: operator actions are not wired to the server yet.</p>
         )}
       </header>
       {demo && (
@@ -114,7 +115,7 @@ export function OperatorDashboard({
         }
       />
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-900">Messaging identities</h2>
+        <h2 className="text-xl font-bold">Messaging identities</h2>
         <IdentityList identities={snapshot.identities} />
       </section>
     </div>

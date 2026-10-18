@@ -9,7 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: Cambria, "Iowan Old Style", Georgia, serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,38 +49,44 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Annona deck palette: forest 24523A, leaf 2F7D4F, mint 8DBF7A, pale EEF4EC, apricot E8833A, slate 5E7A68 */
+  --annona-ink: #17301f;
+  --annona-forest: #24523a;
+  --annona-leaf: #2f7d4f;
+  --annona-mint: #8dbf7a;
+  --annona-apricot: #e8833a;
+  --background: #eef4ec;
+  --foreground: #17301f;
+  --card: #ffffff;
+  --card-foreground: #17301f;
+  --popover: #ffffff;
+  --popover-foreground: #17301f;
+  --primary: #2f7d4f;
+  --primary-foreground: #ffffff;
+  --secondary: #dfeadb;
+  --secondary-foreground: #24523a;
+  --muted: #e3ede0;
+  --muted-foreground: #4a6454;
+  --accent: #dfeadb;
+  --accent-foreground: #24523a;
+  --destructive: #b5413b;
+  --border: #c9dac6;
+  --input: #b9cfb6;
+  --ring: #2f7d4f;
+  --chart-1: #8dbf7a;
+  --chart-2: #2f7d4f;
+  --chart-3: #24523a;
+  --chart-4: #e8833a;
+  --chart-5: #17301f;
+  --radius: 0.875rem;
+  --sidebar: #17301f;
+  --sidebar-foreground: #eef4ec;
+  --sidebar-primary: #8dbf7a;
+  --sidebar-primary-foreground: #17301f;
+  --sidebar-accent: #24523a;
+  --sidebar-accent-foreground: #eef4ec;
+  --sidebar-border: #24523a;
+  --sidebar-ring: #8dbf7a;
 }
 
 .dark {
@@ -127,4 +133,16 @@
   html {
     @apply font-sans;
   }
+  h1, h2, h3 {
+    font-family: var(--font-heading);
+    color: var(--annona-forest);
+    letter-spacing: -0.01em;
+  }
+  /* Dark forest hero bands (deck title slides): headings flip to cream. */
+  .annona-hero {
+    background: linear-gradient(135deg, var(--annona-ink), var(--annona-forest));
+    color: #eef4ec;
+  }
+  .annona-hero h1, .annona-hero h2 { color: #fff; }
+  .annona-hero .annona-eyebrow { color: var(--annona-mint); }
 }

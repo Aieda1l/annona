@@ -28,7 +28,7 @@ export function DonationCard({
     <article
       data-testid="donation-card"
       data-donation-id={card.id}
-      className="space-y-3 rounded-lg border border-slate-300 bg-white p-4 text-slate-900"
+      className="space-y-3 rounded-xl border border-[#c9dac6] border-l-4 border-l-[#2f7d4f] bg-white p-4 text-[#17301f] shadow-sm"
     >
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div>
