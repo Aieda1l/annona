@@ -9,10 +9,9 @@
 | Project name | Annona |
 | Tagline | Surplus food, coordinated with a human in the loop: AI describes, people verify, the backend enforces. |
 | Title track | Community Kitchen (exactly one) |
-| Other tracks to declare now | SideShift, DubHacks NEXT |
-| Add later only with evidence (section 9) | Photon, MLH Best Use of Gemini API, VEYZL, MLH Commit Fellowship (only if the team will continue) |
+| Other tracks | SideShift, DubHacks NEXT, Photon, MLH Best Use of Gemini API, MLH Commit Fellowship (evidence in section 9). VEYZL is not claimed (D-041). |
 | Repo | https://github.com/Aieda1l/annona (public) |
-| Live demo URL | TODO(captain): deployed URL, or "runs locally; see video" |
+| Live demo URL | https://annona-mauve.vercel.app (synthetic demo data; the banner shows which providers are real) |
 | Video | TODO(captain): demo video link (mandatory) |
 
 ## 2. Inspiration
@@ -57,17 +56,17 @@ Commercial kitchens, caterers and campus dining halls end events with surplus pr
 ## 7. What we are proud of
 
 - The refusal scene: an appetizing tray that the system correctly sends to human review with four plain-language reasons.
-- The review culture: every lane's code is reviewed by another lane, and cross-lane review found real defects early (for example a possible phone-handle leak in CLI error output, over-eager opt-out matching, and a missing-cutoff gap). TODO(captain): before submitting, state only the ones that are merged and fixed on `main`, with the PR numbers.
-- TODO(captain): add one verified number only (for example the final automated test count from the last green run on `main`, with the commit).
+- The review culture: every lane's code is reviewed by another lane, and review plus live testing found real defects that are fixed on `main`: Gemini timeouts on the deployed site (#63), a STOP that was applied but never confirmed to the phone, found by the live Photon run (#73), and a race between STOP and a donor submitting the checklist (#69).
+- One verified number: `pnpm test` on `main` at `be8348e` passed 2580 tests (33 skipped, 2 files skipped: the gated real-Postgres tests) with exit 0, run on 2026-10-18.
 
 ## 8. What is real, simulated, and not yet proven
 
 | Capability | Status at submission |
 |---|---|
-| Photo to editable draft | TODO(fill from PROJECT_STATE): real Gemini call, or labeled fake |
-| Donor checklist and deterministic gate | TODO: verified on integrated `main`? |
-| Offer by message and first-claim-wins | TODO: real Photon round trip with message IDs, or labeled simulated phone |
-| Operator dashboard reflects server state | TODO: verified on integrated `main`? |
+| Photo to editable draft | **Real Gemini** on the deployed site (`/api/health` reports vision `real`, `gemini-3.5-flash-lite`; a real draft was observed with the `AI: REAL` label). The deterministic fake exists for tests and is labeled when selected. |
+| Donor checklist and deterministic gate | Covered by automated tests on `main` (see the test count above) and exercised in the live run. |
+| Offer by message and first-claim-wins | **Real Photon 2.0 Beta (iMessage)** on the deployed stack: one live run with three opted-in phones, offer, expiry and re-offer, first claim wins, late and repeated replies handled. Provider message IDs are in `docs/handoffs/dev-3-photon-evidence.md`, read back from Photon's own message list by Dev 3 (reported by Dev 3, not independently reproduced). |
+| Operator dashboard reflects server state | Reads server state; exercised in the live run and covered by UI tests. |
 | Pickup and delivery | **Always simulated and labeled** |
 | Claim race safety | **Not claimed.** Concurrency evidence on real Postgres (T-CO-17) is required before we say it. |
 | Food safety, allergen status, regulatory compliance | **Never claimed.** |
@@ -76,13 +75,13 @@ Commercial kitchens, caterers and campus dining halls end events with surplus pr
 
 | Track | What the judges need | Evidence in hand |
 |---|---|---|
-| Community Kitchen (title) | A working flow for community food coordination | TODO: demo video + scenes 1 to 3 passing |
+| Community Kitchen (title) | A working flow for community food coordination | Live demo at the URL above plus the demo video (TODO(captain): link) |
 | SideShift | No integration required | Declared now |
 | DubHacks NEXT | Declared now | Declared now |
-| Photon | Genuine Photon 2.0 usage: a real offer/claim round trip with provider message IDs and phone screenshots (T-MS-13, T-E2E-04) | TODO: fill or drop the track |
-| MLH Best Use of Gemini API | A real Gemini call visible in the product (`ai_suggestion.mode = "real"`) | TODO: fill or drop the track |
+| Photon | Genuine Photon 2.0 usage: a real offer/claim round trip with provider message IDs and phone screenshots (T-MS-13, T-E2E-04) | Real offer/claim round trip with Photon message IDs: `docs/handoffs/dev-3-photon-evidence.md` (reported by Dev 3). Not claimed: delivery to anyone but the opted-in teammates' phones. |
+| MLH Best Use of Gemini API | A real Gemini call visible in the product (`ai_suggestion.mode = "real"`) | Real Gemini call on the deployed site, labeled `AI: REAL`; `/api/health` shows `gemini` / `real` / `ok`. |
 | VEYZL | An audit of a PR, and proof the finding changed code | **DROPPED (D-041).** No audit ran; do not list or mention VEYZL as a track or a result |
-| MLH Commit Fellowship | Working prototype, Devpost opt-in, supplemental form, intent to continue | TODO: only if the team will continue |
+| MLH Commit Fellowship | Working prototype, Devpost opt-in, supplemental form, intent to continue | Claimed: working prototype on the live URL; the team intends to continue (partner and food-safety review next, section 11). Devpost opt-in and the supplemental form are done in the Devpost form. |
 
 Rule from the team (D-001): a sponsored track is dropped, not swapped, if its evidence is missing by Sunday 8:00 AM.
 
@@ -103,14 +102,16 @@ TypeScript, Next.js, React, Tailwind CSS, shadcn/ui, Zod, Drizzle ORM, PostgreSQ
 
 ## 13. Team and disclosures
 
-| Role | Name | Discord handle | Eligible (18+, college student)? |
-|---|---|---|---|
-| Vision and donor intake | Colin | TODO(Colin) | TODO |
-| Safety gate, matching, state, database | Rui | TODO(Rui) | TODO |
-| Messaging and scheduled offers | Ronnie | TODO(Ronnie) | TODO |
-| Dashboard, deployment, integration | Cyrus | TODO(Cyrus) | TODO |
+Discord handles and eligibility are entered in the Devpost project, not in this public repo.
 
-**AI assistance disclosure.** We used Claude Code (Anthropic) as a coding assistant on every branch, plus AI code-review agents, and Gemini inside the product. Humans reviewed and merged every change. Event rule check: TODO(captain): confirm with organizers that disclosed AI coding assistance is allowed (R-DH-12).
+| Role | Name |
+|---|---|
+| Vision and donor intake | Colin |
+| Safety gate, matching, state, database | Rui |
+| Messaging and scheduled offers | Ronnie |
+| Dashboard, deployment, integration | Cyrus |
+
+**AI assistance disclosure.** We used Claude Code (Anthropic) as a coding assistant on every branch, plus AI code-review agents, and Gemini inside the product. Humans reviewed and merged every change. The Annona logo was generated with ChatGPT.
 
 **Data.** Every donor, recipient and courier in the demo is synthetic. Teammates who play couriers or donors on real phones opted in, and their handles are never committed.
 
