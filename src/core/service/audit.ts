@@ -25,9 +25,10 @@ const TIMESTAMP = /\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)?(?:\.\d+)?
  * A provider id such as `pho_msg_01m5512345678e7f6g5h4j3km2` (prefix_kind_ then 16-40 lowercase base32/hex characters).
  * Real Photon ids are random, so about 1 in 250 contains a 7-digit run that the phone-number rule below would refuse,
  * and a refused inbound id fails the same message forever (docs/requests/messaging-audit-provider-ids.md). A phone
- * number never has this shape: it has no letters and no underscores.
+ * number never has this shape: it has no letters and no underscores, and the body must hold at least one letter so
+ * that a prefixed all-digit string (`pho_msg_14155551234567890`) is still refused.
  */
-const PROVIDER_ID = /^[a-z]{2,6}_[a-z]{2,8}_[0-9a-z]{16,40}$/;
+const PROVIDER_ID = /^[a-z]{2,6}_[a-z]{2,8}_(?=[0-9]*[a-z])[0-9a-z]{16,40}$/;
 
 /** Long strings, anything with an @, and long digit runs (phone numbers) are not audit material; ids and timestamps are. */
 const valueSuspicious = (value: string) => {

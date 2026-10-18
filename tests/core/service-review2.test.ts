@@ -91,8 +91,8 @@ describe("real Photon ids with a long digit run pass the audit guard (docs/reque
   const write = (data: Record<string, unknown>) => writeAudit(w.db, { at: T0, type: "demo.reset", actor: { role: "system", id: null }, data });
 
   it("writeAudit accepts provider ids, still refuses phone numbers and look-alikes", async () => {
-    for (const id of [DIGIT_RUN_ID, "pho_att_0123456789012345678901", "pho_evt_9999999999999999999999zz"]) await expect(write({ provider_message_id: id }), id).resolves.toBeUndefined();
-    for (const bad of ["12065550100", "pho_msg_+00000000000xxxxxxxxx", "PHO_MSG_01M5512345678E7F6G5H4J3KM2", "pho_msg_short1234567", "x_msg_01m5512345678e7f6g5h4j3km2 2065550100"]) {
+    for (const id of [DIGIT_RUN_ID, "pho_att_0123456789012345678901a2", "pho_evt_9999999999999999999999zz"]) await expect(write({ provider_message_id: id }), id).resolves.toBeUndefined();
+    for (const bad of ["12065550100", "pho_msg_+00000000000xxxxxxxxx", "PHO_MSG_01M5512345678E7F6G5H4J3KM2", "pho_msg_short1234567", "x_msg_01m5512345678e7f6g5h4j3km2 2065550100", "pho_msg_14155551234567890", "pho_msg_12345678901234567890123456"]) {
       await expect(write({ provider_message_id: bad }), bad).rejects.toThrow();
     }
   });
