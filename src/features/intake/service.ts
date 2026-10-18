@@ -34,12 +34,12 @@ export const VISION_TIMEOUT_MS = 15_000;
 /**
  * Web and fixture drafts have no source_ref (CONTRACTS §3.2), so a double click or a replayed request would run vision
  * (up to three paid calls: retry, then escalation) once per request. Requests with the same donor and photo bytes share
- * the in-flight result, and a draft whose AI step succeeded is reused for this long. Failures are never remembered.
+ * the in-flight result only. Nothing is reused once it settles: a stored card would go stale after the donor verifies
+ * or the operator resets the demo, and a repeat then shows the wrong state.
  */
-export const DEDUPE_TTL_MS = 10_000;
 const DEDUPE_MAX_ENTRIES = 200;
 
-export type DedupeCache = Map<string, { result: Promise<Result<DonationCard>>; settled_at: number | null }>;
+export type DedupeCache = Map<string, Promise<Result<DonationCard>>>;
 export const createDedupeCache = (): DedupeCache => new Map();
 
 export type CreateDraftInput = {
@@ -87,36 +87,25 @@ export function createIntakeService(config: {
   vision: VisionProvider;
   timeout_ms?: number;
   dedupe?: DedupeCache;
-  now?: () => number;
 }) {
-  const { core, vision, timeout_ms = VISION_TIMEOUT_MS, dedupe = createDedupeCache(), now = Date.now } = config;
+  const { core, vision, timeout_ms = VISION_TIMEOUT_MS, dedupe = createDedupeCache() } = config;
 
   function createDraftFromImage(input: CreateDraftInput, deps?: Deps): Promise<Result<DonationCard>> {
     // Messaging drafts are idempotent in core on source_ref; the other sources are not, so they are shared here.
     if (input.source === "messaging" || !input.actor.id) return createDraftOnce(input, deps);
 
     const key = `${input.actor.id}:${input.source}:${createHash("sha256").update(input.image.bytes_base64).digest("hex")}`;
-    const t = now();
-    for (const [k, v] of dedupe) if (v.settled_at !== null && t - v.settled_at > DEDUPE_TTL_MS) dedupe.delete(k);
     const hit = dedupe.get(key);
-    if (hit) return hit.result;
+    if (hit) return hit;
     if (dedupe.size >= DEDUPE_MAX_ENTRIES) dedupe.delete(dedupe.keys().next().value!);
 
-    const entry: { result: Promise<Result<DonationCard>>; settled_at: number | null } = {
-      result: createDraftOnce(input, deps),
-      settled_at: null,
+    const result = createDraftOnce(input, deps);
+    dedupe.set(key, result);
+    const release = () => {
+      if (dedupe.get(key) === result) dedupe.delete(key);
     };
-    dedupe.set(key, entry);
-    void entry.result.then(
-      (r) => {
-        if (r.ok && r.data.ai_status === "succeeded") entry.settled_at = now();
-        else if (dedupe.get(key) === entry) dedupe.delete(key);
-      },
-      () => {
-        if (dedupe.get(key) === entry) dedupe.delete(key);
-      },
-    );
-    return entry.result;
+    void result.then(release, release);
+    return result;
   }
 
   async function createDraftOnce(input: CreateDraftInput, deps?: Deps): Promise<Result<DonationCard>> {
