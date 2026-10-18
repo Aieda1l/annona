@@ -1,10 +1,19 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 type ActorOption = { role: string; actor_id: string; display_name: string };
 
+/** The page each role works in. Couriers and recipients act by message, so they have no web page. */
+const HOME_BY_ROLE: Record<string, { href: string; label: string } | undefined> = {
+  operator: { href: "/operator", label: "Open the operator dashboard" },
+  donor: { href: "/donor/new", label: "Start a new donation" },
+};
+
 export function ProfilePicker() {
+  const router = useRouter();
   const [actors, setActors] = useState<ActorOption[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actorId, setActorId] = useState("");
@@ -28,8 +37,13 @@ export function ProfilePicker() {
         body: JSON.stringify({ actor_id: actorId, passcode }),
       });
       const b = await res.json().catch(() => null);
-      if (b?.ok) setSignedIn(b.data.actor.role);
-      else setError(b?.error?.message ?? `Sign-in failed (HTTP ${res.status})`);
+      if (b?.ok) {
+        const role: string = b.data.actor.role;
+        setSignedIn(role);
+        // Navigation only: the server decided who is signed in, and every page re-checks the session on its own API calls.
+        const home = HOME_BY_ROLE[role];
+        if (home) router.push(home.href);
+      } else setError(b?.error?.message ?? `Sign-in failed (HTTP ${res.status})`);
     } catch {
       setError("Sign-in failed (server unreachable)");
     }
@@ -69,7 +83,18 @@ export function ProfilePicker() {
       <button type="submit" className="rounded border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-medium text-white">
         Sign in
       </button>
-      {signedIn && <p role="status">Signed in as {signedIn}.</p>}
+      {signedIn && (
+        <div role="status" className="space-y-1 text-sm">
+          <p>Signed in as {signedIn}.</p>
+          {HOME_BY_ROLE[signedIn] ? (
+            <Link href={HOME_BY_ROLE[signedIn]!.href} className="font-medium underline">
+              {HOME_BY_ROLE[signedIn]!.label}
+            </Link>
+          ) : (
+            <p>This role acts by message and has no web page here. Sign in as the operator to watch the simulated phone.</p>
+          )}
+        </div>
+      )}
       {error && (
         <p role="alert" className="text-sm text-rose-900">
           {error}
