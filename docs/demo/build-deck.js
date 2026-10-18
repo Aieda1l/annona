@@ -61,36 +61,28 @@ const circle = (s, x, y, d, color, name) => s.addShape(pres.ShapeType.ellipse, {
     check: await icon(fa.FaCheckCircle, "2F7D4F", 128), warn: await icon(fa.FaExclamationTriangle, "E8833A", 128), flask: await icon(fa.FaFlask, "5E7A68", 128),
   };
 
+  // Logo: public/annona-logo.png is opaque white, so crop tight and sit it on a white card.
+  const logoBuf = await sharp(path.join(__dirname, "../../public/annona-logo.png")).extract({ left: 340, top: 170, width: 860, height: 680 }).png().toBuffer();
+  const logoData = "image/png;base64," + logoBuf.toString("base64");
+  const logoCard = (sl, x, y, w) => {
+    const pad = 0.15, iw = w - 2 * pad, ih = iw * (680 / 860);
+    sl.addShape(pres.ShapeType.roundRect, { x, y, w, h: ih + 2 * pad, rectRadius: 0.14, fill: { color: C.background1 }, line: { color: C.background1, width: 0 }, objectName: "logo-card" });
+    sl.addImage({ data: logoData, x: x + pad, y: y + pad, w: iw, h: ih, altText: "Annona logo" });
+  };
+
   // 1 Title
   pres.addSection({ title: "Open" });
   let s = pres.addSlide({ masterName: "DARK", sectionTitle: "Open" });
-  s.addImage({ data: I.leaf, x: 0.7, y: 1.15, w: 0.7, h: 0.7, altText: "Annona leaf mark" });
-  txt(s, "Annona", { x: 0.7, y: 1.95, w: 8, h: 1.1, fontFace: "Cambria", fontSize: 60, bold: true, color: C.background1 });
-  txt(s, "Surplus food, routed responsibly.", { x: 0.7, y: 3.05, w: 8, h: 0.5, fontSize: 24, color: C.accent3 });
+  logoCard(s, 6.4, 1.2, 2.9);
+  txt(s, "Annona", { x: 0.7, y: 1.5, w: 5.4, h: 1.1, fontFace: "Cambria", fontSize: 60, bold: true, color: C.background1 });
+  txt(s, "Surplus food, routed responsibly.", { x: 0.7, y: 2.6, w: 5.4, h: 0.9, fontSize: 24, color: C.accent3, valign: "top" });
   txt(s, "Text a photo. A human verifies. A rule gate decides. First valid YES wins.", { x: 0.7, y: 3.75, w: 7.6, h: 0.6, fontSize: 16, color: C.background2 });
   txt(s, "DubHacks 2026  |  Community Kitchen  |  Synthetic data only", { x: 0.7, y: 4.95, w: 7, h: 0.3, fontSize: 12, color: C.accent5 });
   s.addNotes("Open with the one-line promise. Everything we show today uses synthetic donors, recipients and couriers. 20 seconds.");
 
-  // 2 Problem
-  pres.addSection({ title: "Why" });
-  s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Why" });
-  s.addText("Small lots fall through the cracks", { placeholder: "title" });
-  const probs = [
-    [I.clock, "Minutes, not days", "A licensed kitchen ends an event with refrigerated trays and a short handover window. Scheduled rescue routes may miss last-minute lots."],
-    [I.camera, "A photo is not a fact", "An image cannot show ingredients, hidden allergens, cross-contact or how the food was held."],
-    [I.ban, "\"Keep offering\" breaks down", "An endless offer loop can hand food over after the kitchen's cutoff or to someone who cannot receive it."],
-  ];
-  probs.forEach(([ic, h, b], i) => {
-    const x = 0.6 + i * 3.0;
-    card(s, x, 1.6, 2.8, 3.1, `problem-card-${i + 1}`);
-    circle(s, x + 0.25, 1.85, 0.7, HEX.leaf, `problem-icon-bg-${i + 1}`);
-    s.addImage({ data: ic, x: x + 0.43, y: 2.03, w: 0.34, h: 0.34, altText: h });
-    txt(s, h, { x: x + 0.25, y: 2.7, w: 2.3, h: 0.5, fontFace: "Cambria", fontSize: 18, bold: true, color: C.text2 });
-    txt(s, b, { x: x + 0.25, y: 3.25, w: 2.3, h: 1.35, fontSize: 14, color: C.text1, valign: "top" });
-  });
-  s.addNotes("Frame the problem as small, time-boxed, last-minute lots. Be careful: say 'may miss', this is an assumption we have not validated. 30 seconds.");
+  // (problem slide removed by the team; it lived here)
 
-  // 3 How it works
+  // 2 How it works
   pres.addSection({ title: "Product" });
   s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Product" });
   s.addText("One flow, five steps", { placeholder: "title" });
@@ -161,7 +153,7 @@ const circle = (s, x, y, d, color, name) => s.addShape(pres.ShapeType.ellipse, {
   s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Live demo" });
   s.addText("Scene 3: Responsible refusal", { placeholder: "title" });
   card(s, 0.6, 1.5, 3.4, 3.2, "refusal-input-card");
-  txt(s, "Attractive pasta tray", { x: 0.85, y: 1.7, w: 2.9, h: 0.4, fontFace: "Cambria", fontSize: 18, bold: true, color: C.text2 });
+  txt(s, "Suspicious pasta tray", { x: 0.85, y: 1.7, w: 2.9, h: 0.4, fontFace: "Cambria", fontSize: 18, bold: true, color: C.text2 });
   ["Cooked, then cooled", "Cold holding unknown", "No temperature log", "Sesame unknown"].forEach((t, i) => {
     s.addImage({ data: I.warn, x: 0.85, y: 2.3 + i * 0.5, w: 0.26, h: 0.26, altText: "warning" });
     txt(s, t, { x: 1.25, y: 2.25 + i * 0.5, w: 2.6, h: 0.36, fontSize: 14, color: C.text1, valign: "middle" });
@@ -210,7 +202,7 @@ const circle = (s, x, y, d, color, name) => s.addShape(pres.ShapeType.ellipse, {
 
   // 10 Close
   s = pres.addSlide({ masterName: "DARK", sectionTitle: "Honesty" });
-  s.addImage({ data: I.leaf, x: 0.7, y: 1.2, w: 0.6, h: 0.6, altText: "Annona leaf mark" });
+  logoCard(s, 0.7, 0.4, 1.7);
   txt(s, "Fast when it is safe. Stopped when it is not.", { x: 0.7, y: 2.0, w: 8.4, h: 1.4, fontFace: "Cambria", fontSize: 36, bold: true, color: C.background1, valign: "top" });
   txt(s, "Next: partner and food-safety review before any real deployment.", { x: 0.7, y: 3.6, w: 8.2, h: 0.5, fontSize: 18, color: C.accent3 });
   txt(s, "Thank you. Questions?", { x: 0.7, y: 4.5, w: 6, h: 0.4, fontSize: 16, color: C.background2 });
