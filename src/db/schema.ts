@@ -51,7 +51,7 @@ type Location = { lat: number; lng: number; area_label: string; address_line: st
 const APPROVAL_STATUSES = ["approved", "pending", "suspended"] as const;
 const MESSAGING_PROVIDERS = ["photon", "fake"] as const;
 const DONATION_SOURCES = ["web_upload", "messaging", "fixture"] as const;
-const IDENTITY_ROLES = ["courier", "donor"] as const;
+const IDENTITY_ROLES = ["courier", "donor", "recipient"] as const;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export const donors = pgTable(

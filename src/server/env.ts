@@ -40,6 +40,7 @@ const EnvSchema = z.object({
   DEMO_DONOR_HANDLE: trimmed,
   DEMO_COURIER_A_HANDLE: trimmed,
   DEMO_COURIER_B_HANDLE: trimmed,
+  DEMO_RECIPIENT_HANDLE: trimmed,
 });
 
 export type RawEnv = z.infer<typeof EnvSchema>;
@@ -69,6 +70,7 @@ export type Env = {
   demo_donor_handle: string | undefined;
   demo_courier_a_handle: string | undefined;
   demo_courier_b_handle: string | undefined;
+  demo_recipient_handle: string | undefined;
 };
 
 /** An unset provider variable means `fake`. A real provider with a missing key is passed through (never silently fake). */
@@ -97,5 +99,6 @@ export function getEnv(source: NodeJS.ProcessEnv = process.env): Env {
     demo_donor_handle: raw.DEMO_DONOR_HANDLE,
     demo_courier_a_handle: raw.DEMO_COURIER_A_HANDLE,
     demo_courier_b_handle: raw.DEMO_COURIER_B_HANDLE,
+    demo_recipient_handle: raw.DEMO_RECIPIENT_HANDLE,
   };
 }

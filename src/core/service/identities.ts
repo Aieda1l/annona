@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { err, ok, type Deps, type MessagingIdentity, type Offer, type Result } from "@/contracts";
-import { messaging_identities, offers } from "@/db/schema";
+import { couriers, messaging_identities, offers } from "@/db/schema";
 import { writeAudit } from "./audit";
 import { identityFromRow, isUuid, offerFromRow } from "./map";
 import { runtime } from "./runtime";
@@ -83,4 +83,29 @@ export async function findOpenOffersForCourier(courier_id: string, deps?: Deps):
     .where(and(eq(offers.courier_id, courier_id), eq(offers.status, "open")))
     .orderBy(asc(offers.created_at), asc(offers.id));
   return rows.filter((r) => r.expires_at !== null && r.expires_at.getTime() > now.getTime()).map(offerFromRow);
+}
+
+/**
+ * Who to tell when a courier claims an offer: the recipient org's messaging identity (any status; the outbound sender
+ * refuses one that is not joined) and the claiming courier's display name. Null unless the offer is accepted and the
+ * recipient has an identity. Never returns an address: the recipient already knows its own, and the donor's stays with the courier.
+ */
+export async function findRecipientNoticeForOffer(
+  offer_id: string,
+  deps?: Deps,
+): Promise<{ identity: MessagingIdentity; courier_display_name: string } | null> {
+  if (!isUuid(offer_id)) return null;
+  const { db } = await runtime(deps);
+  const [offer] = await db
+    .select({ recipient_id: offers.recipient_id, courier_id: offers.courier_id })
+    .from(offers)
+    .where(and(eq(offers.id, offer_id), eq(offers.status, "accepted")));
+  if (!offer) return null;
+  const [row] = await db
+    .select()
+    .from(messaging_identities)
+    .where(and(eq(messaging_identities.actor_role, "recipient"), eq(messaging_identities.actor_id, offer.recipient_id)));
+  if (!row) return null;
+  const [courier] = await db.select({ display_name: couriers.display_name }).from(couriers).where(eq(couriers.id, offer.courier_id));
+  return { identity: identityFromRow(row), courier_display_name: courier?.display_name ?? "A courier" };
 }

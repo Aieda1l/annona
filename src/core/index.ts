@@ -8,7 +8,7 @@ export { findCandidates } from "./matching";
 export { createTestClock } from "./clock";
 
 // ----- messaging identities and logs, slice 2(b) -----
-export { resolveIdentityByHandle, getIdentity, joinIdentity, findOpenOffersForCourier } from "./service/identities";
+export { resolveIdentityByHandle, getIdentity, joinIdentity, findOpenOffersForCourier, findRecipientNoticeForOffer } from "./service/identities";
 export {
   recordInboundMessage,
   saveInboundResult,

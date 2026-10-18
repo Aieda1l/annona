@@ -11,6 +11,8 @@ export type SeedHandles = {
   donor?: string;
   courier_a?: string;
   courier_b?: string;
+  /** Optional: the Eastlake pantry's phone. Without it there is no recipient identity and no recipient message. */
+  recipient?: string;
 };
 
 export type SeedOptions = {
@@ -50,6 +52,7 @@ export const SEED_IDENTITY_IDS = {
   donor: "00000000-0000-4000-8000-0000000000a1",
   courier_a: "00000000-0000-4000-8000-0000000000a2",
   courier_b: "00000000-0000-4000-8000-0000000000a3",
+  recipient: "00000000-0000-4000-8000-0000000000a4",
 } as const;
 
 const actorId = (key: string): string => {
@@ -73,7 +76,12 @@ const clean = (v: string | undefined): string | undefined => {
   return t ? t : undefined;
 };
 
-const ENV_NAME = { donor: "DEMO_DONOR_HANDLE", courier_a: "DEMO_COURIER_A_HANDLE", courier_b: "DEMO_COURIER_B_HANDLE" } as const;
+const ENV_NAME = {
+  donor: "DEMO_DONOR_HANDLE",
+  courier_a: "DEMO_COURIER_A_HANDLE",
+  courier_b: "DEMO_COURIER_B_HANDLE",
+  recipient: "DEMO_RECIPIENT_HANDLE",
+} as const;
 const E164 = /^\+[1-9][0-9]{6,14}$/;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -97,7 +105,8 @@ export function resolveHandles(opts: Pick<SeedOptions, "messaging_provider" | "h
   }
   // Blank or whitespace-only values count as unset; real values are trimmed.
   const given = { donor: clean(opts.handles?.donor), courier_a: clean(opts.handles?.courier_a), courier_b: clean(opts.handles?.courier_b) };
-  let out: { provider: "fake" | "photon"; donor: string; courier_a: string; courier_b: string };
+  const recipientGiven = clean(opts.handles?.recipient);
+  let out: { provider: "fake" | "photon"; donor: string; courier_a: string; courier_b: string; recipient?: string };
   if (opts.messaging_provider === "photon") {
     const missing = (["donor", "courier_a", "courier_b"] as const).filter((k) => !given[k]);
     if (missing.length > 0) {
@@ -110,6 +119,7 @@ export function resolveHandles(opts: Pick<SeedOptions, "messaging_provider" | "h
       donor: normalizeRealHandle(given.donor!, "donor"),
       courier_a: normalizeRealHandle(given.courier_a!, "courier_a"),
       courier_b: normalizeRealHandle(given.courier_b!, "courier_b"),
+      ...(recipientGiven ? { recipient: normalizeRealHandle(recipientGiven, "recipient") } : {}),
     };
   } else {
     out = {
@@ -117,12 +127,13 @@ export function resolveHandles(opts: Pick<SeedOptions, "messaging_provider" | "h
       donor: (given.donor ?? SYNTHETIC_HANDLES.donor).toLowerCase(),
       courier_a: (given.courier_a ?? SYNTHETIC_HANDLES.courier_a).toLowerCase(),
       courier_b: (given.courier_b ?? SYNTHETIC_HANDLES.courier_b).toLowerCase(),
+      ...(recipientGiven ? { recipient: recipientGiven.toLowerCase() } : {}),
     };
   }
   // UNIQUE (provider, handle): one phone cannot play two personas.
-  const lowered = [out.donor, out.courier_a, out.courier_b].map((x) => x.toLowerCase());
+  const lowered = [out.donor, out.courier_a, out.courier_b, ...(out.recipient ? [out.recipient] : [])].map((x) => x.toLowerCase());
   if (new Set(lowered).size !== lowered.length) {
-    throw new Error("Seed: the donor, courier A and courier B handles must differ from each other.");
+    throw new Error("Seed: the donor, courier A, courier B and recipient handles must differ from each other.");
   }
   return out;
 }
@@ -168,7 +179,7 @@ export function buildSeed(opts: SeedOptions) {
     courier("courier_c", "Courier C (synthetic, no cold transport)", false, loc(47.615, -122.33, "Denny Triangle area", "n/a (synthetic)")),
   ];
 
-  const identity = (id: string, actor_role: "donor" | "courier", actor_id: string, handle: string) => ({
+  const identity = (id: string, actor_role: "donor" | "courier" | "recipient", actor_id: string, handle: string) => ({
     id,
     actor_role,
     actor_id,
@@ -184,6 +195,8 @@ export function buildSeed(opts: SeedOptions) {
     identity(SEED_IDENTITY_IDS.donor, "donor", actorId("donor_rainier"), h.donor),
     identity(SEED_IDENTITY_IDS.courier_a, "courier", actorId("courier_a"), h.courier_a),
     identity(SEED_IDENTITY_IDS.courier_b, "courier", actorId("courier_b"), h.courier_b),
+    // The pantry the demo couriers deliver to (their only affiliated recipient) is told when a courier claims its pickup.
+    ...(h.recipient ? [identity(SEED_IDENTITY_IDS.recipient, "recipient", eastlake, h.recipient)] : []),
   ];
 
   const policyRow = { policy_id: DEMO_POLICY.policy_id, policy_version: DEMO_POLICY.policy_version, config: DEMO_POLICY, active: true };
