@@ -11,12 +11,13 @@ import {
   issueVerificationLink,
   operatorAction,
   optOutIdentity,
+  recordOutboundMessage,
   resetDemo,
   storeDonationImage,
   submitVerification,
 } from "@/core";
-import { LINK_REFUSED } from "@/core/service/links";
-import { audit_events, donations, inbound_messages, offers, outbound_messages, policy_config, verification_links } from "@/db/schema";
+import { LINK_ISSUE_CAP, LINK_REFUSED } from "@/core/service/links";
+import { audit_events, donations, donors, inbound_messages, messaging_identities, offers, outbound_messages, policy_config, verification_links } from "@/db/schema";
 import { DONOR, IDENTITY, PNG_BYTES, T0, at, donorActor, factsAt, insertDonation, iso, makeWorld, operatorActor, resetWorld, type World } from "./helpers/world";
 
 // Slice 2(d), T-CO-30: verification links (CONTRACTS section 3.16, 8.4). Hash-only storage, view never consumes,
@@ -117,7 +118,7 @@ describe("getVerificationLinkView / getVerificationLinkImage (never consume)", (
     expect(await getVerificationLinkImage({ token: link.token }, w.deps())).toEqual({ ok: true, data: { mime: "image/png", bytes: PNG_BYTES } });
     expect(await getVerificationLinkImage({ token: link.token }, w.deps(at(30)))).toMatchObject(refused);
   });
-  it("every bad token gets the same answer; the reason goes only to link.rejected", async () => {
+  it("every bad token gets the same answer; the reason goes only to link.rejected, and only for a token that matches a real link", async () => {
     const id = await messagingDraft();
     const link = await linkFor(id);
     expect(await getVerificationLinkView({ token: link.token }, w.deps(at(30)))).toMatchObject(refused); // expired
@@ -126,7 +127,8 @@ describe("getVerificationLinkView / getVerificationLinkImage (never consume)", (
     expect(await getVerificationLinkView({ token: 5 as never }, w.deps())).toMatchObject(refused);
     await w.db.update(donations).set({ status: "canceled" }).where(eq(donations.id, id));
     expect(await getVerificationLinkView({ token: link.token }, w.deps())).toMatchObject(refused); // donation closed
-    expect(await rejections()).toEqual(["expired", "unknown", "malformed", "malformed", "donation_closed"]);
+    // A malformed or unknown token has nothing to correlate with, so it is not audited (the routes are unauthenticated).
+    expect(await rejections()).toEqual(["expired", "donation_closed"]);
     expect(JSON.stringify(await w.db.select().from(audit_events))).not.toContain(sha(link.token));
   });
 });
@@ -144,7 +146,9 @@ describe("submitVerification by link (consumes only on success)", () => {
     expect(types).toEqual(expect.arrayContaining(["link.consumed", "donor.verification_submitted", "eligibility.evaluated"]));
     expect(await rejections()).toEqual(["consumed", "consumed"]);
   });
-  it("two simultaneous submits of one token: exactly one succeeds", async () => {
+  // PGlite has one connection, so these two calls run one after the other: this checks the conditional UPDATE's logic
+  // (one row, one winner), NOT concurrency. The race on a real Postgres is T-CO-17's job (D-033) and is UNVERIFIED.
+  it("two submits of one token started together: exactly one succeeds (logic only, not a concurrency test)", async () => {
     const id = await messagingDraft();
     const link = await linkFor(id);
     const results = await Promise.all([submit(link.token, id), submit(link.token, id)]);
@@ -230,5 +234,85 @@ describe("revocation (section 8.4 rule 8)", () => {
     vi.stubEnv("ANNONA_DEMO_MODE", "1");
     await resetDemo({ keep_identities: true }, { ...w.deps(at(30)), vision: {} as VisionProvider, messaging: { mode: "fake" } as MessagingGateway });
     expect(await w.db.select().from(verification_links)).toHaveLength(0);
+  });
+});
+
+describe("review follow-ups for #41", () => {
+  it("garbage tokens cannot grow the audit trail: only a refusal that matches a real link is recorded", async () => {
+    const id = await messagingDraft();
+    await linkFor(id);
+    const before = (await w.db.select().from(audit_events)).length;
+    for (let i = 0; i < 50; i++) {
+      await getVerificationLinkView({ token: `${i}`.padStart(43, "A") }, w.deps());
+      await getVerificationLinkImage({ token: "nope" }, w.deps());
+      await submit("also-not-a-token", id);
+      await submit("B".repeat(43), id);
+    }
+    expect((await w.db.select().from(audit_events)).length).toBe(before);
+  });
+  it("after a valid token, a donation that has since been cancelled, expired or rejected gets the one uniform refusal and the link stays live", async () => {
+    for (const status of ["canceled", "expired", "rejected"]) {
+      await resetWorld(w);
+      const id = await messagingDraft();
+      const link = await linkFor(id);
+      await w.db.update(donations).set({ status }).where(eq(donations.id, id));
+      expect(await submit(link.token, id), status).toMatchObject(refused);
+      expect((await linksOf(id))[0]!.consumed_at, status).toBeNull();
+      expect(await rejections(), status).toEqual(["donation_closed"]);
+    }
+  });
+  it("a submit for a donation that does not exist looks like any other bad link", async () => {
+    const id = await messagingDraft();
+    const link = await linkFor(id);
+    expect(await submit(link.token, randomUUID())).toMatchObject(refused);
+    expect((await linksOf(id))[0]!.consumed_at).toBeNull();
+  });
+  it("issueVerificationLink is capped per donation, and refuses a donor who may no longer create drafts", async () => {
+    const id = await messagingDraft();
+    for (let i = 0; i < LINK_ISSUE_CAP; i++) await linkFor(id);
+    expect(await issueVerificationLink({ donation_id: id }, w.deps())).toMatchObject({ ok: false, error: { code: "CONFLICT", details: { reason: "link_cap_reached" } } });
+    expect(await linksOf(id)).toHaveLength(LINK_ISSUE_CAP);
+
+    const other = await messagingDraft();
+    for (const approval_status of ["suspended"]) {
+      await w.db.update(donors).set({ approval_status }).where(eq(donors.id, DONOR));
+      expect(await issueVerificationLink({ donation_id: other }, w.deps()), approval_status).toMatchObject({ ok: false, error: { code: "CONFLICT", details: { reason: "donor_not_allowed" } } });
+    }
+    expect(await linksOf(other)).toHaveLength(0);
+    await w.db.update(donors).set({ approval_status: "pending" }).where(eq(donors.id, DONOR));
+    expect((await issueVerificationLink({ donation_id: other }, w.deps())).ok).toBe(true);
+  });
+  it("the stored copy of a draft_ready message never holds a working token with a real provider; the fake provider keeps the whole text", async () => {
+    const id = await messagingDraft();
+    const link = await linkFor(id);
+    const text = `Annona: open https://example.invalid/v#${link.token} to check`;
+    const message = (key: string) => ({ to_identity_id: IDENTITY.donor, text, purpose: "draft_ready" as const, correlation: { donation_id: id }, idempotency_key: key });
+
+    await recordOutboundMessage({ message: message("draft_ready:fake:v1"), provider_message_id: "fake_1" }, w.deps());
+    await w.db.update(messaging_identities).set({ provider: "photon", handle: "+12065550123" }).where(eq(messaging_identities.id, IDENTITY.donor));
+    await recordOutboundMessage({ message: message("draft_ready:real:v1"), provider_message_id: "pho_msg_abcdefghijklmnopqrstuvwxyz" }, w.deps());
+
+    const rows = await w.db.select().from(outbound_messages);
+    const fake = rows.find((r) => r.idempotency_key === "draft_ready:fake:v1")!;
+    const real = rows.find((r) => r.idempotency_key === "draft_ready:real:v1")!;
+    expect(fake.text).toContain(link.token);
+    expect(real.text).not.toContain(link.token);
+    expect(real.text).toContain(`#…${link.token.slice(-4)}`);
+  });
+  it("a draft with no stored cutoff gets the full 30 minutes; a stored cutoff caps it; a passed cutoff issues nothing", async () => {
+    const draft = await messagingDraft();
+    expect((await linkFor(draft)).expires_at).toBe(iso(30));
+    const soon = await insertDonation(w.db, { status: "needs_review", verified_facts: factsAt(), effective_cutoff_at: at(5) });
+    expect((await linkFor(soon.id)).expires_at).toBe(iso(5));
+    const gone = await insertDonation(w.db, { status: "needs_review", verified_facts: factsAt(), effective_cutoff_at: at(-1) });
+    expect(await issueVerificationLink({ donation_id: gone.id }, w.deps())).toMatchObject({ ok: false, error: { code: "INVALID_TRANSITION" } });
+  });
+  it("resubmit link: a needs_review result right at the cutoff hands back no link, and a suspended donor is rejected with none", async () => {
+    const id = await messagingDraft();
+    const link = await linkFor(id);
+    await w.db.update(donors).set({ approval_status: "suspended" }).where(eq(donors.id, DONOR));
+    const r = await submit(link.token, id);
+    expect(r).toMatchObject({ ok: true, data: { card: { status: "rejected" }, resubmit_token: null } });
+    expect(await linksOf(id)).toHaveLength(1);
   });
 });

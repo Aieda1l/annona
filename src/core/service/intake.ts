@@ -17,9 +17,9 @@ import { canTransition } from "../state";
 import { parseUtc } from "../time";
 import { writeAudit } from "./audit";
 import { buildCard } from "./cards";
-import { LINK_REFUSED, auditLinkRefusal, consumeLinkTx, consumeRefusal, isTokenShaped, issueLinkTx } from "./links";
+import { LINK_REFUSED, OPEN_STATUSES, auditLinkRefusal, consumeLinkTx, consumeRefusal, isTokenShaped, issueLinkTx } from "./links";
 import { donorFromRow, isUuid, policyFromRow, iso } from "./map";
-import { runtime } from "./runtime";
+import { retryOnConflict, runtime } from "./runtime";
 
 // Slice 2(a): intake-facing core (CONTRACTS section 9.3, S-01, S-02, S-03 session path). Dev 1 calls these and never
 // writes donation rows directly. Time comes only from the injected Clock.
@@ -182,14 +182,26 @@ export async function submitVerification(
   }
   if (!isUuid(input.donation_id)) return err("NOT_FOUND", "Donation not found.");
 
-  try {
-    return await db.transaction(async (tx): Promise<SubmitResult> => {
+  const attempt = () =>
+    db.transaction(async (tx): Promise<SubmitResult> => {
       const now = clock.now();
 
-      // Link path (CONTRACTS section 8.4 rule 4): consume first, in this transaction, for exactly this donation. Any
-      // later failure throws RollbackWith, which undoes the consumption too, so a failed submit leaves the link live.
+      // Lock order: the donation row first, then the link row. Every other core path (issueVerificationLink, the
+      // revocations on S-08, STOP and cancel, expireDue) takes the donation lock before it touches a link, so taking
+      // the link lock first here could deadlock with them on a real Postgres.
+      const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("no key update");
+
+      // Link path (CONTRACTS section 8.4 rule 4): consume in this transaction, for exactly this donation. Any later
+      // failure throws RollbackWith, which undoes the consumption too, so a failed submit leaves the link live.
       let link: Awaited<ReturnType<typeof consumeLinkTx>> = null;
       if (viaLink) {
+        // A missing donation and a closed one look like any other bad link; the reason goes only to the audit event.
+        if (!row) return refused();
+        if (!OPEN_STATUSES.has(row.status) || row.collected_at !== null) {
+          const why = await consumeRefusal(tx, auth.link_token as string, input.donation_id, now);
+          await auditLinkRefusal(tx, now, why.reason === "unknown" ? "donation_closed" : why.reason, why.link);
+          return refused();
+        }
         link = await consumeLinkTx(tx, auth.link_token as string, input.donation_id, now);
         if (!link) {
           const why = await consumeRefusal(tx, auth.link_token as string, input.donation_id, now);
@@ -198,13 +210,15 @@ export async function submitVerification(
         }
       }
       const fail = (result: SubmitResult): SubmitResult => {
-        if (link) throw new RollbackWith(result);
-        return result;
+        if (!link) return result;
+        // Past the link check the bearer only hears about their own answers: a state or version problem is a bad link.
+        const code = result.ok ? null : result.error.code;
+        throw new RollbackWith(code === "INVALID_TRANSITION" || code === "CONFLICT" ? refused() : result);
       };
       const actor: Actor = link ? { role: "donor", id: link.donor_id } : auth.actor!;
 
-      const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("no key update");
-      if (!row) return fail(err("NOT_FOUND", "Donation not found."));
+      // A donor who is not the owner cannot tell a missing donation from someone else's.
+      if (!row) return fail(err("NOT_AUTHORIZED", "Only the donor who owns this donation can verify it."));
       const owner = link ? link.donor_id === row.donor_id : actor?.role === "donor" && actor.id !== null && actor.id === row.donor_id;
       if (!owner) return fail(link ? refused() : err("NOT_AUTHORIZED", "Only the donor who owns this donation can verify it."));
 
@@ -288,6 +302,9 @@ export async function submitVerification(
       }
       return ok({ card: await buildCard(tx, updated, "donor"), resubmit_token });
     });
+
+  try {
+    return await retryOnConflict(attempt);
   } catch (e) {
     if (e instanceof RollbackWith) return e.result;
     throw e;

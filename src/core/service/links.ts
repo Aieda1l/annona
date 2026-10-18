@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { err, ok, type Deps, type Result, type VerificationLinkView, type VerifiedFacts, type VisionSuggestion, type EligibilityDecision } from "@/contracts";
 import { donation_images, donations, donors, messaging_identities, verification_links } from "@/db/schema";
 import { SYSTEM_ACTOR, writeAudit } from "./audit";
@@ -7,24 +7,37 @@ import { isUuid, isoOrNull } from "./map";
 import { runtime, type Q } from "./runtime";
 
 // Slice 2(d): verification links (CONTRACTS section 3.16, 8.4; D-031). The raw token exists only in the return value
-// of issueVerificationLink (and so in the donor's text message); the database, the audit trail and logs only ever see
-// its SHA-256. Opening a link never consumes it; only a successful submitVerification does (see ./intake).
+// of issueVerificationLink and so in the donor's text message. The links table, the audit trail and logs see only its
+// SHA-256. The stored copy of the message keeps just the token's last 4 characters unless the provider is the fake one
+// (see recordOutboundMessage); in fake mode the simulated phone needs the whole text. Opening a link never consumes it;
+// only a successful submitVerification does (see ./intake).
 
 export const LINK_TTL_MS = 30 * 60_000;
+/**
+ * At most this many links (live, used or revoked, resubmit links included) exist for one donation when
+ * issueVerificationLink is called. Each call revokes the previous live link, so without a cap a repeated caller could
+ * keep invalidating a donor's link.
+ */
+export const LINK_ISSUE_CAP = 10;
 /** Every refusal looks the same to the caller (section 8.4 rule 6); the reason goes only to the audit event. */
 export const LINK_REFUSED = "This link has expired or was already used. Text the photo again for a new link.";
 
 const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/;
-const OPEN_STATUSES = new Set(["draft", "needs_review"]);
+export const OPEN_STATUSES = new Set(["draft", "needs_review"]);
 
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 export const isTokenShaped = (token: unknown): token is string => typeof token === "string" && TOKEN_SHAPE.test(token);
 
 export type LinkRefusal = "malformed" | "unknown" | "consumed" | "revoked" | "expired" | "donation_closed" | "donation_mismatch";
 
-/** Logs why a link was refused (section 8.4 rule 6). Only ids and the reason: never the token or its hash. */
+/**
+ * Logs why a link was refused (section 8.4 rule 6). Only ids and the reason: never the token or its hash.
+ * Only a refusal that matches a real link is recorded: the routes are unauthenticated, so a malformed or unknown token
+ * (nothing to correlate it with) must not be able to grow the audit trail.
+ */
 export async function auditLinkRefusal(q: Q, now: Date, reason: LinkRefusal, link?: { id: string; donation_id: string }): Promise<void> {
-  await writeAudit(q, { at: now, type: "link.rejected", actor: SYSTEM_ACTOR, donation_id: link?.donation_id ?? null, data: { reason, ...(link ? { link_id: link.id } : {}) } });
+  if (!link) return;
+  await writeAudit(q, { at: now, type: "link.rejected", actor: SYSTEM_ACTOR, donation_id: link.donation_id, data: { reason, link_id: link.id } });
 }
 
 /**
@@ -65,6 +78,11 @@ export async function issueVerificationLink(input: { donation_id: string }, deps
       .from(messaging_identities)
       .where(and(eq(messaging_identities.actor_role, "donor"), eq(messaging_identities.actor_id, row.donor_id), eq(messaging_identities.status, "joined")));
     if (!identity) return err("CONFLICT", "The donor has not joined messaging.", { details: { reason: "donor_not_joined" } });
+    // Only a donor who may still create drafts (S-01: approved or pending) gets a new link.
+    const [donor] = await tx.select({ status: donors.approval_status }).from(donors).where(eq(donors.id, row.donor_id));
+    if (!donor || (donor.status !== "approved" && donor.status !== "pending")) return err("CONFLICT", "This donor cannot receive a verification link.", { details: { reason: "donor_not_allowed" } });
+    const [{ n } = { n: 0 }] = await tx.select({ n: sql<number>`count(*)::int` }).from(verification_links).where(eq(verification_links.donation_id, row.id));
+    if (Number(n) >= LINK_ISSUE_CAP) return err("CONFLICT", "Too many links have been issued for this donation.", { details: { reason: "link_cap_reached" } });
     return ok(await issueLinkTx(tx, row, now));
   });
 }

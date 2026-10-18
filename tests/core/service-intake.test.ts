@@ -278,8 +278,8 @@ describe("submitVerification, session path (S-03)", () => {
     expect(r).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
     expect(await rowOf(d.id)).toMatchObject({ status: "draft", version: 1, verified_facts: null });
   });
-  it("an unknown donation is not found", async () => {
-    expect(await submit(randomUUID())).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+  it("an unknown donation looks the same as someone else's (no id probing)", async () => {
+    expect(await submit(randomUUID())).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
   });
   it("incomplete or invalid facts are refused with the field names, and the donation is untouched", async () => {
     const d = await draft();

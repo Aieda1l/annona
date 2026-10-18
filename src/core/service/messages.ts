@@ -153,6 +153,13 @@ export async function recordIgnoredInbound(
   });
 }
 
+/**
+ * A draft_ready text carries a working one-time token. With a real provider the message is sent in full, but the copy
+ * stored here keeps only the token's last 4 characters, so the database never holds a working token (CONTRACTS 8.4).
+ * With the fake provider the simulated phone shows the whole text, so it is stored as is.
+ */
+const maskTokens = (text: string) => text.replace(/#[A-Za-z0-9_-]{43}/g, (m) => `#…${m.slice(-4)}`);
+
 export async function recordOutboundMessage(input: { message: OutboundMessage; provider_message_id: string | null }, deps?: Deps): Promise<void> {
   const message = OutboundMessage.parse(input.message);
   const { db, clock } = await runtime(deps);
@@ -166,7 +173,7 @@ export async function recordOutboundMessage(input: { message: OutboundMessage; p
       .values({
         identity_id: identity.id,
         purpose: message.purpose,
-        text: message.text,
+        text: message.purpose === "draft_ready" && identity.provider !== "fake" ? maskTokens(message.text) : message.text,
         idempotency_key: message.idempotency_key,
         provider_mode: mode(identity.provider),
         provider_message_id: input.provider_message_id,
@@ -209,9 +216,6 @@ export async function hasOutboundMessage(idempotency_key: string, deps?: Deps): 
     .limit(1);
   return rows.length === 1;
 }
-
-/** A draft_ready text carries a working token; outside fake mode only its last 4 characters are shown (CONTRACTS 8.4 step 9). */
-const maskTokens = (text: string) => text.replace(/#[A-Za-z0-9_-]{43}/g, (m) => `#…${m.slice(-4)}`);
 
 export async function listMessages(input: { identity_id?: string }, deps?: Deps): Promise<ThreadMessage[]> {
   if (input.identity_id !== undefined && !isUuid(input.identity_id)) return [];
