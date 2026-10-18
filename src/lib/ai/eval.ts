@@ -14,11 +14,11 @@ import { createGeminiProvider, DEFAULT_PROMPT_VERSION, PROMPT_VERSIONS, resolveE
 //   VISION_PROVIDER=gemini GOOGLE_CLOUD_PROJECT=<id> pnpm eval:intake real model, Vertex AI with ADC (no key)
 // Options: --prompt-version v1|v2 (default: the adapter default)  --runs N (default 3)  --cases T-PE-01,T-PE-03  --out <file> (YAML records; otherwise printed)
 //          --escalation-model <id|off>  (default: GEMINI_ESCALATION_MODEL, else gemini-3.8-flash, as in production)
-//          Cases with several fixtures run --runs times per image. --images-dir <dir>  read <fixture>.jpg from another directory (for images that must not be committed)
+//          Cases with several fixtures run --runs times per image. --images-dir <dir>  read <fixture>.jpg from another directory (default fixtures/intake/eval-local, which is gitignored)
 // Use synthetic photos only. Credentials are never printed or written; failures are reported by error code.
 
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
-const DEFAULT_IMAGES = "fixtures/intake/images";
+const DEFAULT_IMAGES = "fixtures/intake/eval-local"; // gitignored (D-040); cases whose photos are absent are skipped, never failed
 
 function arg(name: string): string | undefined {
   const argv = process.argv.slice(2);

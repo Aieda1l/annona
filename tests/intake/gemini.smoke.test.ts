@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { GoogleGenAI } from "@google/genai";
 import { describe, expect, it } from "vitest";
@@ -26,7 +26,10 @@ describe.skipIf(!enabled)("Gemini adapter smoke (real network)", () => {
   it.each(["sandwich_platter", "buffet_ambiguous"])("%s: a real call returns a schema-valid, guard-clean suggestion", async (id) => {
     const { client, auth } = makeClient();
     const provider = createGeminiProvider({ client, model });
-    const bytes = readFileSync(join(process.cwd(), "fixtures/intake/images", `${id}.jpg`));
+    // Real photos live in the gitignored eval-local directory (D-040); a manual run without them should say so, not pass on nothing.
+    const file = join(process.cwd(), "fixtures/intake/eval-local", `${id}.jpg`);
+    if (!existsSync(file)) throw new Error(`${file} is missing. Put the local eval photos in fixtures/intake/eval-local/ (see fixtures/intake/PROVENANCE.md).`);
+    const bytes = readFileSync(file);
     const started = performance.now();
     const r = await provider.analyzeFoodImage({ image: { mime: "image/jpeg", bytes_base64: bytes.toString("base64") } });
     const elapsed_ms = Math.round(performance.now() - started);

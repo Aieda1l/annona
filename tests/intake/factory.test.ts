@@ -45,7 +45,8 @@ describe("createVisionProvider", () => {
     expect(p).toMatchObject({ mode: "real", status: "misconfigured" });
     const r = await p.analyzeFoodImage({ image: platter });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error.code).toBe("PROVIDER_UNAVAILABLE");
+    if (!r.ok) expect(r.error).toMatchObject({ code: "PROVIDER_UNAVAILABLE", retryable: false });
+    expect(generateContent).not.toHaveBeenCalled();
   });
 
   it("gemini reports the configured model, defaulting to gemini-3.5-flash-lite", () => {

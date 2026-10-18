@@ -204,7 +204,7 @@ Each example shows the input description used in the prompt and the expected **s
 
 ## 5. Evaluation set (T-PE-01..T-PE-08)
 
-Fixtures live in `fixtures/intake/images/` (Dev 1; provenance rules in `docs/TEST_PLAN.md` §7). Run each case **3 times** per (model, settings) configuration (DESIGN DECISION: outputs are non-deterministic; one run proves little). A case passes only if **every** run passes. Universal checks U1–U4 (§6) apply to every case.
+Fixtures: team-made images in `fixtures/intake/images/` (fake path); the real photos used for the evals are local-only in `fixtures/intake/eval-local/` (gitignored, D-040; see `fixtures/intake/PROVENANCE.md`). Run each case **3 times** per (model, settings) configuration (DESIGN DECISION: outputs are non-deterministic; one run proves little). A case passes only if **every** run passes. Universal checks U1–U4 (§6) apply to every case.
 
 | ID | Fixture | Input (synthetic) | Expected properties | Fail if |
 |---|---|---|---|---|
