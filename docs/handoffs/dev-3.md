@@ -231,3 +231,56 @@ BLOCKERS + SAFETY RISKS:
 INTEGRATION STEPS: captain sets GEMINI_API_KEY, PHOTON_PROJECT_ID, PHOTON_API_KEY, ANNONA_INTERNAL_SECRET, SESSION_SECRET, DEMO_PASSCODE and DATABASE_URL in the Vercel project settings, not in the repo; Dev 3 points the worker at the deployed URL.
 NEXT SMALLEST ACTION: a full dry run on the deployed URL (donor photo, checklist from the donor's phone, offer, claim, late claim, expiry, STOP), then the final session summary.
 ```
+
+## Demo-day runbook: app on Vercel, worker on the demo laptop (written 2026-10-17; the Vercel and Supabase parts are UNTESTED until the captain deploys)
+
+Why this shape: the donor's phone must be able to open the checklist link, so `APP_BASE_URL` has to be the deployed `https://…vercel.app` address (a `localhost` or LAN address cannot be opened from a phone, as both T-MS-19 runs showed). Photon stays in Photon's cloud in every case. The worker (tick and Photon polling) cannot run on Vercel, so it runs on the laptop and calls the deployed app over HTTPS.
+
+### What each side needs (names only; values go in the Vercel project settings or the laptop's git-ignored `.env.local`, never the repo or a chat)
+
+| Variable | Vercel (deployed app) | Laptop worker | Notes |
+|---|---|---|---|
+| `STORE` | `postgres` | not read | PGlite cannot be shared between Vercel and the laptop |
+| `DATABASE_URL` | Supabase transaction pooler (port 6543) | only for `db:migrate` / `db:seed` | the pooler needs `prepare: false` (R-INF-7); the code already does this |
+| `MESSAGING_PROVIDER` | `photon` | `photon` | `fake` shows the labeled simulated phone instead |
+| `PHOTON_PROJECT_ID`, `PHOTON_API_KEY` | yes | yes | the app downloads photos and sends offers; the worker polls |
+| `VISION_PROVIDER`, `GEMINI_API_KEY` | `gemini`, key | not read | optional `GEMINI_MODEL` |
+| `ANNONA_DEMO_MODE` | `1` | not read | the demo actors and fixture drafts need it |
+| `ANNONA_INTERNAL_SECRET` | yes | yes, **identical** | the worker's tick and relay calls are refused without it; whitespace is trimmed |
+| `APP_BASE_URL` | the deployed `https://…` | the same value | the worker posts to it; the checklist link is built from it |
+| `SESSION_SECRET`, `DEMO_PASSCODE` | yes | not read | operator and donor demo logins |
+| `TICK_INTERVAL_MS` | not read | `5000` (minimum 500) | |
+| `DEMO_DONOR_HANDLE`, `DEMO_COURIER_A_HANDLE`, `DEMO_COURIER_B_HANDLE` | not needed | only for `db:seed` | real opted-in phones, E.164 (`+1…`); the seed refuses another shape |
+| `PHOTON_INBOUND_MODE` | not read | not read | has no effect: the worker polls whenever Photon credentials are set |
+| `PHOTON_WEBHOOK_SECRET` | leave empty | leave empty | the webhook signature scheme is UNVERIFIED, so only the worker's internal secret is accepted |
+
+So the laptop worker needs only five things: `MESSAGING_PROVIDER=photon`, `PHOTON_PROJECT_ID`, `PHOTON_API_KEY`, `ANNONA_INTERNAL_SECRET`, `APP_BASE_URL` (plus optional `TICK_INTERVAL_MS`). It needs no database, Gemini or session secret.
+
+### Order
+
+1. **Captain:** deploy `main` to Vercel, set the Vercel variables above in the project settings, and give Dev 3 the deployed URL. Do not send keys through chat; each person pastes their own from the Keychain.
+2. **Database (once, from the laptop):** with `STORE=postgres` and `DATABASE_URL` set in that shell only, run `pnpm db:migrate`, then `pnpm db:seed` with the three handles set. Check `GET <url>/api/health` shows `store: postgres`, `messaging: real`, `vision: real`.
+3. **Laptop `.env.local`:** set the five worker variables. `APP_BASE_URL` and `ANNONA_INTERNAL_SECRET` must equal the Vercel values exactly.
+4. **Cursor:** before the first start, write the current time (UTC, ISO) into `.data/photon-cursor`. Without it the worker replays the last ten minutes of texts, and anyone who texted just before would get an extra reply.
+5. **Start:** `pnpm worker`. Expect `[worker] started: tick every 5000 ms, polling Photon`. If it prints `Not starting`, the line says which variable is missing.
+6. **Smoke test, in this order:** each courier texts `JOIN` and gets one reply; the donor texts `JOIN`; the operator dashboard shows three `joined`; the donor sends one photo and the reply link opens **on the donor's phone**; the donor completes the checklist; an offer reaches courier A with no address; `YES <code>` returns the pickup details; courier B's late `YES <code>` gets the generic no-assignment reply; the dashboard shows `claimed` and the offer's `delivery_status` reads `delivered`.
+
+### Checks while it runs
+
+- A line `tick failed: TypeError (ENOTFOUND)` or `(ECONNREFUSED)` means the worker cannot reach the app (wrong `APP_BASE_URL`, no network). `HTTP 403` means the internal secrets differ. `HTTP 5xx` means look at the Vercel logs (they keep one hour on Hobby; `audit_events` is the lasting record).
+- `last_tick_at` on the health page stays null until `src/server/health.ts` reads core's `getSystemStatus` (captain item); it does not mean the worker is dead.
+- Do not have anyone text the Annona lines while the worker is stopped and restarted without step 4.
+
+### Stop conditions
+
+Stop the worker (`Ctrl-C`) at once if any text goes out twice, a reply carries an address to someone who has not claimed, or a message goes to a number that is not one of the three opted-in phones.
+
+### Things to confirm on Vercel (UNVERIFIED, not claimed)
+
+- **Function time limit.** In our runs a photo took 4 to 7 seconds end to end (download, Gemini, reply). Check the project's limit; if it is short, export `maxDuration` from `src/app/api/messaging/photon/inbound/route.ts` (that file belongs to the captain's integration surface, so it is a request, not something Dev 3 changes).
+- **Bundled files.** `next.config.ts` traces `fixtures/intake/images/**` and the prompts into the inbound route; confirm the deployed photo route can read the prompts.
+- **First-claim-wins on Postgres** is still UNVERIFIED (T-CO-17, D-033). The first live claim on Supabase is not evidence of race-safety.
+
+### Teardown after the event
+
+Revoke or delete the event's Gemini key in Google AI Studio and the Photon project key (Photon dashboard), delete the Keychain items (`photon-beta-annona`, `gemini-annona`), delete the Vercel project's environment variables, and remove the laptop's `.env.local`.
