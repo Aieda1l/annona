@@ -6,6 +6,7 @@ import { DonationCard } from "./DonationCard";
 import { FactsList } from "./FactsList";
 import { HandoffControls } from "./HandoffControls";
 import { OperatorActions } from "./OperatorActions";
+import { PhotoPreview } from "./PhotoPreview";
 
 /** One donation, in full, exactly as the server returned it. Nothing here decides status, eligibility or time. */
 export function DonationDetail({
@@ -41,9 +42,7 @@ export function DonationDetail({
       <section aria-label="Donor photo" className="space-y-2">
         <h3 className="text-sm font-semibold text-slate-900">Donor photo</h3>
         {card.image_url ? (
-          // The image is served by GET /api/images/:id with its own authorization; next/image would proxy it.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={card.image_url} alt="Donor photo (synthetic)" className="max-h-80 w-auto rounded border border-slate-300" />
+          <PhotoPreview src={card.image_url} />
         ) : (
           <p className="text-sm text-slate-700">No image on file.</p>
         )}
