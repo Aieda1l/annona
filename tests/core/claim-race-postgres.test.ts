@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { DispatchStore } from "@/contracts";
@@ -102,8 +103,11 @@ describe.skipIf(!URL)("T-CO-17: first-claim-wins on real Postgres, independent c
 
   it("the same inbound message delivered to several connections at once is processed first exactly once", async () => {
     await resetWorld(world);
+    // resetWorld keeps the inbound ledger (as resetDemo does), so a fixed id would already be a duplicate on the second
+    // run against the same disposable database. A fresh id per run keeps this test repeatable.
+    const messageId = `m-race-${randomUUID()}`;
     const payload = { sender_handle: "courier-a@example.invalid", text: "YES", attachments: [] };
-    const rs = await Promise.all(Array.from({ length: CLIENTS }, (_, i) => recordInboundMessage("fake", "m-race-1", payload, depsOf(i))));
+    const rs = await Promise.all(Array.from({ length: CLIENTS }, (_, i) => recordInboundMessage("fake", messageId, payload, depsOf(i))));
     expect(rs.filter((r) => r.status === "first")).toHaveLength(1);
     expect(rs.filter((r) => r.status === "duplicate")).toHaveLength(CLIENTS - 1);
     void and;

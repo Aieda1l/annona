@@ -11,13 +11,13 @@ import {
   type DonationSource,
   type Result,
 } from "@/contracts";
-import { donation_images, donations, donors, policy_config, verification_links } from "@/db/schema";
+import { donation_images, donations, donors, messaging_identities, policy_config, verification_links } from "@/db/schema";
 import { evaluateEligibility } from "../eligibility";
 import { canTransition } from "../state";
 import { parseUtc } from "../time";
 import { writeAudit } from "./audit";
 import { buildCard } from "./cards";
-import { LINK_REFUSED, OPEN_STATUSES, auditLinkRefusal, consumeLinkTx, consumeRefusal, isTokenShaped, issueLinkTx } from "./links";
+import { LINK_REFUSED, OPEN_STATUSES, auditLinkRefusal, consumeLinkTx, consumeRefusal, isTokenShaped, issueLinkTx, linkProblem } from "./links";
 import { donorFromRow, isUuid, policyFromRow, iso } from "./map";
 import { retryOnConflict, runtime } from "./runtime";
 
@@ -192,6 +192,15 @@ export async function submitVerification(
   }
   if (!isUuid(input.donation_id)) return err("NOT_FOUND", "Donation not found.");
 
+  if (viaLink) {
+    // Look at the token before taking any lock (see linkProblem): a bad token never touches the donation row.
+    const problem = await linkProblem(db, auth.link_token as string, input.donation_id, clock.now());
+    if (problem) {
+      await auditLinkRefusal(db, clock.now(), problem.reason, problem.link);
+      return refused();
+    }
+  }
+
   const attempt = () =>
     db.transaction(async (tx): Promise<SubmitResult> => {
       const now = clock.now();
@@ -308,7 +317,15 @@ export async function submitVerification(
       // passed (such a link could never be used; the donation expires instead).
       let resubmit_token: string | null = null;
       if (link && decision.outcome === "needs_review" && (updated.effective_cutoff_at === null || updated.effective_cutoff_at.getTime() > now.getTime())) {
-        resubmit_token = (await issueLinkTx(tx, updated, now)).token;
+        // Only while the donor is still joined. The shared lock on the identity row orders this against a donor STOP,
+        // which updates that row first and then revokes the donor's live links: either the STOP waits for this link to
+        // exist (and revokes it), or it committed first and the donor reads as opted out here, so no link is issued.
+        const identities = await tx
+          .select({ status: messaging_identities.status })
+          .from(messaging_identities)
+          .where(and(eq(messaging_identities.actor_role, "donor"), eq(messaging_identities.actor_id, updated.donor_id)))
+          .for("share");
+        if (identities.some((i) => i.status === "joined")) resubmit_token = (await issueLinkTx(tx, updated, now)).token;
       }
       return ok({ card: await buildCard(tx, updated, "donor"), resubmit_token });
     });
