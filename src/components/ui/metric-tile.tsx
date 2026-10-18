@@ -35,7 +35,7 @@ export function MetricTile({
         <span className="block font-heading text-2xl leading-tight font-semibold text-foreground">
           {capable ? <CountUp to={value} from={0} duration={0.8} trigger="load" /> : <span className="tabular">{value}</span>}
         </span>
-        <span className="block truncate text-xs font-medium text-muted-foreground">{label}</span>
+        <span className="block text-xs leading-tight font-medium text-muted-foreground">{label}</span>
         {hint && <span className="sr-only">{hint}</span>}
       </span>
     </>

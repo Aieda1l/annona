@@ -27,12 +27,12 @@ export default function Home() {
         aria-hidden
         className="pointer-events-none absolute inset-x-0 -top-40 -z-10 h-[32rem] bg-[radial-gradient(60%_50%_at_20%_30%,color-mix(in_oklab,var(--leaf)_18%,transparent),transparent_70%),radial-gradient(40%_40%_at_85%_10%,color-mix(in_oklab,var(--primary)_10%,transparent),transparent_70%)]"
       />
-      <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-16 lg:py-12">
-        <section className="flex flex-col gap-8">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-16 lg:py-12">
+        <section className="flex min-w-0 flex-col gap-8">
           <div className="space-y-5">
             {/* Decorative: the h1 below names the product. A plain img, as with the donor photo, so no image proxy is involved. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/annona-logo-512.png" alt="" width={192} height={128} className="-ml-3 h-auto w-36 max-w-full mix-blend-multiply sm:w-44" />
+            <img src="/annona-logo-512.png" alt="" width={192} height={128} className="h-auto w-32 max-w-full rounded-2xl bg-white p-2 shadow-sm ring-1 ring-border sm:w-40" />
             <div className="space-y-3">
               <p className="text-xs font-semibold tracking-wider text-primary uppercase">
                 Surplus-food coordination · DubHacks prototype
@@ -76,7 +76,7 @@ export default function Home() {
           </p>
         </section>
 
-        <section className="lg:pt-6" aria-label="Sign in">
+        <section className="min-w-0 lg:pt-6" aria-label="Sign in">
           <SignInPanel>
             <ProfilePicker />
           </SignInPanel>

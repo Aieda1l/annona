@@ -58,10 +58,10 @@ export function SignOutButton() {
         type="button"
         onClick={signOut}
         disabled={busy}
-        className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 font-medium text-foreground shadow-xs transition-colors hover:bg-muted disabled:opacity-60"
+        className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-2.5 font-medium whitespace-nowrap text-foreground shadow-xs transition-colors hover:bg-muted disabled:opacity-60 sm:px-3"
       >
         <LogOut aria-hidden className="size-4" />
-        Sign out
+        <span className="max-sm:sr-only">Sign out</span>
       </button>
     </div>
   );

@@ -299,9 +299,9 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
         {ALLERGENS.map((a) => (
           <fieldset
             key={a}
-            className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-2 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_25rem] sm:items-center"
+            className="flex min-w-0 flex-col gap-2 px-3 py-3"
           >
-            <legend className="float-left text-sm font-semibold sm:col-start-1">{ALLERGEN_NAMES[a]}</legend>
+            <legend className="float-left text-sm font-semibold">{ALLERGEN_NAMES[a]}</legend>
             {aiFilled.allergens.includes(a) && state.allergens[a] === "present" && (
               <AiTag field={`allergen-${a}`}>Pre-selected from the AI draft (it flagged this as possible): change it if it is not in your food</AiTag>
             )}
@@ -309,7 +309,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
               <Hint id={`allergen-${a}`}>AI: possible — {aiAllergens.get(a)} (unverified)</Hint>
             )}
             {/* Segmented choice over the same native radios. "I don't know" stays visibly unanswered (dashed). */}
-            <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1 sm:col-start-2 sm:row-span-3 sm:row-start-1">
+            <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
               {ALLERGEN_CHOICES.map((c) => (
                 <label
                   key={c.value}
