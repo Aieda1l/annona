@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { eligibleCard } from "@/contracts";
 import { PhotoUpload } from "@/features/intake/components";
-import { downscaleToJpeg, fitWithin, MAX_BYTES, MAX_SIDE, type ImageIO } from "@/features/intake/components/photo-downscale";
+import { browserIO, downscaleToJpeg, fitWithin, MAX_BYTES, MAX_SIDE, type ImageIO } from "@/features/intake/components/photo-downscale";
 
 afterEach(cleanup);
 
@@ -144,5 +144,81 @@ describe("PhotoUpload", () => {
     expect(input).toBeInTheDocument();
     expect(document.body.textContent ?? "").toMatch(/synthetic|sample|no people|no faces/i);
     expect(document.body.textContent ?? "").not.toMatch(/\b(safe|safely|allergen[- ]free|certified|compliant)\b/i);
+  });
+});
+
+describe("downscaleToJpeg releases the decoded image", () => {
+  const withRelease = (encode: ImageIO["encode"]) => {
+    const release = vi.fn();
+    const io: ImageIO = { decode: async () => ({ width: 800, height: 600, source: "bitmap" }), encode, release };
+    return { io, release };
+  };
+
+  it("after success", async () => {
+    const { io, release } = withRelease(async () => new Uint8Array(10));
+    await downscaleToJpeg(new Blob(["x"]), io);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledWith("bitmap");
+  });
+
+  it("after the photo is still too large", async () => {
+    const { io, release } = withRelease(async () => new Uint8Array(MAX_BYTES + 1));
+    await expect(downscaleToJpeg(new Blob(["x"]), io)).rejects.toThrow(/too large/i);
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("after an encode failure", async () => {
+    const { io, release } = withRelease(async () => Promise.reject(new Error("canvas")));
+    await expect(downscaleToJpeg(new Blob(["x"]), io)).rejects.toThrow("canvas");
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it("browserIO.release closes an ImageBitmap", () => {
+    const close = vi.fn();
+    browserIO.release?.({ close });
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("browserIO.encode fills a white background (transparent PNGs must not go black)", () => {
+  it("fills white before it draws", async () => {
+    const calls: string[] = [];
+    const ctx = {
+      set fillStyle(v: string) {
+        calls.push(`fillStyle=${v}`);
+      },
+      fillRect: () => calls.push("fillRect"),
+      drawImage: () => calls.push("drawImage"),
+    };
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ctx,
+      toBlob: (cb: (b: unknown) => void) => cb({ arrayBuffer: async () => new ArrayBuffer(3) }),
+    };
+    const spy = vi.spyOn(document, "createElement").mockReturnValue(canvas as unknown as HTMLElement);
+    try {
+      await browserIO.encode({}, 10, 10, 0.8);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(calls.indexOf("fillRect")).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf("fillRect")).toBeLessThan(calls.indexOf("drawImage"));
+    expect(calls[0]).toMatch(/^fillStyle=(#fff|#ffffff|white|rgb\(255, ?255, ?255\))$/i);
+  });
+});
+
+describe("PhotoUpload when onDraft throws", () => {
+  it("does not report an upload failure or invite a duplicate upload", async () => {
+    const onDraft = vi.fn(() => {
+      throw new Error("render exploded");
+    });
+    const { pick, fetchImpl } = setup({ onDraft });
+    pick(jpeg());
+    const alert = await screen.findByRole("alert");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(alert).toHaveTextContent(/already uploaded|was uploaded/i);
+    expect(alert).toHaveTextContent(/reload/i);
+    expect(alert).not.toHaveTextContent(/render exploded/);
   });
 });

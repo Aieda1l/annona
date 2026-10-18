@@ -14,6 +14,8 @@ const SHRINK_FACTOR = 0.75;
 export type ImageIO = {
   decode(file: Blob): Promise<{ width: number; height: number; source: unknown }>;
   encode(source: unknown, width: number, height: number, quality: number): Promise<Uint8Array>;
+  /** Free the decoded image (an ImageBitmap holds memory until closed). */
+  release?(source: unknown): void;
 };
 
 /** Scale down to fit within `max` on the long side; never upscales and never goes below 1 px. */
@@ -39,10 +41,16 @@ export const browserIO: ImageIO = {
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas is not available in this browser.");
+    // JPEG has no alpha: without a white base a transparent PNG would re-encode as black.
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, width, height);
     ctx.drawImage(source as CanvasImageSource, 0, 0, width, height);
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
     if (!blob) throw new Error("The photo could not be converted.");
     return new Uint8Array(await blob.arrayBuffer());
+  },
+  release(source) {
+    (source as { close?: () => void }).close?.();
   },
 };
 
@@ -52,13 +60,17 @@ export async function downscaleToJpeg(
   io: ImageIO = browserIO,
 ): Promise<{ mime: "image/jpeg"; bytes_base64: string }> {
   const decoded = await io.decode(file);
-  let { width, height } = fitWithin(decoded.width, decoded.height, MAX_SIDE);
-  for (let round = 0; round < SHRINK_ROUNDS; round++) {
-    for (const quality of QUALITIES) {
-      const bytes = await io.encode(decoded.source, width, height, quality);
-      if (bytes.length <= MAX_BYTES) return { mime: "image/jpeg", bytes_base64: toBase64(bytes) };
+  try {
+    let { width, height } = fitWithin(decoded.width, decoded.height, MAX_SIDE);
+    for (let round = 0; round < SHRINK_ROUNDS; round++) {
+      for (const quality of QUALITIES) {
+        const bytes = await io.encode(decoded.source, width, height, quality);
+        if (bytes.length <= MAX_BYTES) return { mime: "image/jpeg", bytes_base64: toBase64(bytes) };
+      }
+      ({ width, height } = fitWithin(width * SHRINK_FACTOR, height * SHRINK_FACTOR, MAX_SIDE));
     }
-    ({ width, height } = fitWithin(width * SHRINK_FACTOR, height * SHRINK_FACTOR, MAX_SIDE));
+    throw new Error("The photo is still too large after shrinking. Please choose a smaller one.");
+  } finally {
+    io.release?.(decoded.source);
   }
-  throw new Error("The photo is still too large after shrinking. Please choose a smaller one.");
 }

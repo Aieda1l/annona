@@ -10,6 +10,7 @@ import { browserIO, downscaleToJpeg, type ImageIO } from "./photo-downscale";
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp"];
 const GENERIC_ERROR = "Something went wrong. Please try again.";
+const UPLOADED_BUT_NOT_SHOWN = "Your photo was uploaded, but this page could not show the draft. Reload the page before uploading again.";
 
 export type PhotoUploadProps = {
   onDraft: (card: DonationCard) => void;
@@ -53,8 +54,14 @@ export function PhotoUpload({ onDraft, endpoint = "/api/intake/drafts", io = bro
         body: JSON.stringify({ image }),
       });
       const json = (await res.json()) as ApiResponse;
-      if (json.ok) onDraft(json.data);
-      else setError(messageFor(json.error));
+      if (json.ok) {
+        // The draft exists now. A parent that throws is not an upload failure, and retrying would make a duplicate.
+        try {
+          onDraft(json.data);
+        } catch {
+          setError(UPLOADED_BUT_NOT_SHOWN);
+        }
+      } else setError(messageFor(json.error));
     } catch (err) {
       // Only our own downscale message is safe to show; anything else (network, parse) stays generic.
       setError(err instanceof Error && /smaller one/.test(err.message) ? err.message : GENERIC_ERROR);
