@@ -1,4 +1,4 @@
-import type { Clock, MessagingGateway, OutboundMessage } from "@/contracts";
+import type { Clock, MessagingGateway, OutboundMessage, TickReport } from "@/contracts";
 import type { DispatchCore, MessagingCore } from "./core-port";
 import { createOutboundSender } from "./outbound";
 import { formatOfferMessage } from "./templates";
@@ -7,14 +7,7 @@ import { formatOfferMessage } from "./templates";
 // Order: expireDue -> createNextOffers for every dispatchable donation -> open and send every pending_send offer.
 // Every core step is a conditional update, so a losing concurrent tick gets CONFLICT and skips; it is not an error.
 
-export type TickReport = {
-  at: string;
-  expired_offers: number;
-  expired_donations: number;
-  offers_created: number;
-  offers_sent: number;
-  send_failures: number;
-};
+export type { TickReport };
 
 type TickCore = Pick<MessagingCore, "getIdentity" | "recordOutboundMessage"> & DispatchCore;
 
