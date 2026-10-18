@@ -50,11 +50,35 @@ describe("T-MS-10 delivery status events", () => {
     expect(d.offer(offer?.offer_id as string)?.delivery_status).toBe("accepted");
   });
 
-  it("ignores a duplicate event: one update only", async () => {
-    const { d, event, handle } = await setup();
+  it("applies a duplicate event again (core is idempotent): the offer is unchanged", async () => {
+    const { d, offer, event, handle } = await setup();
     await handle(event("delivered"));
     await handle(event("delivered"));
-    expect(d.statusCalls).toHaveLength(1);
+    expect(d.statusCalls).toHaveLength(2);
+    expect(d.offer(offer?.offer_id as string)).toMatchObject({ delivery_status: "delivered", status: "open" });
+  });
+
+  it("a late accepted event never undoes delivered (core keeps the furthest status)", async () => {
+    const { d, offer, event, handle } = await setup();
+    await handle(event("delivered"));
+    await handle(event("accepted"));
+    expect(d.offer(offer?.offer_id as string)?.delivery_status).toBe("delivered");
+  });
+
+  it("a redelivered event still updates the offer when the first attempt was recorded but the update failed", async () => {
+    const { d, offer, event, handle } = await setup();
+    let fail = true;
+    const original = d.core.recordDeliveryStatus;
+    d.core.recordDeliveryStatus = async (evt) => {
+      if (fail) {
+        fail = false;
+        throw new Error("connection lost");
+      }
+      return original(evt);
+    };
+    await expect(handle(event("delivered"))).rejects.toThrow("connection lost");
+    await handle(event("delivered")); // Photon redelivers; core now says "duplicate" for the ledger row
+    expect(d.offer(offer?.offer_id as string)?.delivery_status).toBe("delivered");
   });
 
   it("closes a still-open offer when delivery failed, with Photon's failure code, and the next tick offers B", async () => {
@@ -73,10 +97,16 @@ describe("T-MS-10 delivery status events", () => {
 
   it("closes the offer once even if the failed event arrives twice", async () => {
     const { d, offer, event, handle } = await setup();
+    let closes = 0;
+    const original = d.core.markOfferSendFailed;
+    d.core.markOfferSendFailed = async (input) => {
+      closes += 1;
+      return original(input);
+    };
     await handle(event("failed"));
     await handle(event("failed"));
-    expect(d.statusCalls).toHaveLength(1);
     expect(d.offer(offer?.offer_id as string)?.status).toBe("send_failed");
+    expect(closes).toBe(1);
   });
 
   it("does not reopen or fail an offer that already expired when a late failed event arrives", async () => {

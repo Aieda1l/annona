@@ -71,12 +71,19 @@ export const declineAckText = (): string => "Annona: offer declined. No assignme
 export const intakeFailedText = (): string =>
   "Annona: we couldn't use that photo. Please send another photo or use the web upload.";
 
+/** The photo arrived and was drafted, but core cannot issue the checklist link yet. Honest, and it moves the relay on. */
+export const linkUnavailableText = (): string =>
+  "Annona: we got your photo, but the checklist link isn't available yet. Please use the web upload.";
+
 export const askForCodeText = (): string =>
   "Annona: which offer? Reply YES or NO followed by the 4-character code from the offer text.";
 
 /** For not_authorized and offer_not_found: no offer, donor or recipient details. */
 export const genericNoAssignmentText = (): string =>
   "Annona: we couldn't match that to an offer for you. No assignment was made.";
+
+/** A fault on our side while answering YES or NO: nothing is revealed, and the courier is told to send it again. */
+export const tryAgainText = (): string => "Annona: something went wrong on our side. Please try again in a minute.";
 
 /**
  * The reply to a claim. Addresses and pickup instructions appear only for `claimed` and `already_claimed_by_you`

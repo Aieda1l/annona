@@ -1,7 +1,7 @@
 import type { Actor, DonationCard, DraftReadyView, InboundMessage, Result } from "@/contracts";
 import type { FetchImageResult } from "@/integrations/photon/attachments";
 import type { IdentityView } from "./core-port";
-import { formatDraftReadyMessage, intakeFailedText } from "./templates";
+import { formatDraftReadyMessage, intakeFailedText, linkUnavailableText } from "./templates";
 
 // A joined donor's photo (CONTRACTS §3.10, §8.4, D-031): download the exact bytes, have Dev 1's intake draft it, have core
 // issue the one-time checklist link, and reply with the AI guess plus the link. Anything that goes wrong before a draft
@@ -79,7 +79,15 @@ export function createPhotoHandler(deps: PhotoDeps) {
     if (await deps.hasOutboundMessage(idempotency_key)) return null;
 
     const link = await deps.issueLink({ donation_id: card.id });
-    if (!link.ok) throw new Error(`issueVerificationLink failed: ${link.error.code}`);
+    if (!link.ok) {
+      // Until core's 2(d) is built, throwing would make the relay retry this photo forever and hold every later inbound
+      // message (a courier's YES included) behind it. Answer instead, so the cursor moves on.
+      if (link.error.code === "NOT_IMPLEMENTED") {
+        console.error("[photo] core.issueVerificationLink is not implemented yet (slice 2(d)); the donor was pointed to the web upload");
+        return { purpose: "intake_failed", text: linkUnavailableText(), idempotency_key: failed.idempotency_key };
+      }
+      throw new Error(`issueVerificationLink failed: ${link.error.code}`);
+    }
 
     const view: DraftReadyView = {
       ai_status: card.ai_status,

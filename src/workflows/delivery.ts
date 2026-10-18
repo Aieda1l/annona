@@ -8,8 +8,10 @@ export function createDeliveryHandler(deps: { core: DeliveryCore }) {
   const { core } = deps;
 
   return async function handleDeliveryStatus(evt: DeliveryStatusEvent): Promise<void> {
-    // Photon delivers at least once, so the same provider_event_id can arrive again.
-    if ((await core.recordStatusEvent(evt)) === "duplicate") return;
+    // Photon delivers at least once, so the same provider_event_id can arrive again. The ledger row is only a record:
+    // core's recordDeliveryStatus is idempotent and monotonic, so it runs for EVERY event, first or duplicate. A crash
+    // between the two calls then never loses the offer update when Photon redelivers (Dev 2 handoff, answer 2).
+    await core.recordStatusEvent(evt);
 
     const recorded = await core.recordDeliveryStatus(evt);
     // Throwing makes the route answer with an error so Photon retries the delivery.

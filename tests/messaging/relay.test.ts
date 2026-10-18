@@ -295,3 +295,21 @@ describe("T-MS-12 run loop", () => {
     expect(calls.length).toBeGreaterThan(0);
   });
 });
+
+describe("worker logs say why a network call failed", () => {
+  it("includes the cause code, never the message, which can echo an address", async () => {
+    const refused = Object.assign(new TypeError("fetch failed: connect ECONNREFUSED 127.0.0.1:3917"), {
+      cause: Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:3917"), { code: "ECONNREFUSED" }),
+    });
+    const { relay, logs } = setup({ routes: () => Promise.reject(refused) });
+    await relay.tickOnce();
+    expect(logs).toEqual(["[worker] tick failed: TypeError (ECONNREFUSED)"]);
+  });
+
+  it("logs only the error name when the cause carries no plain code", async () => {
+    const odd = Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("x"), { code: "has spaces and 10.0.0.1" }) });
+    const { relay, logs } = setup({ routes: () => Promise.reject(odd) });
+    await relay.tickOnce();
+    expect(logs).toEqual(["[worker] tick failed: TypeError"]);
+  });
+});

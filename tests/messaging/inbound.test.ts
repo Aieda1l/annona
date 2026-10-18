@@ -469,3 +469,57 @@ describe("T-MS-18 photo routing", () => {
     expect(double.calls.saved).toHaveLength(0);
   });
 });
+
+describe("a core fault during YES or NO (claimOffer or declineOffer throws)", () => {
+  const fault = async () => {
+    throw new Error("claimOffer: the pickup details could not be read");
+  };
+
+  it("answers with a safe retry message, saves the result, and does not wedge redelivery", async () => {
+    const { double, sent, handle } = setup();
+    double.core.claimOffer = fault;
+    const result = await handle(inbound("YES K7M3"));
+    expect(result).toMatchObject({ outcome: "rejected", command: "accept" });
+    expect(result.claim_result).toBeUndefined();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ purpose: "claim_result" });
+    expect(sent[0]?.text).toMatch(/try again/i);
+    expect(sent[0]?.text).not.toMatch(/Fixture Ave|Synthetic Way|pickup details/);
+    expect(double.calls.saved).toHaveLength(1);
+  });
+
+  it("does the same for NO", async () => {
+    const { double, sent, handle } = setup();
+    double.core.declineOffer = fault;
+    const result = await handle(inbound("NO K7M3"));
+    expect(result).toMatchObject({ outcome: "rejected", command: "decline" });
+    expect(sent[0]).toMatchObject({ purpose: "decline_ack" });
+    expect(sent[0]?.text).toMatch(/try again/i);
+  });
+
+  it("logs the fault without the sender's handle or the message text", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { double, handle } = setup();
+    double.core.claimOffer = fault;
+    await handle(inbound("YES K7M3"));
+    const logged = log.mock.calls.flat().join(" ");
+    log.mockRestore();
+    expect(logged).toContain("claimOffer");
+    expect(logged).not.toContain(HANDLE);
+    expect(logged).not.toContain("K7M3");
+  });
+
+  it("logs only the class name for an error that is not one of core's own fault messages", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { double, handle } = setup();
+    double.core.claimOffer = async () => {
+      throw new Error('duplicate key value violates unique constraint, Key (short_code)=(K7M3) already exists');
+    };
+    await handle(inbound("YES K7M3"));
+    const logged = log.mock.calls.flat().join(" ");
+    log.mockRestore();
+    expect(logged).toContain("Error");
+    expect(logged).not.toContain("short_code");
+    expect(logged).not.toContain("K7M3");
+  });
+});

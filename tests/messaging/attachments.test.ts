@@ -54,6 +54,33 @@ describe("T-MS-18 attachment download", () => {
     expect(result.ok && Array.from(result.image.bytes)).toEqual(Array.from(heic));
   });
 
+  it("names the type from the file's own first bytes when Photon labels it wrongly (an iPhone HEIC served as JPEG)", async () => {
+    const heic = new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63, 0, 0, 0, 0]);
+    const { fetcher } = setup((u) => (u === META ? meta({ sizeBytes: heic.length }) : bytesResponse(heic, "image/jpeg")));
+    expect(await fetcher.fetchImage(ID)).toMatchObject({ ok: true, image: { mime: "image/heic" } });
+  });
+
+  it("calls the mif1 / heif brands image/heif", async () => {
+    const heif = new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x69, 0x66, 0x31, 0, 0, 0, 0]);
+    const { fetcher } = setup((u) => (u === META ? meta({ sizeBytes: heif.length }) : bytesResponse(heif, "image/heic")));
+    expect(await fetcher.fetchImage(ID)).toMatchObject({ ok: true, image: { mime: "image/heif" } });
+  });
+
+  it("recognises JPEG, PNG and WebP by their first bytes whatever the label says", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+    for (const [bytes, expected] of [[BYTES, "image/jpeg"], [png, "image/png"], [webp, "image/webp"]] as const) {
+      const { fetcher } = setup((u) => (u === META ? meta({ sizeBytes: bytes.length }) : bytesResponse(bytes, "image/gif")));
+      expect(await fetcher.fetchImage(ID)).toMatchObject({ ok: true, image: { mime: expected } });
+    }
+  });
+
+  it("keeps the labelled type when the first bytes are not a known image, so intake still refuses it", async () => {
+    const odd = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const { fetcher } = setup((u) => (u === META ? meta({ sizeBytes: odd.length }) : bytesResponse(odd, "image/jpeg")));
+    expect(await fetcher.fetchImage(ID)).toMatchObject({ ok: true, image: { mime: "image/jpeg" } });
+  });
+
   it("takes the MIME type from the content header and ignores parameters", async () => {
     const { fetcher } = setup((u) => (u === META ? meta() : bytesResponse(BYTES, "image/jpeg; charset=binary")));
     expect(await fetcher.fetchImage(ID)).toMatchObject({ ok: true, image: { mime: "image/jpeg" } });
