@@ -200,11 +200,22 @@ describe("hygiene", () => {
     expect(audit).not.toContain(token);
   });
 
-  it("refusals are audited with a reason but without the token", async () => {
+  it("unknown and malformed tokens add nothing to the audit trail (unauthenticated callers cannot grow it)", async () => {
     const { deps } = await draftWithLink();
-    await service().getLinkVerification({ token: "y".repeat(43) }, deps);
+    const before = (await w.db.select().from(audit_events)).length;
+    const s = service();
+    for (let i = 0; i < 5; i++) await s.getLinkVerification({ token: String.fromCharCode(97 + i).repeat(43) }, deps);
+    await s.getLinkVerification({ token: "short" }, deps);
+    expect((await w.db.select().from(audit_events)).length).toBe(before);
+  });
+
+  it("a refusal for a real link is audited with its reason and without the token", async () => {
+    const { deps, token } = await draftWithLink();
+    const s = service();
+    await s.submitDonorVerificationByLink({ token, raw: factsAt() }, deps); // consumes the link
+    await s.getLinkVerification({ token }, deps); // refused: consumed
     const events = (await w.db.select().from(audit_events)).filter((e) => e.type === "link.rejected");
-    expect(events.length).toBeGreaterThan(0);
-    expect(JSON.stringify(events)).not.toContain("y".repeat(43));
+    expect(events.map((e) => (e.data as { reason: string }).reason)).toContain("consumed");
+    expect(JSON.stringify(events)).not.toContain(token);
   });
 });
