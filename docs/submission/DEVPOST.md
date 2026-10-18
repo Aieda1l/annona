@@ -81,7 +81,7 @@ Commercial kitchens, caterers and campus dining halls end events with surplus pr
 | DubHacks NEXT | Declared now | Declared now |
 | Photon | Genuine Photon 2.0 usage: a real offer/claim round trip with provider message IDs and phone screenshots (T-MS-13, T-E2E-04) | TODO: fill or drop the track |
 | MLH Best Use of Gemini API | A real Gemini call visible in the product (`ai_suggestion.mode = "real"`) | TODO: fill or drop the track |
-| VEYZL | An audit of a PR, and proof the finding changed code | TODO: fill or drop the track |
+| VEYZL | An audit of a PR, and proof the finding changed code | **DROPPED (D-041).** No audit ran; do not list or mention VEYZL as a track or a result |
 | MLH Commit Fellowship | Working prototype, Devpost opt-in, supplemental form, intent to continue | TODO: only if the team will continue |
 
 Rule from the team (D-001): a sponsored track is dropped, not swapped, if its evidence is missing by Sunday 8:00 AM.
