@@ -107,7 +107,7 @@ EVIDENCE (commands run locally; PGlite only, nothing real):
 - `pnpm test`: 60 files, 1,681 passed, 30 skipped (the gated Postgres tests), 1 todo, identical on repeated runs.
 - Invariant fuzz (`tests/core/service-invariants.test.ts`): 30 seeds x 80 steps by default; 300 seeds (about 24,000 random operations including interleaved claims, STOP, time jumps and approval changes; the interleaving is Promise.all on ONE PGlite connection, which is not concurrency evidence) run once and clean. Properties: at most one active assignment per donation, one live offer per courier, no live offers on finished donations, capacity never exceeded, claimed/collected donations match their accepted offer.
 - ECC review rounds (code, security, database): findings fixed with failing tests first. Notable: an ended assignment was replayed with addresses; two dispatch rounds could deadlock on real Postgres (now serialized through the policy row, plus retry on 40P01/40001); an offer could open after `discard_by`; STOP could race a dispatch (now two transactions); the audit guard was bypassable; malformed ids threw driver errors.
-- NOT RUN / UNVERIFIED: **T-CO-17 on real Postgres. First-claim-wins is NOT shown race-safe (D-033).** Also: the Postgres half of T-CO-23, real Supabase pooler behavior, all HTTP handlers (2(c)), `recordHandoff`, `operatorAction`, `getDashboardSnapshot`, verification links (2(d)).
+- NOT RUN / UNVERIFIED (at the time): T-CO-17 on real Postgres and the Postgres half of T-CO-23 (both since run and passed, see "T-CO-17 on real Postgres" below). Also: all HTTP handlers (2(c)), `recordHandoff`, `operatorAction`, `getDashboardSnapshot`, verification links (2(d)).
 
 CONTRACT CHANGES OR REQUESTS (captain):
 - `docs/requests/dev2-donor-offer-projection.md`: the strict `DonationCard` cannot express the owning donor's "reduced" offers, so the donor projection fills hidden fields with placeholders (zero UUID, short code `AAAA`, empty names). A `DonorOfferSummary` type would be cleaner.
@@ -115,7 +115,7 @@ CONTRACT CHANGES OR REQUESTS (captain):
 - `getEnv()` handle names: done by the captain (PR #14); the seed CLI now uses them (request closed).
 
 BLOCKERS + SAFETY RISKS:
-- T-CO-17 needs a disposable Postgres. Until it passes, nobody may say claims are race-safe or concurrency-tested (README, pitch, video, Devpost).
+- T-CO-17 has since passed on a disposable Supabase database (see "T-CO-17 on real Postgres" below). Use only the agreed line: "Tested on real Postgres: 6 connections claimed the same donation at once, 20 rounds, one winner every time." Never "race-safe" or "proven".
 - Dev 3's OK on the gate and expiry rules (OWNERSHIP section 6) is still outstanding.
 - No `lock_timeout`/`statement_timeout` is set; consider adding one to the Supabase connection options.
 
@@ -151,7 +151,7 @@ EVIDENCE (commands run locally on feat/dispatch-slice2d; PGlite only, nothing re
 - `pnpm test`: 82 files, 2,279 passed, 32 skipped (gated Postgres tests). New: `tests/core/service-slice2c.test.ts` (33), `service-http.test.ts` (11, T-CO-29), `service-links.test.ts` (16, T-CO-30).
 - Mutation check: disabling the link-consumption rollback makes the "failed submit leaves the link live" test fail.
 - Process note: for 2(c)/2(d) the tests were written right after each function, not strictly before it.
-- NOT RUN / UNVERIFIED: T-CO-17 on real Postgres (first-claim-wins still NOT shown race-safe, D-033); the handlers through a real Next.js request with the captain's signed cookie (tests inject the actor); the dashboard's cost on the Supabase pooler (one card = 4 queries; 100 cards every 2 s).
+- NOT RUN / UNVERIFIED: (T-CO-17 on real Postgres has since passed, see "T-CO-17 on real Postgres" below); the handlers through a real Next.js request with the captain's signed cookie (tests inject the actor); the dashboard's cost on the Supabase pooler (one card = 4 queries; 100 cards every 2 s).
 
 CONTRACT CHANGES OR REQUESTS (captain):
 - Health: `src/server/health.ts` can now call `getSystemStatus()` for `last_tick_at` and `policy_version` (captain-owned follow-up, OWNERSHIP section 7).
@@ -166,3 +166,28 @@ INTEGRATION STEPS: Dev 4 swaps the mocked `fetch` for the real routes (dashboard
 
 NEXT SMALLEST ACTION: run T-CO-17 against a disposable Postgres (`TEST_DATABASE_URL`), then the Postgres half of T-CO-23.
 
+
+## T-CO-17 on real Postgres (test hardening after review)
+
+LANE / BRANCH / COMMIT: Dev 2 / test/t-co-17-hardening / tests run against 60c760b (this doc update follows it; no code change)
+
+DELIVERED (tests/core only; claim code and src/contracts untouched):
+- T-CO-17 asserts the exact outcome every round: 1 claimed, 2 already_claimed_by_you (the winner's other connections), 3 already_claimed (the other courier), and no assignment on any already_claimed (a losing courier never gets an address).
+- Every connection is warmed (select 1) before each race; each claim's start and end are recorded; at least 16 of 20 rounds must have all 6 claims in flight at the same moment. This overlap is measured on the client: it shows the requests were concurrent, not that Postgres made one wait on the lock.
+- The replay test checks that exactly one active accepted offer exists. Unused imports removed. Test timeout 600 s.
+- One helper empties the disposable database: T-CO-17 calls it in afterAll, T-CO-23 (Postgres half) in beforeAll, so either order works. Run the gated files one at a time.
+- TEST_PLAN T-CO-17 now says "independent connections from the default pool" (no max: 1 option, per the captain).
+
+EVIDENCE (real Supabase Postgres, disposable database annona_test, transaction pooler port 6543, prepare: false):
+- Command: `pnpm vitest run --no-file-parallelism --reporter=verbose --silent=false tests/core/claim-race-postgres.test.ts tests/core/db.test.ts` with TEST_DATABASE_URL from the gitignored .env.test.local.
+- Result: exit 0; 2 files, 67 passed (T-CO-17: 4 of 4; db.test.ts: 63 of 63 including the Postgres half of T-CO-23); 119 s.
+- Every one of the 20 rounds: claimed=1, already_claimed_by_you=2, already_claimed=3. Overlap 20/20 rounds (threshold 16): all 6 claims started within 0.3 ms of each other, and the first one finished 436-505 ms later.
+- The 20-round claim test took 54 s (not about 200 s as estimated in the review); the competing-dispatch test 40 s.
+- An earlier run on b70919a: T-CO-17 passed, but T-CO-23 failed 1 of 63 (a donor identity already joined) because it ran first on a database left non-empty. Fixed in 60c760b (T-CO-23 empties the database first), then the run above.
+- typecheck 0 errors; eslint clean on the changed files; db.test.ts on PGlite 37 passed, 26 skipped.
+
+CONTRACT CHANGES OR REQUESTS: none.
+
+BLOCKERS + SAFETY RISKS: none new. Wording: only "Tested on real Postgres: 6 connections claimed the same donation at once, 20 rounds, one winner every time." Never "race-safe" or "proven".
+
+NEXT SMALLEST ACTION: captain marks AC-06 done in PROJECT_STATE if they accept this evidence.
