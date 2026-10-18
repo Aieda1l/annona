@@ -248,7 +248,7 @@ Do not copy example parameter values from the 2025 paper (PROMPTING_GUIDE note).
 | Image size | ≤ 1024 px JPEG, ≤ 1.5 MB | Latency or token cost high → smaller; detail lost → keep |
 | Media resolution (if the SDK exposes it) | Default | Only after the above, and only if verified in the pinned SDK |
 | Temperature / sampling | Provider default | Only if repeated runs disagree on U3/M1; record the value |
-| Timeout | 15 s total (D-012): two attempts of 7 s; one retry only for retryable provider failures (stall, network, 429, 5xx), never for safety blocks, 4xx or bad model output | Not tuned by evals; change via DECISIONS |
+| Timeout | 15 s total (D-012); the adapter works inside 14 s: one attempt up to 9 s, the retry gets only the time left (changed from two 7 s attempts after a prod call took about 6 s, issue #61); one retry only for retryable provider failures (stall, network, 429, 5xx), never for safety blocks, 4xx or bad model output | Not tuned by evals; change via DECISIONS |
 
 ## 8. Fail-closed validation policy
 

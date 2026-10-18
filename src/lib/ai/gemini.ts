@@ -38,9 +38,12 @@ export type PromptVersion = (typeof PROMPT_VERSIONS)[number];
 export const DEFAULT_PROMPT_VERSION: PromptVersion = "v1";
 export const promptPathFor = (version: PromptVersion) => `src/lib/ai/prompts/annona-intake.${version}.md`;
 
-// Total budget stays 15 s (D-012): two attempts of 7 s. A typical call takes about 2 s; the retry exists for the
-// occasional stall. Vision has no side effects, so retrying a retryable provider failure is safe.
-export const GEMINI_ATTEMPT_TIMEOUT_MS = 7_000;
+// The service allows 15 s in total (D-012); the adapter works inside 14 s of it. One attempt may use up to 9 s: a
+// production call from iad1 took about 6 s (issue #61), and a 7 s cut-off threw away slow but valid answers. The retry
+// exists for a fast failure (429, 5xx, network) or a stall, and gets only the time left, never a fresh 9 s. Vision has
+// no side effects, so retrying a retryable provider failure is safe.
+export const GEMINI_ATTEMPT_TIMEOUT_MS = 9_000;
+export const GEMINI_TOTAL_BUDGET_MS = 14_000;
 export const GEMINI_MAX_ATTEMPTS = 2;
 
 // Second opinion from a stronger model (docs/PROMPT_EVAL.md §13). It runs inside the same total budget as the
@@ -138,8 +141,10 @@ export type GeminiAttemptEvent = {
 export function createGeminiProvider(config: {
   client: GeminiClientLike;
   model: string;
-  /** Per-attempt timeout. */
+  /** Per-attempt timeout (a later attempt gets at most what is left of the total). */
   timeout_ms?: number;
+  /** Total time for all attempts and the second opinion. Default: 14 s, or `timeout_ms` x attempts when `timeout_ms` is set. */
+  total_budget_ms?: number;
   /** Total attempts, including the first. 1 disables the retry. */
   max_attempts?: number;
   promptVersion?: PromptVersion;
@@ -232,7 +237,8 @@ export function createGeminiProvider(config: {
       const prompt = renderPrompt(template, donor_hint);
 
       const startedAll = Date.now();
-      const budget_ms = timeout_ms * Math.max(1, max_attempts);
+      const budget_ms =
+        config.total_budget_ms ?? (config.timeout_ms === undefined ? GEMINI_TOTAL_BUDGET_MS : timeout_ms * Math.max(1, max_attempts));
       const report = (attempt: number, result: Result<VisionSuggestion>, started: number, usedModel: string, escalated: boolean) => {
         const failure = result.ok ? null : result.error;
         config.onAttempt?.({
@@ -249,7 +255,8 @@ export function createGeminiProvider(config: {
       const trail: string[] = [];
       for (let attempt = 1; attempt <= Math.max(1, max_attempts); attempt++) {
         const started = Date.now();
-        result = await attemptOnce(prompt, image);
+        const left = budget_ms - (started - startedAll);
+        result = await attemptOnce(prompt, image, { model, timeoutMs: Math.max(1, Math.min(timeout_ms, left)) });
         report(attempt, result, started, model, false);
         const cause = reasonOf(result);
         if (cause) trail.push(cause);

@@ -307,6 +307,35 @@ describe("retry: one retry on retryable provider failures", () => {
   });
 });
 
+// Issue #61: a prod call took ~6 s from iad1, so a 7 s cut-off lost slow-but-fine answers. One attempt may now use
+// 9 s, and the retry gets only what is left of the 14 s total (never a fresh 9 s).
+describe("default timing (9 s per attempt, 14 s total)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("an answer after 8 s is accepted without a retry", async () => {
+    const { provider, generateContent } = setup(() => new Promise((res) => setTimeout(() => res(ok()), 8000)));
+    const pending = analyze(provider);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect((await pending).ok).toBe(true);
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("a stalled first attempt is cut at 9 s and the retry gets the remaining 5 s", async () => {
+    const { provider, generateContent } = setup(() => new Promise(() => {}));
+    let done = false;
+    const pending = analyze(provider).then((r) => ((done = true), r));
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(generateContent).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const r = await pending;
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.details?.reason).toBe("timeout.timeout");
+  });
+});
+
 describe("prompt version", () => {
   const textOf = (generateContent: ReturnType<typeof setup>["generateContent"]) =>
     (generateContent.mock.calls[0]![0] as { contents: { parts: { text?: string }[] }[] }).contents[0]!.parts[1]!.text!;
@@ -438,10 +467,10 @@ describe("escalation to a stronger model when the first answer is not confident"
     afterEach(() => vi.useRealTimers());
 
     it("skips escalation when less than 3 s of the 14 s budget remains", async () => {
-      // first attempt stalls for the full 7 s, retry answers after 5 s: 12 s used, 2 s left
+      // first attempt stalls until cut at 9 s, the retry answers after 3 s: 12 s used, 2 s left
       const { provider, generateContent } = setup(async () => lowConfidence(), { escalation_model: BIG });
       generateContent.mockImplementationOnce(() => new Promise(() => {}));
-      generateContent.mockImplementationOnce(() => new Promise((res) => setTimeout(() => res(lowConfidence()), 5000)));
+      generateContent.mockImplementationOnce(() => new Promise((res) => setTimeout(() => res(lowConfidence()), 3000)));
       const pending = analyze(provider);
       await vi.advanceTimersByTimeAsync(12_000);
       const r = await pending;
