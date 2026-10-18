@@ -13,7 +13,7 @@ export function PhotoPreview({ src }: { src: string }) {
 
   if (failedSrc === src) {
     return (
-      <div data-testid="photo-fallback" className="space-y-1 rounded border border-slate-400 bg-slate-50 p-3 text-sm text-slate-900">
+      <div data-testid="photo-fallback" className="space-y-1 rounded-lg border border-dashed border-input bg-muted/50 p-3 text-sm text-foreground">
         <p>
           The photo can&apos;t be previewed in this browser. Photos taken on an iPhone are often saved as HEIC, which many browsers
           cannot display.
@@ -31,7 +31,7 @@ export function PhotoPreview({ src }: { src: string }) {
       src={src}
       alt="Donor photo (synthetic)"
       onError={() => setFailedSrc(src)}
-      className="max-h-80 w-auto rounded border border-slate-300"
+      className="max-h-80 w-full rounded-lg bg-muted object-contain ring-1 ring-border"
     />
   );
 }

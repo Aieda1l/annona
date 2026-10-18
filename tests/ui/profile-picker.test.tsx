@@ -29,8 +29,10 @@ function mockServer(session: { ok: true; role: string } | { ok: false; status: n
 
 async function signIn(actorId: string) {
   render(<ProfilePicker />);
-  await screen.findByRole("option", { name: /Operator/ });
-  fireEvent.change(screen.getByLabelText(/profile/i), { target: { value: actorId } });
+  // Profiles are radio cards (UI redesign); pick the one whose value is the actor id.
+  await screen.findByRole("radio", { name: /Operator/ });
+  const radio = screen.getAllByRole("radio").find((r) => (r as HTMLInputElement).value === actorId)!;
+  fireEvent.click(radio);
   fireEvent.change(screen.getByLabelText(/passcode/i), { target: { value: "pass" } });
   fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
 }

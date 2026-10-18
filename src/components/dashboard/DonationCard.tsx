@@ -30,6 +30,7 @@ export function DonationCard({
   actions,
   expanded = false,
   detailHref,
+  hideTitle = false,
 }: {
   card: DonationCardData;
   actions?: ReactNode;
@@ -37,6 +38,8 @@ export function DonationCard({
   expanded?: boolean;
   /** When set, the title links to the operator detail page. */
   detailHref?: string;
+  /** The detail page shows the dish name in its own h1. */
+  hideTitle?: boolean;
 }) {
   const title = card.verified_facts?.dish_name ?? "Untitled draft";
   const fieldStates = Object.entries(card.decision?.field_states ?? {});
@@ -50,7 +53,7 @@ export function DonationCard({
       <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1", TONE_ACCENT[statusTone(card.status)])} />
       <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
         <div className="min-w-0 space-y-1">
-          <h3 className="text-base font-semibold sm:text-lg">
+          <h3 className={cn("text-base font-semibold sm:text-lg", hideTitle && "sr-only")}>
             {detailHref ? (
               <Link href={detailHref} className="rounded-sm underline-offset-4 hover:text-primary hover:underline">
                 {title}

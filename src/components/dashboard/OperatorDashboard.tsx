@@ -133,7 +133,7 @@ export function OperatorDashboard({
         <MetricTile label="Unmatched" value={count("unmatched")} icon={UserX} accentClass="bg-neutral-subtle text-neutral" href="#status-unmatched" />
         <MetricTile label="Offered" value={count("offered")} icon={Send} accentClass="bg-offer-subtle text-offer" href="#status-offered" />
         <MetricTile
-          label="Claimed or en route (simulated)"
+          label="Claimed or en route"
           value={count("claimed") + count("collected")}
           icon={Hand}
           accentClass="bg-progress-subtle text-progress"
