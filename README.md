@@ -1,6 +1,4 @@
-# Annona
-
-**Good food finds its way.**
+<p align="center"><img src="public/annona_banner.svg" alt="Annona: Good food finds its way" width="100%"></p>
 
 Annona is a messaging-native coordination prototype for last-minute surplus food from licensed kitchens. A kitchen texts a photo of what's left over. Annona drafts a description, the kitchen verifies it, a deterministic gate decides whether the lot may be offered, and exactly one courier wins the pickup.
 
@@ -9,6 +7,14 @@ Built at **DubHacks 2026** for the **Community Kitchen** track.
 > **Annona never decides that food is safe.** A photo or an LLM can't establish ingredients, allergens or handling. "Eligible" means *eligible for dispatch under a prototype operator policy*, based on facts the donor attested. It does not mean safe, allergen-free or compliant. This is a hackathon prototype running on synthetic data. It isn't certified and isn't ready for real food.
 
 ## How it works
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="public/globe.svg" alt="" width="32" height="32"><br><b>Message</b><br>Photo in, offers out, over iMessage via Photon</td>
+    <td align="center" width="33%"><img src="public/file.svg" alt="" width="32" height="32"><br><b>Verify</b><br>Donor attests facts on a structured checklist</td>
+    <td align="center" width="33%"><img src="public/window.svg" alt="" width="32" height="32"><br><b>Operate</b><br>Dashboard shows server truth and an audit trail</td>
+  </tr>
+</table>
 
 1. **Photo.** A donor texts a food photo over iMessage (via Photon). A web upload is the fallback.
 2. **Draft.** Gemini returns an editable guess at the dish, servings and possible allergens. The reply labels it a guess and includes a one-time checklist link.
@@ -32,7 +38,7 @@ Built at **DubHacks 2026** for the **Community Kitchen** track.
 
 ## Stack
 
-TypeScript, Next.js 16 (React 19), Tailwind and shadcn/ui, Drizzle ORM on Postgres (PGlite for local development), Zod, Vitest. Gemini (`@google/genai`) handles vision. Photon handles iMessage.
+<img src="public/next.svg" alt="Next.js" height="14"> TypeScript, Next.js 16 (React 19), Tailwind and shadcn/ui, Drizzle ORM on Postgres (PGlite for local development), Zod, Vitest. Gemini (`@google/genai`) handles vision. Photon handles iMessage.
 
 ## Getting started
 
