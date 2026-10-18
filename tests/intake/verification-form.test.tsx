@@ -172,7 +172,7 @@ describe("submitting", () => {
     fireEvent.click(within(screen.getByRole("group", { name: "Milk" })).getByRole("radio", { name: /^Present/i }));
     fireEvent.click(within(screen.getByRole("group", { name: "Wheat" })).getByRole("radio", { name: /my listed ingredients/i }));
     fireEvent.click(screen.getByLabelText(/no discard-by time/i)); // untick
-    fireEvent.change(screen.getByLabelText(/^Discard-by time/i), { target: { value: "2026-10-18T05:00" } });
+    fireEvent.change(screen.getByLabelText(/^Discard-by time from/i), { target: { value: "2026-10-18T05:00" } });
     fireEvent.change(screen.getByLabelText(/^Cross-contact status/i), { target: { value: "declared" } });
     fireEvent.click(screen.getByLabelText("Peanuts cross-contact"));
     fireEvent.click(screen.getByRole("button", { name: /submit for review/i }));

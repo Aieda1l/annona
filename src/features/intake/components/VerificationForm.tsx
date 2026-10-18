@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { buildFacts, initialFormState, prefillFromSuggestion, type AiFilled, type FormState } from "./verification-form-model";
+import { buildFacts, initialFormState, prefillFromSuggestion, showsColdQuestions, toLocalInput, type AiFilled, type FormState } from "./verification-form-model";
 
 // The donor checklist (Dev 1). Every fact starts empty or `unknown`, except what the AI draft fills to save typing
 // (D-042; see `prefillFromSuggestion`): dish name, servings, the ingredients text and the allergens the AI flagged,
@@ -93,11 +93,35 @@ const AiTag = ({ field, children }: { field: string; children: ReactNode }) => (
   </span>
 );
 
+/** "+1 h / +2 h / +4 h" buttons: the donor clicks one to fill a time field; nothing is pre-selected. */
+function TimeShortcuts({ label, disabled, onPick }: { label: string; disabled?: boolean; onPick: (local: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label={`${label} shortcuts`}>
+      {[1, 2, 4].map((h) => (
+        <Button
+          key={h}
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          aria-label={`${label} +${h} h from now`}
+          onClick={() => onPick(toLocalInput(new Date(Date.now() + h * 3_600_000)))}
+        >
+          +{h} h
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 export function VerificationForm({ suggestion, onSubmit, submitting = false, error = null }: VerificationFormProps) {
   const uid = useId();
-  const [state, setState] = useState<FormState>(initialFormState);
-  const [aiFilled, setAiFilled] = useState<AiFilled>({ allergens: [] });
-  const appliedFor = useRef<VisionSuggestion | null>(null);
+  // A suggestion that is there at the first render fills the form at once (no empty flash, nothing to wait for); one that
+  // arrives later is applied by the effect below.
+  const [initial] = useState(() => prefillFromSuggestion(initialFormState(), suggestion));
+  const [state, setState] = useState<FormState>(initial.state);
+  const [aiFilled, setAiFilled] = useState<AiFilled>(initial.filled);
+  const appliedFor = useRef<VisionSuggestion | null>(suggestion);
   const stateRef = useRef(state);
   stateRef.current = state;
   const [errors, setErrors] = useState<string[]>([]);
@@ -320,15 +344,24 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
       >
         {select("contains_excluded_category", YES_NO_UNKNOWN, YNU_LABELS)}
       </Field>
-      <Field
-        label="Held at 41 °F (5 °C) or below continuously since preparation, per your establishment's procedures?"
-        htmlFor={id("continuous_cold_holding")}
-      >
-        {select("continuous_cold_holding", YES_NO_UNKNOWN, YNU_LABELS)}
-      </Field>
-      <Field label="Do you have a temperature log for this food?" htmlFor={id("temperature_log_available")}>
-        {select("temperature_log_available", YES_NO_UNKNOWN, YNU_LABELS)}
-      </Field>
+      {showsColdQuestions(state.handling_mode) ? (
+        <>
+          <Field
+            label="Held at 41 °F (5 °C) or below continuously since preparation, per your establishment's procedures?"
+            htmlFor={id("continuous_cold_holding")}
+          >
+            {select("continuous_cold_holding", YES_NO_UNKNOWN, YNU_LABELS)}
+          </Field>
+          <Field label="Do you have a temperature log for this food?" htmlFor={id("temperature_log_available")}>
+            {select("temperature_log_available", YES_NO_UNKNOWN, YNU_LABELS)}
+          </Field>
+        </>
+      ) : (
+        <p data-testid="cold-questions-skipped" className="text-xs text-muted-foreground">
+          This prototype only offers refrigerated food, so the cold-holding and temperature-log questions are skipped for this
+          food. It will be sent for review.
+        </p>
+      )}
       <Field
         label="Was any of this food served to or handled by customers (for example on a buffet line)?"
         htmlFor={id("previously_served")}
@@ -347,6 +380,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           value={state.discard_by_local}
           onChange={text("discard_by_local")}
         />
+        <TimeShortcuts label="Discard-by time" disabled={state.no_discard_by} onPick={(v) => set("discard_by_local", v)} />
         <label className="flex items-center gap-1.5 text-sm">
           <input
             type="checkbox"
@@ -365,6 +399,7 @@ export function VerificationForm({ suggestion, onSubmit, submitting = false, err
           value={state.donor_pickup_by_local}
           onChange={text("donor_pickup_by_local")}
         />
+        <TimeShortcuts label="Pickup time" onPick={(v) => set("donor_pickup_by_local", v)} />
       </Field>
 
       <Field label="Pickup instructions (shared only with the courier who accepts)" htmlFor={id("pickup_instructions")}>
