@@ -159,6 +159,31 @@ describe("createDraftFromImage", () => {
     });
   });
 
+  describe("provider results are re-validated (PR #5 review)", () => {
+    const run = async (data: unknown, mode: "real" | "fake" = "real") => {
+      const { core } = setup();
+      const provider = spyVision(async () => ({ ok: true, data: data as VisionSuggestion })).provider;
+      const s = createIntakeService({ core, vision: { ...provider, mode } });
+      await s.createDraftFromImage({ actor: DONOR, image: fixture("sandwich_platter"), source: "web_upload" });
+      return core.attachAiResult.mock.calls[0]![0].result;
+    };
+
+    it("a suggestion with a tampered literal flag becomes AI_OUTPUT_INVALID", async () => {
+      const result = await run({ ...scene1_vision_suggestion, mode: "real", ingredients_verified: true });
+      expect(result).toEqual({ ok: false, error_code: "AI_OUTPUT_INVALID" });
+    });
+
+    it("a suggestion whose mode differs from the provider mode becomes AI_OUTPUT_INVALID", async () => {
+      const result = await run({ ...scene1_vision_suggestion, mode: "fake" }, "real");
+      expect(result).toEqual({ ok: false, error_code: "AI_OUTPUT_INVALID" });
+    });
+
+    it("a well-formed suggestion with matching mode passes through", async () => {
+      const result = await run({ ...scene1_vision_suggestion, mode: "real" }, "real");
+      expect(result).toMatchObject({ ok: true });
+    });
+  });
+
   describe("15 s timeout", () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());

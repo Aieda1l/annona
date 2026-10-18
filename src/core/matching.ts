@@ -1,31 +1,16 @@
-import { ALLERGENS, type ReasonCode, type VerifiedFacts } from "@/contracts";
-import type {
-  CourierProfile,
-  MatchCandidate,
-  MessagingIdentityLite,
-  PolicyConfig,
-  RecipientOrg,
-} from "./types";
+import {
+  ALLERGENS,
+  type MatchCandidate,
+  type MatchInput,
+  type ReasonCode,
+  type RecipientOrg,
+} from "@/contracts";
 import { parseUtc } from "./time";
 
-// CONTRACTS §6 matching and feasibility (M-01..M-10). Pure: no I/O, no clock reads.
-// Input is the §6 list plus `busy_courier_ids` (captain-approved for M-09; the unique index only covers pending_send/open).
-// M-04 net of committed servings is not decidable from the input: re-checked under the recipient lock at claim.
-// Here M-04 uses the raw capacity.
-
-export type MatchInput = {
-  donation: { id: string; donor_location: { lat: number; lng: number } };
-  facts: VerifiedFacts;
-  recipients: RecipientOrg[];
-  couriers: CourierProfile[];
-  identities: MessagingIdentityLite[];
-  policy: PolicyConfig;
-  now: Date;
-  /** M-08: couriers already offered this donation. */
-  excluded_courier_ids: string[];
-  /** M-09 (captain-approved addition): couriers with a pending_send/open offer or a claimed/collected assignment, any donation. */
-  busy_courier_ids: string[];
-};
+// CONTRACTS section 6 matching and feasibility (M-01..M-10), v0.5 inputs. Pure: no I/O, no clock reads.
+// The input type is the shared contract type. Any missing or malformed input returns [] (fail closed, never a partial list);
+// one recipient or courier with unusable fields is skipped. The claim transaction re-checks M-04 under the recipient lock.
+export type { MatchInput } from "@/contracts";
 
 const MIN = 60_000;
 
@@ -47,7 +32,7 @@ function recipientEligible(r: RecipientOrg, input: MatchInput): boolean {
   const { facts } = input;
   if (r.approval_status !== "approved") return false; // M-01
   if (!r.registered_dfdo || r.serves_highly_susceptible_population) return false; // M-01
-  if (!r.accepts_handling_modes.includes(facts.handling_mode)) return false; // M-02
+  if (!(r.accepts_handling_modes as string[]).includes(facts.handling_mode)) return false; // M-02
   // Only an explicit "not_in_listed_ingredients" counts as absent; unknown or garbage is treated as present, so this
   // function stays safe even if it is called without the gate having run first.
   const present = new Set<string>([
@@ -58,13 +43,37 @@ function recipientEligible(r: RecipientOrg, input: MatchInput): boolean {
   // Undeclared cross-contact could involve any allergen, so it cannot satisfy a recipient that excludes one.
   if (facts.cross_contact_status !== "declared" && r.excluded_allergens.length > 0) return false; // M-03
   // Positive form: NaN or undefined capacity or servings must refuse, not pass.
-  if (![r.capacity_servings_available, facts.servings].every(Number.isFinite)) return false; // M-04
-  if (!(r.capacity_servings_available >= facts.servings)) return false; // M-04
+  const committed = Object.hasOwn(input.committed_servings, r.id) ? input.committed_servings[r.id]! : 0;
+  if (![r.capacity_servings_available, facts.servings, committed].every(Number.isFinite)) return false; // M-04
+  if (!(r.capacity_servings_available - committed >= facts.servings)) return false; // M-04
   return true;
+}
+
+const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
+const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Whole-call checks (CONTRACTS section 6 "fail closed"): any failure here returns [] instead of a partial list. */
+function inputsWellFormed(input: MatchInput): boolean {
+  return (
+    isPlainObject(input) &&
+    isPlainObject(input.donation) &&
+    isPlainObject(input.facts) &&
+    isPlainObject(input.policy) &&
+    (input.active_provider === "photon" || input.active_provider === "fake") &&
+    isStringArray(input.excluded_courier_ids) &&
+    isStringArray(input.busy_courier_ids) &&
+    isPlainObject(input.committed_servings) &&
+    Object.values(input.committed_servings).every((v) => typeof v === "number" && Number.isFinite(v) && v >= 0) &&
+    Array.isArray(input.recipients) &&
+    Array.isArray(input.couriers) &&
+    Array.isArray(input.identities) &&
+    input.identities.every((i) => isPlainObject(i) && (i.provider === "photon" || i.provider === "fake"))
+  );
 }
 
 export function findCandidates(input: MatchInput): MatchCandidate[] {
   const { facts, policy, now, donation } = input;
+  if (!inputsWellFormed(input)) return [];
   // Fail closed: NaN comparisons are false, which would otherwise read as "feasible".
   if (!Number.isFinite(now.getTime()) || !(policy.average_speed_kmh > 0)) return [];
   const policyNumbers = [policy.response_window_seconds, policy.handoff_buffer_minutes, policy.max_transit_minutes];
@@ -73,12 +82,13 @@ export function findCandidates(input: MatchInput): MatchCandidate[] {
   if (!Number.isInteger(facts.servings) || facts.servings < 1 || !(facts.servings <= policy.max_servings)) return [];
   // Malformed facts (callers should pass Zod-parsed facts) cannot be matched.
   if (!facts.allergens || !Array.isArray(facts.cross_contact_allergens)) return [];
-  // A missing list would silently disable M-09; refuse instead.
-  if (!Array.isArray(input.busy_courier_ids)) return [];
   const excluded = new Set(input.excluded_courier_ids);
   const busy = new Set(input.busy_courier_ids);
+  // M-05: only identities of the active provider count as joined.
   const joined = new Set(
-    input.identities.filter((i) => i.actor_role === "courier" && i.status === "joined").map((i) => i.actor_id),
+    input.identities
+      .filter((i) => i.actor_role === "courier" && i.status === "joined" && i.provider === input.active_provider)
+      .map((i) => i.actor_id),
   );
 
   const pickupBy = parseUtc(facts.donor_pickup_by);

@@ -72,7 +72,7 @@ export type BuildResult = { ok: true; raw: Record<string, unknown> } | { ok: fal
 
 export function buildFacts(state: FormState, now: Date = new Date()): BuildResult {
   const errors: string[] = [];
-  const servings = state.servings.trim() === "" ? NaN : Number(state.servings);
+  const servings = /^\d+$/.test(state.servings.trim()) ? Number(state.servings.trim()) : NaN;
   const pickup = localToUtc(state.donor_pickup_by_local);
   const discard = state.no_discard_by ? null : localToUtc(state.discard_by_local);
 

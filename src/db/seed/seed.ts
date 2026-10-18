@@ -32,6 +32,19 @@ export type StaleIdentity = {
 /** What `seedStore` left alone. Never carries a handle value (they are personal data). */
 export type SeedReport = { stale_identities: StaleIdentity[] };
 
+/**
+ * The operator-facing warning for an identity the seed could not update. It names the id and a remedy that exists today
+ * (there is no resetDemo yet): put the row back to awaiting_join and seed again, then that phone sends JOIN again.
+ */
+export function describeStaleIdentity(s: StaleIdentity): string {
+  const what = [s.provider_differs ? "provider" : "", s.handle_differs ? "handle" : ""].filter(Boolean).join(" and ");
+  return (
+    `${s.actor_role} identity ${s.id} is '${s.status}', so its ${what} was NOT updated to match this seed. ` +
+    `To apply it: run UPDATE messaging_identities SET status = 'awaiting_join', joined_at = NULL, opted_out_at = NULL WHERE id = '${s.id}'; ` +
+    `then pnpm db:seed again, and send JOIN from that phone again.`
+  );
+}
+
 /** Fixed identity IDs so the seed is deterministic. Personas themselves use DEMO_ACTORS IDs. */
 export const SEED_IDENTITY_IDS = {
   donor: "00000000-0000-4000-8000-0000000000a1",
@@ -60,6 +73,24 @@ const clean = (v: string | undefined): string | undefined => {
   return t ? t : undefined;
 };
 
+const ENV_NAME = { donor: "DEMO_DONOR_HANDLE", courier_a: "DEMO_COURIER_A_HANDLE", courier_b: "DEMO_COURIER_B_HANDLE" } as const;
+const E164 = /^\+[1-9][0-9]{6,14}$/;
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * A real iMessage handle is an E.164 number or an email. Emails are lowercased (the lookup is case-insensitive, the
+ * unique index is not). A value in any other shape (9199207442, (919) 920-7442) would silently never match an inbound
+ * sender and that person would be treated as a stranger, so it fails here, naming the variable and never echoing the value.
+ */
+function normalizeRealHandle(raw: string, key: keyof typeof ENV_NAME): string {
+  if (raw.includes("@")) {
+    if (EMAIL.test(raw)) return raw.toLowerCase();
+  } else if (E164.test(raw)) {
+    return raw;
+  }
+  throw new Error(`Seed: ${ENV_NAME[key]} is not a valid iMessage handle. Use +<country code><number> (for example +1 then ten digits, no spaces) or an email address.`);
+}
+
 export function resolveHandles(opts: Pick<SeedOptions, "messaging_provider" | "handles">) {
   if (opts.messaging_provider !== "fake" && opts.messaging_provider !== "photon") {
     throw new Error(`Seed: unknown messaging_provider '${String(opts.messaging_provider)}' (expected 'fake' or 'photon').`);
@@ -74,13 +105,18 @@ export function resolveHandles(opts: Pick<SeedOptions, "messaging_provider" | "h
         `Seed: messaging is 'photon' but handles are missing for ${missing.join(", ")}. Set DEMO_DONOR_HANDLE, DEMO_COURIER_A_HANDLE and DEMO_COURIER_B_HANDLE.`,
       );
     }
-    out = { provider: "photon", donor: given.donor!, courier_a: given.courier_a!, courier_b: given.courier_b! };
+    out = {
+      provider: "photon",
+      donor: normalizeRealHandle(given.donor!, "donor"),
+      courier_a: normalizeRealHandle(given.courier_a!, "courier_a"),
+      courier_b: normalizeRealHandle(given.courier_b!, "courier_b"),
+    };
   } else {
     out = {
       provider: "fake",
-      donor: given.donor ?? SYNTHETIC_HANDLES.donor,
-      courier_a: given.courier_a ?? SYNTHETIC_HANDLES.courier_a,
-      courier_b: given.courier_b ?? SYNTHETIC_HANDLES.courier_b,
+      donor: (given.donor ?? SYNTHETIC_HANDLES.donor).toLowerCase(),
+      courier_a: (given.courier_a ?? SYNTHETIC_HANDLES.courier_a).toLowerCase(),
+      courier_b: (given.courier_b ?? SYNTHETIC_HANDLES.courier_b).toLowerCase(),
     };
   }
   // UNIQUE (provider, handle): one phone cannot play two personas.

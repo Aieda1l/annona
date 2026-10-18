@@ -15,6 +15,13 @@
       "when": 1792274868867,
       "tag": "0001_review_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792278623388,
+      "tag": "0002_offers_provider_message_idx",
+      "breakpoints": true
     }
   ]
 }

@@ -149,14 +149,14 @@ describe("matching: numbers worked out by hand", () => {
     id, display_name: id, approval_status: "approved", affiliated_recipient_ids: ["r1", "r2"], capabilities: { cold_transport: true },
     available_until: iso(600), location: place(lat), is_synthetic: true, ...over,
   });
-  const joined = (id: string, actor_role: "courier" | "donor" = "courier", status: "joined" | "opted_out" | "awaiting_join" = "joined") =>
-    ({ id: `i-${id}-${actor_role}-${status}`, actor_role, actor_id: id, status });
+  const joined = (id: string, actor_role: "courier" | "donor" = "courier", status: "joined" | "opted_out" | "awaiting_join" = "joined", provider: "photon" | "fake" = "fake") =>
+    ({ actor_role, actor_id: id, status, provider });
   const run = (over: Record<string, unknown> = {}) =>
     findCandidates({
       donation: { id: "d", donor_location: donorLoc },
       facts: { ...scene1_eligible_facts, donor_pickup_by: iso(120), discard_by: iso(90) } as never,
       recipients: [recipient("r1", 47.6)], couriers: [courier("cA", 47.7)], identities: [joined("cA")],
-      policy, now: NOW, excluded_courier_ids: [], busy_courier_ids: [], ...over,
+      policy, now: NOW, excluded_courier_ids: [], busy_courier_ids: [], committed_servings: {}, active_provider: "fake" as const, ...over,
     });
 
   it("ETA is rounded UP (22.24 min becomes 23, not 22), and every derived time follows from it", () => {
