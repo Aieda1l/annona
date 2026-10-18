@@ -17,6 +17,7 @@ import {
   genericNoAssignmentText,
   helpText,
   tryAgainText,
+  alreadyJoinedText,
   joinAckText,
   stopAckText,
 } from "./templates";
@@ -92,7 +93,9 @@ export function createInboundHandler(deps: {
         });
         // Throwing leaves the inbound row unfinished, so Photon's retry (or the 30 s reclaim, D-029) reprocesses it.
         if (!joined.ok) throw new Error(`core could not apply JOIN: ${joined.error.code}`);
-        return { outcome: "processed", command, reply: await reply(identity, msg, "join_ack", joinAckText()) };
+        // Someone who is already opted in is told so, not welcomed again. The route above is refreshed either way.
+        const text = identity.status === "joined" ? alreadyJoinedText() : joinAckText();
+        return { outcome: "processed", command, reply: await reply(identity, msg, "join_ack", text) };
       }
       case "stop": {
         const optedOut = await core.optOutIdentity({ identity_id: identity.id });

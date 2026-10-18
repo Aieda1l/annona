@@ -268,7 +268,29 @@ describe("T-MS-04 unknown and non-joined senders", () => {
 });
 
 describe("T-MS-15 JOIN, STOP and help", () => {
-  it.each(["awaiting_join", "opted_out", "joined"] as const)("JOIN from a %s identity joins and acknowledges", async (status) => {
+  it("JOIN from an identity that is already joined says so instead of welcoming them again", async () => {
+    const { double, sent, handle } = setup("joined");
+    const result = await handle(inbound("JOIN"));
+    expect(result).toMatchObject({ outcome: "processed", command: "join" });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ purpose: "join_ack", to_identity_id: IDENTITY_ID });
+    expect(sent[0]?.text).toMatch(/already opted in/i);
+    expect(sent[0]?.text).toMatch(/automated assistant/i);
+    expect(sent[0]?.text).toContain("STOP");
+    expect(sent[0]?.text).not.toMatch(/you're opted in to pickup messages/i);
+    // The route (space and line) is still refreshed, in case the person texted from a new conversation.
+    expect(double.calls.joins).toHaveLength(1);
+  });
+
+  it("a second JOIN gets its own reply, keyed on its own message, and the same message twice sends one", async () => {
+    const { sent, handle } = setup("joined");
+    await handle(inbound("JOIN", { provider_message_id: "pho_msg_j1" }));
+    await handle(inbound("JOIN", { provider_message_id: "pho_msg_j2" }));
+    await handle(inbound("JOIN", { provider_message_id: "pho_msg_j2" }));
+    expect(sent.map((m) => m.idempotency_key)).toEqual(["reply:pho_msg_j1:v1", "reply:pho_msg_j2:v1"]);
+  });
+
+  it.each(["awaiting_join", "opted_out"] as const)("JOIN from a %s identity joins and acknowledges", async (status) => {
     const { double, sent, handle } = setup(status);
     const result = await handle(inbound("JOIN"));
     expect(double.calls.joins).toEqual([

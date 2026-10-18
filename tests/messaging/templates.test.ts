@@ -7,6 +7,7 @@ import {
   formatOfferMessage,
   helpText,
   intakeFailedText,
+  alreadyJoinedText,
   joinAckText,
   stopAckText,
 } from "@/workflows/templates";
@@ -135,6 +136,13 @@ describe("T-MS-05 fixed replies", () => {
   it("join_ack discloses the automated assistant and tells the user how to opt out", () => {
     expect(joinAckText()).toMatch(/automated assistant/i);
     expect(joinAckText()).toContain("Text STOP");
+  });
+
+  it("the already-joined reply says so, still discloses the automated assistant and tells the user how to opt out", () => {
+    expect(alreadyJoinedText()).toMatch(/already opted in/i);
+    expect(alreadyJoinedText()).toMatch(/automated assistant/i);
+    expect(alreadyJoinedText()).toContain("Text STOP");
+    expect(alreadyJoinedText()).not.toMatch(BANNED);
   });
 
   it("stop_ack confirms opt-out and offers JOIN to return", () => {

@@ -61,6 +61,10 @@ export function formatDraftReadyMessage(view: DraftReadyView): string {
 export const joinAckText = (): string =>
   "Annona (automated assistant, DEMO): you're opted in to pickup messages. Text STOP anytime to opt out or HELP for help.";
 
+/** A JOIN from someone who is already opted in: say so instead of welcoming them again. */
+export const alreadyJoinedText = (): string =>
+  "Annona (automated assistant, DEMO): you're already opted in to pickup messages. Text STOP anytime to opt out or HELP for help.";
+
 export const stopAckText = (): string => "Annona: you're opted out and won't get more messages. Text JOIN to opt back in.";
 
 export const helpText = (): string =>
