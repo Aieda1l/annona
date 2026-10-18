@@ -11,15 +11,24 @@ import { useState } from "react";
 export function SignOutButton() {
   const router = useRouter();
   const pathname = usePathname();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // The layout keeps this component mounted across client navigation, so busy/error are tied to the page they
+  // happened on and cleared on the home page: after sign out -> home -> sign in -> another page, the button is usable again.
+  const [pendingOn, setPendingOn] = useState<string | null>(null);
+  const [errorOn, setErrorOn] = useState<{ path: string; message: string } | null>(null);
+  const busy = pendingOn === pathname;
+  const error = errorOn?.path === pathname ? errorOn.message : null;
 
-  if (pathname === "/") return null;
+  if (pathname === "/") {
+    // Back on the profile picker: the sign out finished, so forget it (also covers signing back in on the same page).
+    if (pendingOn !== null) setPendingOn(null);
+    return null;
+  }
 
   async function signOut() {
     if (busy) return;
-    setBusy(true);
-    setError(null);
+    const path = pathname;
+    setPendingOn(path);
+    setErrorOn(null);
     try {
       const res = await fetch("/api/session", { method: "DELETE", cache: "no-store" });
       const body = await res.json().catch(() => null);
@@ -27,11 +36,11 @@ export function SignOutButton() {
         router.push("/");
         return;
       }
-      setError("Could not sign out. Please try again.");
+      setErrorOn({ path, message: "Could not sign out. Please try again." });
     } catch {
-      setError("Could not sign out (server unreachable). Please try again.");
+      setErrorOn({ path, message: "Could not sign out (server unreachable). Please try again." });
     }
-    setBusy(false);
+    setPendingOn(null);
   }
 
   return (

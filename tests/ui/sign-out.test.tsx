@@ -58,6 +58,30 @@ describe("SignOutButton", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
   });
 
+  it("is usable again after signing out and signing back in (the layout keeps the component mounted)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ok: true, data: { cleared: true } })));
+    const { rerender } = render(<SignOutButton />);
+    fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    pathname = "/";
+    rerender(<SignOutButton />);
+    pathname = "/donor/new";
+    rerender(<SignOutButton />);
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeEnabled();
+  });
+
+  it("is usable again when the user signs back in and lands on the same page", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ ok: true, data: { cleared: true } })));
+    const { rerender } = render(<SignOutButton />);
+    fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    pathname = "/";
+    rerender(<SignOutButton />);
+    pathname = "/operator";
+    rerender(<SignOutButton />);
+    expect(screen.getByRole("button", { name: /sign out/i })).toBeEnabled();
+  });
+
   it("is not shown on the home page, where the profile picker is", () => {
     pathname = "/";
     render(<SignOutButton />);
