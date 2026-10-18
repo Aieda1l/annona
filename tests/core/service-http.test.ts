@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Actor, MessagingGateway, VisionProvider } from "@/contracts";
@@ -62,6 +63,27 @@ describe("T-CO-29: no session is 403 everywhere, before anything is read", () =>
       expect(r.status).toBe(403);
       expect((await json(r)).error?.code).toBe("NOT_AUTHORIZED");
     }
+  });
+});
+
+describe("T-CO-29: the role is checked before the body is read", () => {
+  it("a wrong role or no session gets 403 even with a body that would otherwise be rejected, and nothing is written", async () => {
+    const id = (await insertDonation(w.db)).id;
+    const before = await auditCount();
+    const junk = "{not json";
+    for (const actor of [null, donorActor(), courierActor()]) {
+      const r = await createOperatorActionHandler(as(actor))(post("/x", junk), params(id));
+      expect(r.status, String(actor?.role)).toBe(403);
+    }
+    const reset = await createDemoResetHandler(as(courierActor()))(post("/api/demo/reset", junk));
+    expect(reset.status).toBe(403);
+    expect(await auditCount()).toBe(before);
+  });
+  it("the handoff handler refuses a stranger and a missing donation with the same 403", async () => {
+    const id = (await insertDonation(w.db)).id;
+    const h = createHandoffHandler(as(courierActor()));
+    expect((await h(post("/x", JSON.stringify({ step: "collected" })), params(id))).status).toBe(403);
+    expect((await h(post("/x", JSON.stringify({ step: "collected" })), params(randomUUID()))).status).toBe(403);
   });
 });
 

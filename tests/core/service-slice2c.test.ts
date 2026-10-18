@@ -6,16 +6,20 @@ import {
   claimOffer,
   createNextOffers,
   getDashboardSnapshot,
+  getDonationCard,
   getSystemStatus,
   openOfferForSend,
   operatorAction,
   optOutIdentity,
   recordHandoff,
+  recordInboundMessage,
   resetDemo,
+  saveInboundResult,
   setLastTick,
 } from "@/core";
 import { DASHBOARD_CARD_LIMIT } from "@/core/service/dashboard";
-import { audit_events, donations, donors, messaging_identities, offers, policy_config, recipients, system_status, verification_links } from "@/db/schema";
+import { writeAudit } from "@/core/service/audit";
+import { audit_events, donation_images, donations, donors, messaging_identities, offers, policy_config, recipients, system_status, verification_links } from "@/db/schema";
 import {
   COURIER_A,
   COURIER_B,
@@ -153,6 +157,30 @@ describe("getDashboardSnapshot", () => {
   });
 });
 
+describe("the dashboard builds cards in batches without changing them", () => {
+  it("every dashboard card equals the single-card read model, including the newest-30 timeline limit", async () => {
+    const a = await claimed();
+    const b = await makeEligibleDonation(w, {});
+    const c = (await insertDonation(w.db, { status: "needs_review", verified_facts: factsAt() })).id;
+    for (let i = 0; i < 35; i++) {
+      await writeAudit(w.db, { at: at(i / 10), type: "operator.action", actor: { role: "operator", id: OPERATOR }, donation_id: a.id, data: { i } });
+    }
+    await recordHandoff({ actor: courierActor(), donation_id: a.id, step: "collected", simulated: true }, w.deps(at(10)));
+    await recordHandoff({ actor: recipientActor(), donation_id: a.id, step: "delivered", simulated: true }, w.deps(at(30)));
+    const snap = await getDashboardSnapshot(operatorActor, deps(at(40)));
+    if (!snap.ok) throw new Error("no snapshot");
+    expect(snap.data.donations.map((d) => d.id).sort()).toEqual([a.id, b, c].sort());
+    for (const card of snap.data.donations) {
+      const single = await getDonationCard(operatorActor, card.id, w.deps(at(40)));
+      expect(single, card.id).toEqual({ ok: true, data: card });
+    }
+    const delivered = snap.data.donations.find((d) => d.id === a.id)!;
+    expect(delivered.timeline).toHaveLength(30);
+    expect(delivered.handoff).toMatchObject({ collected_at: iso(10), delivered_at: iso(30) });
+    expect(delivered.timeline.at(-1)!.type).toBe("handoff.recorded");
+  });
+});
+
 describe("recordHandoff (S-09 collected, S-10 delivered; always simulated)", () => {
   it("the claiming courier records collection; the assigned recipient records delivery", async () => {
     const { id, offer_id } = await claimed();
@@ -227,7 +255,57 @@ describe("recordHandoff (S-09 collected, S-10 delivered; always simulated)", () 
     const { id } = await claimed();
     expect(await recordHandoff({ actor: operatorActor, donation_id: id, step: "delivered", simulated: true }, w.deps(at(5)))).toMatchObject({ ok: false, error: { code: "INVALID_TRANSITION" } });
     await recordHandoff({ actor: courierActor(), donation_id: id, step: "collected", simulated: true }, w.deps(at(10)));
-    expect(await recordHandoff({ actor: courierActor(), donation_id: id, step: "collected", simulated: true }, w.deps(at(11)))).toMatchObject({ ok: false, error: { code: "INVALID_TRANSITION" } });
+    // A repeat of the same step is a success without a second write (see the next test); a different person's repeat is not.
+    expect(await recordHandoff({ actor: courierActor(COURIER_B), donation_id: id, step: "collected", simulated: true }, w.deps(at(11)))).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
+    expect(await recordHandoff({ actor: operatorActor, donation_id: id, step: "collected", simulated: true }, w.deps(at(11)))).toMatchObject({ ok: true, data: { status: "collected" } });
+    await recordHandoff({ actor: recipientActor(), donation_id: id, step: "delivered", simulated: true }, w.deps(at(30)));
+    // Once delivered, collection can no longer be recorded as a new step.
+    expect(await recordHandoff({ actor: operatorActor, donation_id: id, step: "collected", simulated: true }, w.deps(at(31)))).toMatchObject({ ok: false, error: { code: "INVALID_TRANSITION" } });
+  });
+  it("a repeated step by the same person succeeds without a second write or audit row (a lost response is not a failure)", async () => {
+    const { id } = await claimed();
+    const first = await recordHandoff({ actor: courierActor(), donation_id: id, step: "collected", simulated: true }, w.deps(at(10)));
+    const before = await donationRow(id);
+    const events = (await eventsOf(id, "handoff.recorded")).length;
+    const again = await recordHandoff({ actor: courierActor(), donation_id: id, step: "collected", simulated: true }, w.deps(at(15)));
+    expect(again).toEqual(first);
+    expect(await donationRow(id)).toEqual(before);
+    expect(await eventsOf(id, "handoff.recorded")).toHaveLength(events);
+  });
+  it("a courier or recipient gets no photo, AI guess, verified facts, decision, offers or timeline; the operator still does", async () => {
+    const { id } = await claimed();
+    const c = await recordHandoff({ actor: courierActor(), donation_id: id, step: "collected", simulated: true }, w.deps(at(10)));
+    if (!c.ok) throw new Error("collect failed");
+    expect(DonationCard.safeParse(c.data).success).toBe(true);
+    expect(c.data).toMatchObject({ image_url: null, ai_suggestion: null, verified_facts: null, decision: null, edited_from_ai: [], active_offers: [], offer_history: [], timeline: [] });
+    expect(c.data.assignment).not.toBeNull();
+    expect(c.data.handoff.collected_at).toBe(iso(10));
+    const full = await getDonationCard(operatorActor, id, w.deps(at(11)));
+    expect(full).toMatchObject({ ok: true });
+    if (full.ok) expect(full.data.verified_facts).not.toBeNull();
+  });
+  it("a stranger cannot tell a missing donation from one that is not theirs; an operator can", async () => {
+    const { id } = await claimed();
+    const refusal = { ok: false, error: { code: "NOT_AUTHORIZED" } };
+    expect(await recordHandoff({ actor: courierActor(COURIER_B), donation_id: id, step: "collected", simulated: true }, w.deps(at(10)))).toMatchObject(refusal);
+    expect(await recordHandoff({ actor: courierActor(COURIER_B), donation_id: randomUUID(), step: "collected", simulated: true }, w.deps(at(10)))).toMatchObject(refusal);
+    // The same donor probe on the card read model.
+    expect(await getDonationCard(donorActor("00000000-0000-4000-8000-0000000000ff"), id, w.deps(at(10)))).toMatchObject(refusal);
+    expect(await getDonationCard(donorActor("00000000-0000-4000-8000-0000000000ff"), randomUUID(), w.deps(at(10)))).toMatchObject(refusal);
+    expect(await getDonationCard(operatorActor, randomUUID(), w.deps(at(10)))).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+  });
+  it("cancel and handoff in either order: a cancelled donation cannot be collected; a collected one can still be cancelled with a note", async () => {
+    const a = await claimed();
+    await operatorAction({ actor: operatorActor, donation_id: a.id, action: "cancel", note: "kitchen closed" }, w.deps(at(1)));
+    expect(await recordHandoff({ actor: courierActor(), donation_id: a.id, step: "collected", simulated: true }, w.deps(at(2)))).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
+    expect((await donationRow(a.id)).status).toBe("canceled");
+
+    const b = await claimed();
+    await recordHandoff({ actor: courierActor(), donation_id: b.id, step: "collected", simulated: true }, w.deps(at(10)));
+    expect(await operatorAction({ actor: operatorActor, donation_id: b.id, action: "cancel", note: "" }, w.deps(at(11)))).toMatchObject({ ok: false, error: { code: "INVALID_TRANSITION" } });
+    expect(await operatorAction({ actor: operatorActor, donation_id: b.id, action: "cancel", note: "recalled" }, w.deps(at(11)))).toMatchObject({ ok: true, data: { status: "canceled" } });
+    expect(await recordHandoff({ actor: recipientActor(), donation_id: b.id, step: "delivered", simulated: true }, w.deps(at(12)))).toMatchObject({ ok: false });
+    expect((await donationRow(b.id)).status).toBe("canceled");
   });
   it("a courier whose assignment ended (STOP before pickup, S-15) can no longer record collection", async () => {
     const { id } = await claimed();
@@ -333,6 +411,8 @@ describe("resetDemo", () => {
     const { id, offers: [o] } = await offered();
     await w.db.insert(verification_links).values({ donation_id: id, donor_id: DONOR, token_hash: "b".repeat(64), issued_at: T0, expires_at: at(30) });
     const auditBefore = (await w.db.select().from(audit_events)).length;
+    const offersBefore = (await w.db.select().from(offers)).length;
+    const imagesBefore = (await w.db.select().from(donation_images)).length;
 
     const later = at(600);
     expect(await resetDemo({ keep_identities: true }, deps(later))).toEqual({ ok: true, data: { reset_at: later.toISOString() } });
@@ -343,13 +423,45 @@ describe("resetDemo", () => {
     expect(identities.find((i) => i.id === IDENTITY.courier_a)).toMatchObject({ status: "joined" });
     const audit = await w.db.select().from(audit_events);
     expect(audit.length).toBe(auditBefore + 1);
-    expect(audit.find((e) => e.type === "demo.reset")!.data).toMatchObject({ deleted: { donations: 1, offers: o ? 1 : 0, links: 1 } });
+    expect(o).toBeDefined();
+    expect(offersBefore).toBeGreaterThan(0);
+    expect(audit.find((e) => e.type === "demo.reset")!.data).toMatchObject({ deleted: { donations: 1, offers: offersBefore, links: 1, images: imagesBefore } });
     const [eastlake] = await w.db.select().from(recipients).where(eq(recipients.id, EASTLAKE));
     expect(eastlake!.receiving_closes_at.getTime()).toBeGreaterThan(later.getTime());
 
     // The same short code can be issued again after the reset.
     const again = await offered();
     expect(again.offers.length).toBeGreaterThan(0);
+  });
+  it("a STOP from a simulated phone is undone by the reset; a STOP from a real phone is never undone", async () => {
+    vi.stubEnv("ANNONA_DEMO_MODE", "1");
+    await optOutIdentity({ identity_id: IDENTITY.courier_a }, w.deps(at(1)));
+    await optOutIdentity({ identity_id: IDENTITY.courier_b }, w.deps(at(1)));
+    await w.db.update(messaging_identities).set({ provider: "photon", handle: "+12065550123" }).where(eq(messaging_identities.id, IDENTITY.courier_b));
+    const r = await resetDemo({ keep_identities: true }, deps(at(600)));
+    expect(r.ok).toBe(true);
+    const rows = await w.db.select().from(messaging_identities);
+    expect(rows.find((i) => i.id === IDENTITY.courier_a)).toMatchObject({ status: "joined", opted_out_at: null });
+    expect(rows.find((i) => i.id === IDENTITY.courier_b)).toMatchObject({ status: "opted_out" });
+    const event = (await w.db.select().from(audit_events)).find((e) => e.type === "demo.reset")!;
+    expect(event.data).toMatchObject({ deleted: { simulated_identities_restored: 1, real_opt_outs_kept: 1 } });
+  });
+  it("keeps the inbound ledger: an old message replayed after the reset is still a duplicate", async () => {
+    vi.stubEnv("ANNONA_DEMO_MODE", "1");
+    expect((await recordInboundMessage("fake", "fake_before_reset", { text: "YES K7M3" }, w.deps(at(1)))).status).toBe("first");
+    // A finished message is a duplicate for good; an unfinished one is reclaimed after 30 s (CONTRACTS section 8.2).
+    await saveInboundResult({ provider: "fake", provider_message_id: "fake_before_reset", result: { outcome: "rejected", command: "accept", reply: null } }, w.deps(at(1)));
+    await resetDemo({ keep_identities: true }, deps(at(600)));
+    expect((await recordInboundMessage("fake", "fake_before_reset", { text: "YES K7M3" }, w.deps(at(601)))).status).toBe("duplicate");
+  });
+  it("a caller that names its actor must be an operator; the check runs before anything is deleted", async () => {
+    vi.stubEnv("ANNONA_DEMO_MODE", "1");
+    const id = await makeEligibleDonation(w);
+    for (const actor of [courierActor(), donorActor(), { role: "system", id: null } as Actor]) {
+      expect(await resetDemo({ keep_identities: true, actor }, deps()), actor.role).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
+    }
+    expect(await donationRow(id)).toBeDefined();
+    expect(await resetDemo({ keep_identities: true, actor: operatorActor }, deps())).toMatchObject({ ok: true });
   });
   it("only ever keeps identities", async () => {
     vi.stubEnv("ANNONA_DEMO_MODE", "1");

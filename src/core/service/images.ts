@@ -14,7 +14,8 @@ export async function getDonationImage(actor: Actor, image_id: string, deps?: De
   if (!isUuid(image_id)) return err("NOT_FOUND", "Photo not found.");
   const { db } = await runtime(deps);
   const [image] = await db.select().from(donation_images).where(eq(donation_images.id, image_id));
-  if (!image) return err("NOT_FOUND", "Photo not found.");
+  // A donor gets the same answer for a missing photo and for someone else's (no id probing); an operator may know.
+  if (!image) return actor.role === "operator" ? err("NOT_FOUND", "Photo not found.") : err("NOT_AUTHORIZED", NO);
   if (actor.role === "donor") {
     // A photo belongs to the donor of the donation that uses it; a photo no donation uses yet is operator-only.
     const owners = await db.select({ donor_id: donations.donor_id }).from(donations).where(eq(donations.image_id, image_id));

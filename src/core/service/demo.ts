@@ -1,5 +1,6 @@
-import { err, ok, type Deps, type Result } from "@/contracts";
-import { donation_images, donations, offers, verification_links } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
+import { err, ok, type Actor, type Deps, type Result } from "@/contracts";
+import { donation_images, donations, messaging_identities, offers, verification_links } from "@/db/schema";
 import { seedStore } from "@/db/seed/seed";
 import { getEnv } from "@/server/env";
 import { SYSTEM_ACTOR, writeAudit } from "./audit";
@@ -12,9 +13,18 @@ import { activeProvider, runtime } from "./runtime";
 // provider-status ledgers (a provider redelivering an old message after the reset is still a duplicate, so an old
 // "YES K7M3" can never claim a new offer that reuses the code), outbound messages and the audit trail (history).
 // Then the seed runs again with the current time: profiles, availability windows and the policy are restored.
+//
+// A STOP from a SIMULATED phone (provider `fake`) is undone by the reset: a rehearsal that tests STOP must not leave the
+// demo without a courier. A STOP from a REAL phone (provider `photon`) is never undone here: that person opted out of
+// messages and only their own JOIN may reverse it. The audit event records how many real opt-outs were kept.
+//
+// The deletes and the fake-identity restore commit together. The seed is a separate store call afterwards; if it fails
+// the availability windows are stale until the reset is run again (a retry heals it).
 
-export async function resetDemo(input: { keep_identities: true }, deps?: Deps): Promise<Result<{ reset_at: string }>> {
+export async function resetDemo(input: { keep_identities: true; actor?: Actor }, deps?: Deps): Promise<Result<{ reset_at: string }>> {
   if (input?.keep_identities !== true) return err("VALIDATION_FAILED", "resetDemo always keeps messaging identities.");
+  // Callers that know who is asking (the HTTP handler) pass the actor; one that is given must be an operator.
+  if (input.actor !== undefined && input.actor?.role !== "operator") return err("NOT_AUTHORIZED", "Only an operator can reset the demo.");
   const env = getEnv();
   if (!env.demo_mode) return err("NOT_AUTHORIZED", "Demo reset is only available in demo mode.");
 
@@ -25,7 +35,23 @@ export async function resetDemo(input: { keep_identities: true }, deps?: Deps): 
     const offerRows = await tx.delete(offers).returning({ id: offers.id });
     const donationRows = await tx.delete(donations).returning({ id: donations.id });
     const images = await tx.delete(donation_images).returning({ id: donation_images.id });
-    return { links: links.length, offers: offerRows.length, donations: donationRows.length, images: images.length };
+    const restored = await tx
+      .update(messaging_identities)
+      .set({ status: "joined", opted_out_at: null, joined_at: now })
+      .where(and(eq(messaging_identities.status, "opted_out"), eq(messaging_identities.provider, "fake")))
+      .returning({ id: messaging_identities.id });
+    const kept = await tx
+      .select({ id: messaging_identities.id })
+      .from(messaging_identities)
+      .where(and(eq(messaging_identities.status, "opted_out"), eq(messaging_identities.provider, "photon")));
+    return {
+      links: links.length,
+      offers: offerRows.length,
+      donations: donationRows.length,
+      images: images.length,
+      simulated_identities_restored: restored.length,
+      real_opt_outs_kept: kept.length,
+    };
   });
 
   const provider = activeProvider(deps);
