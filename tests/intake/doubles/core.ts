@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { err, ok, needsReviewCard, type DonationCard, type Result, type VerifiedFacts } from "@/contracts";
+import { err, ok, needsReviewCard, type DonationCard, type Result, type VerificationLinkView, type VerifiedFacts } from "@/contracts";
 import type { IntakeCore } from "@/features/intake/service";
 
 // In-memory stand-in for the Dev 2 core functions the intake service calls (CONTRACTS §9.3).
@@ -24,7 +24,27 @@ export function draftCard(id: string): DonationCard {
 export function createCoreDouble() {
   const cards = new Map<string, DonationCard>();
   const bySourceRef = new Map<string, string>();
+  const links = new Map<string, { donation_id: string; expires_at: string; consumed: boolean }>();
   let seq = 0;
+  const newToken = () => `tok-${++seq}-${"x".repeat(30)}`;
+
+  const viewOf = (token: string): VerificationLinkView | null => {
+    const link = links.get(token);
+    const card = link && cards.get(link.donation_id);
+    if (!link || link.consumed || !card) return null;
+    return {
+      donation_id: card.id,
+      donor_display_name: card.donor_display_name,
+      status: card.status,
+      ai_status: card.ai_status,
+      ai_suggestion: card.ai_suggestion,
+      verified_facts: card.verified_facts,
+      decision: card.decision,
+      link_expires_at: link.expires_at,
+      resubmit_token: null,
+      is_synthetic: true,
+    };
+  };
 
   const double = {
     storeDonationImage: vi.fn<IntakeCore["storeDonationImage"]>(async () => ok({ image_id: `img-${++seq}` })),
@@ -54,9 +74,23 @@ export function createCoreDouble() {
       return card ? ok(card) : err("NOT_FOUND", "no such donation");
     }),
 
-    submitVerification: vi.fn<IntakeCore["submitVerification"]>(async ({ donation_id, facts, edited_from_ai }) => {
+    getVerificationLinkView: vi.fn<IntakeCore["getVerificationLinkView"]>(async ({ token }) => {
+      const view = viewOf(token);
+      return view ? ok(view) : err("NOT_AUTHORIZED", "double: bad token");
+    }),
+
+    getVerificationLinkImage: vi.fn<IntakeCore["getVerificationLinkImage"]>(async ({ token }) =>
+      viewOf(token) ? ok({ mime: "image/jpeg", bytes: new Uint8Array([1, 2, 3]) }) : err("NOT_AUTHORIZED", "double: bad token"),
+    ),
+
+    submitVerification: vi.fn<IntakeCore["submitVerification"]>(async ({ auth, donation_id, facts, edited_from_ai }) => {
       const card = cards.get(donation_id);
       if (!card) return err("NOT_FOUND", "no such donation");
+      let link: { donation_id: string; expires_at: string; consumed: boolean } | undefined;
+      if ("link_token" in auth) {
+        link = links.get(auth.link_token);
+        if (!link || link.consumed || link.donation_id !== donation_id) return err("NOT_AUTHORIZED", "double: bad token");
+      }
       const unknownAllergen = Object.values(facts.allergens).includes("unknown");
       const next: DonationCard = {
         ...card,
@@ -65,11 +99,26 @@ export function createCoreDouble() {
         edited_from_ai,
       };
       cards.set(donation_id, next);
-      return ok({ card: next, resubmit_token: null });
+      let resubmit_token: string | null = null;
+      if (link && "link_token" in auth) {
+        link.consumed = true; // consumed only on success
+        if (next.status === "needs_review") {
+          resubmit_token = newToken();
+          links.set(resubmit_token, { donation_id, expires_at: "2026-10-18T00:00:00.000Z", consumed: false });
+        }
+      }
+      return ok({ card: next, resubmit_token });
     }),
   } satisfies IntakeCore;
 
-  return { core: double, cards };
+  /** Test helper: a live link for a donation. */
+  const issueLink = (donation_id: string, expires_at = "2026-10-17T23:40:00.000Z") => {
+    const token = newToken();
+    links.set(token, { donation_id, expires_at, consumed: false });
+    return token;
+  };
+
+  return { core: double, cards, links, issueLink };
 }
 
 export type CoreDouble = ReturnType<typeof createCoreDouble>;

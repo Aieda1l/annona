@@ -6,7 +6,13 @@ import { VisionModelOutput, VisionSuggestion, err, ok, type ProviderMode, type R
 export const PROMPT_ID = "annona-intake";
 export const PROMPT_VERSION = "v1";
 
-export type VisionMeta = { provider: "gemini" | "fake"; model: string | null; mode: ProviderMode };
+export type VisionMeta = {
+  provider: "gemini" | "fake";
+  model: string | null;
+  mode: ProviderMode;
+  /** Prompt version to stamp; defaults to v1 (the fake provider and older callers). */
+  prompt_version?: string;
+};
 
 /** PROMPT_EVAL §6 U3 word list. Matched after NFKC, format-character stripping, confusable folding, lowercasing and hyphen normalization. */
 const CLAIM_PATTERNS: readonly RegExp[] = [
@@ -24,6 +30,15 @@ const CLAIM_PATTERNS: readonly RegExp[] = [
   /\buse by\b/,
   /°\s*[fc]\b/,
   /\bdegrees\b/,
+  // Widened with PROMPT_EVAL U3 (PR #5 review). Defence in depth: a human verifies every fact anyway.
+  /\b(?:allergen|gluten|nut|peanut|dairy|egg|soy|wheat|sesame|fish|shellfish|lactose|sugar) free\b/,
+  /\b(?:no|without|zero) (?:allergens?|nuts?|peanuts?|tree nuts?|dairy|gluten|eggs?|soy|wheat|sesame|fish|shellfish|milk)\b/,
+  /\bbest (?:before|by)\b/,
+  /\bexpires?\b/,
+  /\bvegan\b/,
+  /\bhypoallergenic\b/,
+  /\bkept (?:chilled|cold|refrigerated|frozen|hot|warm)\b/,
+  /\b(?:fahrenheit|celsius)\b/,
 ];
 
 // Cyrillic and Greek letters that render like Latin ones, so "ѕafe" cannot dodge /\bsafe\b/.
@@ -51,7 +66,7 @@ export function containsSafetyClaim(s: string): boolean {
 }
 
 /** Every free-text field the dashboard or donor UI may render, with its path for error reporting. */
-function freeTextFields(o: VisionModelOutput): Array<[path: string, value: string]> {
+export function freeTextFields(o: VisionModelOutput): Array<[path: string, value: string]> {
   return [
     ...o.dish_suggestions.map((d, i): [string, string] => [`dish_suggestions[${i}].name`, d.name]),
     ...o.visible_components.map((c, i): [string, string] => [`visible_components[${i}]`, c]),
@@ -90,7 +105,7 @@ export function parseVisionOutput(rawText: string, meta: VisionMeta): Result<Vis
 
   const stamped = VisionSuggestion.safeParse({
     prompt_id: PROMPT_ID,
-    prompt_version: PROMPT_VERSION,
+    prompt_version: meta.prompt_version ?? PROMPT_VERSION,
     provider: meta.provider,
     model: meta.model,
     mode: meta.mode,

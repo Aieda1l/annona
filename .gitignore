@@ -47,3 +47,6 @@ node_modules/
 .vercel/
 .claude/settings.local.json
 .claude/worktrees/
+
+# D-040: eval photos of unverified licence stay local
+fixtures/intake/eval-local/

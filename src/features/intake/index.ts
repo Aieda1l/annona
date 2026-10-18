@@ -1,6 +1,5 @@
 import * as core from "@/core";
 import {
-  notImplementedResult,
   type Actor,
   type Deps,
   type DonationCard,
@@ -12,8 +11,6 @@ import { createIntakeService } from "./service";
 
 // Server-side barrel owned by Dev 1 after the baseline (keep exported names stable). CONTRACTS §9.2.
 // UI components live in ./components (client-safe barrel) and are imported by Dev 4 only from there.
-
-const OWNER = "Dev 1";
 
 export type ImageInput = { mime: string; bytes_base64: string };
 
@@ -39,13 +36,20 @@ export async function submitDonorVerification(
   return service(deps).submitDonorVerification(input, deps);
 }
 
-export async function getLinkVerification(_input: { token: string }): Promise<Result<VerificationLinkView>> {
-  return notImplementedResult(OWNER, "getLinkVerification");
+export async function getLinkVerification(input: { token: string }, deps?: Deps): Promise<Result<VerificationLinkView>> {
+  return service(deps).getLinkVerification(input, deps);
 }
 
-export async function submitDonorVerificationByLink(_input: {
-  token: string;
-  raw: unknown;
-}): Promise<Result<VerificationLinkView>> {
-  return notImplementedResult(OWNER, "submitDonorVerificationByLink");
+export async function getLinkVerificationImage(
+  input: { token: string },
+  deps?: Deps,
+): Promise<Result<{ mime: string; bytes: Uint8Array }>> {
+  return service(deps).getLinkVerificationImage(input, deps);
+}
+
+export async function submitDonorVerificationByLink(
+  input: { token: string; raw: unknown },
+  deps?: Deps,
+): Promise<Result<VerificationLinkView>> {
+  return service(deps).submitDonorVerificationByLink(input, deps);
 }

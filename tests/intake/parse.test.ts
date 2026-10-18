@@ -98,6 +98,21 @@ const CLAIMS = [
   "gluten - free",
   "gluten \u2013 free",
   "\u0455afe",
+  // Widened list (PR #5 review follow-up; PROMPT_EVAL U3).
+  "gluten free",
+  "nut free option",
+  "best before Friday",
+  "best by Friday",
+  "expires in 3 days",
+  "vegan",
+  "hypoallergenic",
+  "no nuts",
+  "without dairy",
+  "zero allergens",
+  "kept chilled",
+  "kept refrigerated",
+  "held at 100 Fahrenheit",
+  "Celsius reading",
 ];
 
 type FieldCase = { field: string; patch: (s: string) => Record<string, unknown> };
@@ -128,6 +143,9 @@ describe("parseVisionOutput: safety-phrase guard (T-IN-11)", () => {
     "Sauce may contain dairy; please confirm.",
     "Is any sesame, soy or tree nut used in the dressing?",
     "Safety cannot be judged from a photo.",
+    "Is the sauce made without any cream or butter? Please confirm.",
+    "Nuts may be present in the topping; please confirm.",
+    "Free-range eggs are not something a photo can show.",
   ])("does not flag ordinary uncertainty wording: %j", (note) => {
     expect(parseVisionOutput(text({ uncertainty_notes: [note] }), META).ok).toBe(true);
   });
