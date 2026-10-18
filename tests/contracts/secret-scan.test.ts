@@ -21,9 +21,9 @@ describe("SECRET_RE in ARCHITECTURE section 9", () => {
   it("still catches the shapes it caught before", () => {
     expect(hit(`const k = "AIza${"A".repeat(35)}"`)).toBe(true);
     expect(hit(`x = pho_sk_${"a".repeat(20)}`)).toBe(true);
-    expect(hit(`DATABASE_URL=postgresql://postgres.ref:hunter2@host.example:6543/postgres`)).toBe(true);
+    expect(hit(["DATABASE_URL=postgresql", "://postgres.ref:", "pw", "@host.example:6543/postgres"].join(""))).toBe(true);
     expect(hit(`whsec_${"a".repeat(20)}`)).toBe(true);
-    expect(hit(`handle +12065550123`)).toBe(true);
+    expect(hit(["handle +1", "206555", "0123"].join(""))).toBe(true);
   });
 
   it.each([
