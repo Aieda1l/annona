@@ -13,8 +13,8 @@ function expectInvalid(r: ReturnType<typeof validateImage>, field?: string) {
 }
 
 describe("limits and defaults", () => {
-  it("HEIC_ACCEPTED defaults to false (flip only in a reviewed PR citing SP-14)", () => {
-    expect(HEIC_ACCEPTED).toBe(false);
+  it("HEIC_ACCEPTED is true: flipped in a reviewed PR citing SP-14 (docs/handoffs/dev-1.md)", () => {
+    expect(HEIC_ACCEPTED).toBe(true);
   });
   it("uses 1.5 MiB for web/fixture and 5 MiB for messaging", () => {
     expect(MAX_WEB_BYTES).toBe(1.5 * 1024 * 1024);
@@ -42,19 +42,22 @@ describe("MIME type", () => {
 });
 
 describe("HEIC / HEIF", () => {
-  it.each(["image/heic", "image/heif"])("rejects %s while HEIC_ACCEPTED is false, even on messaging", (mime) => {
-    expectInvalid(validateImage(img(mime, 100), "messaging"), "image.mime");
+  it.each(["image/heic", "image/heif"])("rejects %s when the flag is turned off, even on messaging", (mime) => {
+    expectInvalid(validateImage(img(mime, 100), "messaging", { heicAccepted: false }), "image.mime");
   });
 
-  it.each(["image/heic", "image/heif"])("with HEIC accepted, %s is allowed on messaging only", (mime) => {
-    const on = { heicAccepted: true };
-    expect(validateImage(img(mime, 100), "messaging", on).ok).toBe(true);
-    expectInvalid(validateImage(img(mime, 100), "web_upload", on), "image.mime");
-    expectInvalid(validateImage(img(mime, 100), "fixture", on), "image.mime");
+  it.each(["image/heic", "image/heif"])("by default %s is allowed on messaging only", (mime) => {
+    expect(validateImage(img(mime, 100), "messaging").ok).toBe(true);
+    expectInvalid(validateImage(img(mime, 100), "web_upload"), "image.mime");
+    expectInvalid(validateImage(img(mime, 100), "fixture"), "image.mime");
   });
 
-  it("with HEIC accepted, a 1.4 MB Photon-sized HEIC passes on messaging and keeps its original MIME", () => {
-    const r = validateImage(img("image/heic", 1_456_484), "messaging", { heicAccepted: true });
+  it("a 6 MB HEIC is still too large on messaging", () => {
+    expectInvalid(validateImage(img("image/heic", 6 * 1024 * 1024), "messaging"), "image.bytes_base64");
+  });
+
+  it("a 1.4 MB Photon-sized HEIC passes on messaging and keeps its original MIME", () => {
+    const r = validateImage(img("image/heic", 1_456_484), "messaging");
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.data).toEqual({ mime: "image/heic", decoded_bytes: 1_456_484 });
   });
