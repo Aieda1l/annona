@@ -212,3 +212,22 @@ INTEGRATION STEPS: none.
 NEXT SMALLEST ACTION: re-run one offer live to see delivery_status reach delivered, then the real-Gemini photo run with Dev 1.
 ```
 
+
+## 2026-10-17 21:40 PDT — Real Gemini photo runs: JPEG and iPhone HEIC through the whole messaging path (REAL Photon, REAL Gemini)
+
+```text
+LANE / BRANCH / COMMIT: Dev 3 / docs/dev3-gemini-heic-results / this entry (evidence only, no code change)
+DELIVERED: Nothing new in code. Two real photo runs of T-MS-19 with VISION_PROVIDER=gemini (gemini-3.5-flash-lite), real Photon Beta in poll mode, a throwaway PGlite database, main at 50303e4.
+ - JPEG (a food photo from the joined donor phone): photo received 04:31:32 UTC, draft_ready reply delivered 04:31:36. Draft: ai_status succeeded, provider gemini, top dish "chicken burrito bowl" (high), possible allergens soybeans, wheat, sesame, status draft (not verified, not eligible). Stored as image/jpeg, served with nosniff; no Exif, GPS or XMP markers left in the stored bytes.
+ - iPhone HEIC (a normal full-quality camera photo, brand heic, 2,201,254 bytes): received 04:32:46, reply delivered 04:32:53. Photon's attachment type reached core as image/heic (the byte check in attachments.ts and the core allowlist from #44 both accepted it). Draft: provider gemini, top dish "butter chicken or creamy curry" (high), possible allergens milk, tree nuts, wheat. Stored as image/heic, same size as the original.
+ - HEIC metadata: compared the original attachment downloaded from Photon with the stored copy. The original held one TIFF/Exif payload with "Apple" and "iPhone" strings. In the stored copy that payload is gone: same size, 1,810 bytes changed, every changed byte is now zero, no TIFF header and no Apple/iPhone string remain. The empty "Exif" label stays in the item table, which is expected. This closes the "no real iPhone HEIC has been through the stripper or core" item of IB-12 for the messaging path. The downloaded original was deleted afterwards (it still had the real Exif).
+ - Cost: two Gemini calls.
+EVIDENCE (commands, passed/failed, real vs mock): REAL as listed, checked against GET /messages on Photon (timings) and the operator donation card and /api/images route (draft and stored bytes). The Gemini key was read only from the macOS Keychain into the server process and a git-ignored .env.local; it was never printed, committed or sent anywhere except the Gemini API.
+CONTRACT CHANGES OR REQUESTS: docs/requests/messaging-secret-scan-google-keys.md (captain): the ARCHITECTURE section 9 secret scan only matches Google keys that start with AIza; the key issued for this project does not start that way, so a leaked copy would not be caught.
+BLOCKERS + SAFETY RISKS:
+ - The checklist link could not be opened from the donor's phone in either run. The first run used the laptop's LAN address, the Gemini run used localhost (APP_BASE_URL), so only the first was a fair test; both failed or were unreachable on the phone. The laptop could reach its own LAN address. The demo plan is to deploy on Vercel (D-017), which makes the link https://<deployment>/v#<token> and removes the problem. Not yet tested against a deployed URL.
+ - On Vercel the Photon project key and the Gemini key must be set in the Vercel project's environment (server-only), because the inbound route downloads attachments and the tick route sends messages. The worker on the laptop needs the same ANNONA_INTERNAL_SECRET, the deployed APP_BASE_URL and the Photon key to poll. STORE must be postgres (a PGlite directory cannot be shared between Vercel and the laptop), which also means the T-CO-17 real-Postgres run (D-033) matters before any race-safety claim.
+ - First-claim-wins is still UNVERIFIED on real Postgres. A failed Gemini call and an over-size photo were not exercised live.
+INTEGRATION STEPS: captain sets GEMINI_API_KEY, PHOTON_PROJECT_ID, PHOTON_API_KEY, ANNONA_INTERNAL_SECRET, SESSION_SECRET, DEMO_PASSCODE and DATABASE_URL in the Vercel project settings, not in the repo; Dev 3 points the worker at the deployed URL.
+NEXT SMALLEST ACTION: a full dry run on the deployed URL (donor photo, checklist from the donor's phone, offer, claim, late claim, expiry, STOP), then the final session summary.
+```
