@@ -13,6 +13,19 @@
 
 ---
 
+## Annona overrides (authoritative; read first)
+
+The rest of this file is the unedited UI/UX Pro Max output (`search.py "non-profit charity food donation trust" --design-system --motion 3 --density 6`, run 2026-10-18 from the official repo at commit 56ea9cf). Where it conflicts with the rules below, these rules win. The implementation lives in `src/app/globals.css`.
+
+1. **Kept from the skill:** the style (*Accessible & Ethical*: 44 px targets, visible 3 px focus ring, reduced motion, semantic HTML), the font pairing (Lexend headings, Source Sans 3 body), the subtle motion tier (fades/rises of 8–16 px, 150–400 ms) and the pre-delivery checklist.
+2. **Palette replaced.** The generated *compassion blue + action orange* clashes with the Annona logo. The palette is the skill's own *Grocery & Shopping List* row (fresh green + food amber, `--domain color "food nonprofit green sustainability"`) tuned to the logo: `--primary #1d6b3e` (forest), `--leaf #4fa448` (decorative only), warm paper `--background #f7f6f1`, white cards, `--input #8a8578` (≥3:1 boundary). All text pairs were checked at ≥4.5:1.
+3. **No green-for-safe.** Brand green is for identity, navigation and primary actions only. Workflow status uses the tone tokens `neutral`, `review` (amber), `info` (blue, used for *Eligible for dispatch*), `offer` (violet, also *synthetic/demo* labels), `progress` (teal, claimed/collected/delivered, always "(simulated)"), `danger`, `closed`. Every tone is shown with an icon and words. This overrides the dashboard page file's "status colors (green/amber/red)".
+4. **Fonts load through `next/font`**, never the CSS `@import` above: the files are self-hosted at build time, so `/v` (the one-time link page) makes no third-party request.
+5. **Unknown is never styled as an answer.** `unknown` values, unanswered allergen choices and AI suggestions use a dashed outline; donor statements use solid neutral; nothing uses a "pass" color.
+6. **Page files:** `pages/operator-dashboard.md` applies for density and the 1400 px width (we use 1280 px `max-w-7xl`). `pages/donor-checklist.md` was generated as a generic form page; its "lead magnet" sections do not apply, but its form rules (visible labels, loading then success/error, no placeholder-only inputs) do.
+
+---
+
 ## Global Rules
 
 ### Color Palette

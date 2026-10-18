@@ -33,8 +33,63 @@ Every page is a narrow column of hard-coded `slate-*` utility classes on white. 
 
 ## 2. Design direction
 
-See `design-system/annona/MASTER.md` (persisted by the UI/UX Pro Max skill) for the generated system and §3 below for the decisions taken from it.
+**Question:** what makes a community food-coordination tool feel as welcoming as a consumer app and as dependable as an operations console?
+
+**Answer used:** a calm, warm "paper and forest" surface (approachable), strict semantic status tones with icon + text (dependable), one shared shell and page grammar across every role (cohesive), and motion only where it marks a change of state (precise, not decorative). The donor side is spacious and guided (stepper, numbered sections, one action at a time); the operator side is dense and scannable (KPI strip, grouped board, tool rail).
+
+Alternatives considered from the skill output: the default *Non-profit* palette (compassion blue + orange, rejected: fights the green logo and reads as generic SaaS), *Real-Time Operations* dark (rejected: Colin's parallel dark restyle exists; a light theme reads better on projectors and phones in daylight), *Claymorphism* (rejected: too playful for safety-relevant facts).
+
+Source of truth: `design-system/annona/MASTER.md` (UI/UX Pro Max output + the **Annona overrides** section at its top) and `src/app/globals.css`.
 
 ## 3. Decisions
 
-_Filled in as the system is generated and applied._
+| Decision | Why |
+|---|---|
+| Light theme only, polished; `.dark` tokens kept coherent but no toggle | One finished theme beats two half-done; the demo runs in daylight on phones and a projector. |
+| Status tones by meaning, not by "good/bad"; eligible = blue, never green | Existing T-UI-02 rule (no green-for-safe) made a design-system rule. |
+| Dashed outline = unconfirmed (AI suggestion, unknown, unanswered) | Makes "not verified" visible at a glance without color alone. |
+| One `AppHeader` for all pages; `/v` shows the brand only (no nav, no sign out, no link away) | Continuity, while keeping the link page's no-session model. |
+| Provider-mode strip stays wrapped on phones (not a horizontal scroller) | Warnings such as "Scheduler stalled" must never be scrolled out of view. |
+| Filters and search on the dashboard narrow the view only; KPI counts always show server totals | No client-side status logic; counts stay server truth. |
+| Donor progress stepper derived only from server fields; off-path endings drawn as "stopped here" (X), never complete | A canceled/expired/rejected donation must not look finished. |
+| Fonts via `next/font` (self-hosted at build) | No third-party request at runtime, required for `/v`. |
+| Every effect gated by `useMotionCapable()` and `prefers-reduced-motion` | Effects are optional; the page reads the same without them (and in test DOMs). |
+
+## 4. Component guide (use these, do not invent new conventions)
+
+| Need | Use | Notes |
+|---|---|---|
+| Page width + gutters | `PageContainer` (`narrow` forms, `default`, `wide` dashboards) | Renders `<main>`; one per page. |
+| Page title | `PageHeader` (eyebrow, h1, description, actions, breadcrumbs, meta) | Exactly one h1 per page. |
+| Section title | `SectionHeading` (h2, optional icon and `(count)`) | |
+| Inline message | `Notice` tone `neutral/info/warning/danger/synthetic`; pass `role="alert"` or `role="status"` explicitly | Stale data = warning; failures = danger; demo/fixture = synthetic. |
+| Donation status | `StatusBadge` (+ `statusTone`, `statusIcon`, `TONE_CLASS`, `TONE_ACCENT`) | Never color a status by hand. |
+| Field provenance | `FieldStateBadge` | Dashed = suggested/unknown. |
+| Server reasons | `ReasonList` | Messages verbatim; code shown small. |
+| Deadlines | `Countdown` / `CountdownPill` | Display only; "time reached (server decides)". |
+| Progress | `Stepper` (`complete/current/upcoming/halted`) | Derive states from server data only. |
+| KPI | `MetricTile` (React Bits CountUp inside) | Value must be a server count. |
+| Activity | `AuditTimeline` | Vertical rail. |
+| Buttons | `Button` (`default`, `outline`, `ghost`, `destructive`; sizes `sm` 36 px, default 40 px, `lg` 44 px) | Icons: Lucide, `aria-hidden`. |
+| Loading | `Skeleton` blocks inside a `role="status"` wrapper with sr-only text | |
+
+## 5. Third-party resources
+
+| Resource | How it was used | Result in code |
+|---|---|---|
+| **UI/UX Pro Max** (nextlevelbuilder/ui-ux-pro-max-skill @ 56ea9cf) | Not installed as a plugin on this machine; the official repo was shallow-cloned to the session scratchpad, its stdlib-only scripts were read, then run directly: `--design-system` (4 queries; the *non-profit* one persisted with `--persist --output-dir <repo>`), `--page operator-dashboard` and `--page donor-checklist`, `--domain color/typography/product/ux`, `--stack shadcn/nextjs`. | `design-system/annona/` (MASTER + 2 page files); tokens, fonts, 44 px targets, focus ring, error-summary focus, reduced motion, next/font. |
+| **React Bits** (reactbits.dev registry JSON, MIT + Commons Clause, notice kept in each file) | Vendored `BlurText` (welcome h1), `CountUp` (dashboard KPI tiles), `SpotlightCard` (sign-in card). Adapted: React 19 refs/effect lint fixes, `as` prop on BlurText, light theme + leaf color on SpotlightCard. GSAP-based items (FadeContent, AnimatedContent) rejected to avoid a second animation library. | `src/components/reactbits/*`, dependency `motion@12.43.0`. |
+| **21st.dev** | Registry installs require an `API_KEY_21ST` (verified: the registry answers "Authentication required"); no key was available and none was invented. Two patterns were chosen from the catalogue and rebuilt locally on Annona tokens: ShadcnSpace *Animated Progress Stepper* (MIT) → `Stepper`; the vertical *Timeline* pattern → `AuditTimeline`. | `src/components/ui/stepper.tsx`, `src/components/dashboard/AuditTimeline.tsx`. |
+
+## 6. Verification (2026-10-18, local, fake providers, PGlite)
+
+See the PR description for the exact command results. Screens were inspected in headless Edge (DevTools protocol, signed in through the real `/api/session` route) at 320, 375, 768, 1440 and 1920 px: `/`, `/operator` (live and `?fixture=1`), `/operator/donations/:id?fixture=1`, `/operator/phone` (after JOIN and a fixture photo through the simulated inbound route), `/v#<real token>`, `/donor/new`, `/donor/donations/:id`. A per-element overflow check found nothing outside its scroll container at 320/375 after the fixes in commit "simulated phone redesign and responsive fixes".
+
+**Not verified:** real Gemini, real Photon, a screen reader pass, Safari/iOS rendering, the production build on Vercel.
+
+## 7. Remaining trade-offs / next steps
+
+- Dev 1 must review the four intake files (`docs/requests/dashboard-intake-restyle.md`).
+- Colin's `worktree-ui-restyle` (dark video palette) touches the same files; only one of the two should merge.
+- Status tones are not yet exposed in a dark theme toggle.
+- A11y was checked by structure (roles, labels, focus order unchanged, contrast computed) and existing tests, not by an assistive-technology run.
