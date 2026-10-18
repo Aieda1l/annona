@@ -110,9 +110,13 @@ describe("computeEditedFromAi (T-IN-07, CONTRACTS §3.2)", () => {
       expect(computeEditedFromAi(ai, facts({ servings: 24 }))).toContain("servings");
     });
 
-    it("is listed even when the donor value is the range minimum or maximum", () => {
-      expect(computeEditedFromAi(ai, facts({ servings: 18 }))).toContain("servings");
+    it("is not listed when the donor value is the range minimum, which is what the form fills from the draft (D-042)", () => {
+      expect(computeEditedFromAi(ai, facts({ servings: 18 }))).not.toContain("servings");
+    });
+
+    it("is still listed at the range maximum or anywhere else inside the range", () => {
       expect(computeEditedFromAi(ai, facts({ servings: 30 }))).toContain("servings");
+      expect(computeEditedFromAi(ai, facts({ servings: 19 }))).toContain("servings");
     });
 
     it("is not listed only when min = max = servings", () => {
