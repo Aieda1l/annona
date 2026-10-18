@@ -13,7 +13,7 @@ import { createFakeVisionProvider } from "@/lib/ai/fake";
 import { createVisionProvider } from "@/lib/ai";
 import { createIntakeService } from "@/features/intake/service";
 import { createCoreDouble, DONOR } from "./doubles/core";
-import { GPS_MARKER, contains, heicWithExif, jpegOfSize, jpegWithExif, pngWithMetadata } from "./doubles/images";
+import { GPS_MARKER, contains, exifSegmentsOf, heicWithExif, jpegOfSize, jpegWithExif, jpegWithOrientation, pngWithMetadata } from "./doubles/images";
 
 const fixture = (id: string) => ({
   mime: "image/jpeg",
@@ -206,6 +206,24 @@ describe("createDraftFromImage", () => {
       expect(contains(stored, GPS_MARKER)).toBe(false);
       const sent = Buffer.from(analyzeFoodImage.mock.calls[0]![0].image.bytes_base64, "base64");
       expect(contains(sent, GPS_MARKER)).toBe(false);
+    });
+
+    it("a rotated phone JPEG keeps its orientation, for core and for the model, and nothing else from the Exif", async () => {
+      const { core } = setup();
+      const { provider, analyzeFoodImage } = spyVision(async () => err("PROVIDER_UNAVAILABLE", "stub"));
+      const s = createIntakeService({ core, vision: provider });
+      await s.createDraftFromImage({
+        actor: DONOR,
+        image: { mime: "image/jpeg", bytes_base64: b64(jpegWithOrientation(6)) },
+        source: "messaging",
+        source_ref: "fake:rotated-1",
+      });
+      const stored = core.storeDonationImage.mock.calls[0]![0].bytes as Uint8Array;
+      const sent = new Uint8Array(Buffer.from(analyzeFoodImage.mock.calls[0]![0].image.bytes_base64, "base64"));
+      for (const bytes of [stored, sent]) {
+        expect(contains(bytes, GPS_MARKER)).toBe(false);
+        expect(exifSegmentsOf(bytes)).toMatchObject([{ orientation: 6, entries: 1 }]);
+      }
     });
 
     it("a photo that cannot be read is refused before any store or AI call", async () => {

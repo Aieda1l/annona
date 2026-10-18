@@ -10,8 +10,10 @@ import {
   WEBP_PIXELS,
   concat,
   contains,
+  exifSegmentsOf,
   heicWithExif,
   jpegWithExif,
+  jpegWithOrientation,
   jpegWithoutMetadata,
   pngWithMetadata,
   webpWithMetadata,
@@ -76,6 +78,74 @@ describe("JPEG", () => {
 
   it("refuses a file that ends before any scan data", () => {
     refused("image/jpeg", Uint8Array.of(0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00));
+  });
+});
+
+describe("JPEG orientation survives, and nothing else from the Exif does", () => {
+  it.each([2, 3, 4, 5, 6, 7, 8])("keeps orientation %i as the only Exif entry", (orientation) => {
+    const out = ok("image/jpeg", jpegWithOrientation(orientation));
+    expect(contains(out, GPS_MARKER)).toBe(false);
+    const segments = exifSegmentsOf(out);
+    expect(segments).toHaveLength(1);
+    expect(segments[0]).toMatchObject({ orientation, entries: 1, length: 36 });
+  });
+
+  it.each(["MM", "II"] as const)("reads a %s Exif and keeps the value", (order) => {
+    const out = ok("image/jpeg", jpegWithOrientation(6, order));
+    expect(exifSegmentsOf(out)[0]).toMatchObject({ orientation: 6, entries: 1 });
+    expect(contains(out, GPS_MARKER)).toBe(false);
+  });
+
+  it("drops the GPS pointer and sub-IFD: the tag 0x8825 is not in the new segment", () => {
+    const out = ok("image/jpeg", jpegWithOrientation(6));
+    const seg = exifSegmentsOf(out)[0]!;
+    const body = out.subarray(seg.at, seg.at + seg.length);
+    expect(contains(body, Uint8Array.of(0x88, 0x25))).toBe(false);
+    expect(contains(body, Uint8Array.of(0x25, 0x88))).toBe(false);
+  });
+
+  it("puts the orientation segment where the Exif was: after JFIF, before the picture tables", () => {
+    const out = ok("image/jpeg", jpegWithOrientation(6));
+    const seg = exifSegmentsOf(out)[0]!;
+    expect(out.indexOf(0xe0, 2)).toBeLessThan(seg.at); // APP0 first
+    expect(contains(out.subarray(seg.at + seg.length), Uint8Array.of(0xff, 0xdb))).toBe(true); // DQT after
+  });
+
+  it("writes nothing for orientation 1 (already upright) and for values outside 1 to 8", () => {
+    for (const value of [1, 0, 9, 255, 65535]) {
+      const out = ok("image/jpeg", jpegWithOrientation(value));
+      expect(exifSegmentsOf(out)).toHaveLength(0);
+      expect(contains(out, GPS_MARKER)).toBe(false);
+    }
+  });
+
+  it("writes nothing when the Exif has no orientation tag", () => {
+    const out = ok("image/jpeg", jpegWithOrientation(6, "MM", { omitOrientation: true }));
+    expect(exifSegmentsOf(out)).toHaveLength(0);
+    expect(contains(out, GPS_MARKER)).toBe(false);
+  });
+
+  it("an Exif that cannot be read still strips (orientation is best effort, removal is not)", () => {
+    const out = ok("image/jpeg", jpegWithOrientation(6, "MM", { badIfdOffset: true }));
+    expect(exifSegmentsOf(out)).toHaveLength(0);
+    expect(contains(out, GPS_MARKER)).toBe(false);
+  });
+
+  it("only the first Exif segment counts; a second one is dropped with everything else", () => {
+    const out = ok("image/jpeg", jpegWithOrientation(6, "MM", { secondExifOrientation: 8 }));
+    const segments = exifSegmentsOf(out);
+    expect(segments).toHaveLength(1);
+    expect(segments[0]!.orientation).toBe(6);
+  });
+
+  it("strips to itself", () => {
+    const once = ok("image/jpeg", jpegWithOrientation(6));
+    expect(Array.from(ok("image/jpeg", once))).toEqual(Array.from(once));
+  });
+
+  it("keeps the picture data byte for byte", () => {
+    const out = ok("image/jpeg", jpegWithOrientation(6));
+    expect(contains(out, concat(JPEG_SCAN, Uint8Array.of(0xff, 0xd9)))).toBe(true);
   });
 });
 

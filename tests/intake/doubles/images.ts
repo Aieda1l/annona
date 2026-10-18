@@ -71,6 +71,76 @@ export function jpegOfSize(scanBytes: number, fill = 1): Uint8Array {
   );
 }
 
+
+// ---- JPEG with a realistic Exif: orientation in IFD0 plus a GPS sub-IFD that carries the marker ----
+export type ExifOrder = "MM" | "II";
+function tiffWithOrientation(orientation: number, order: ExifOrder, extra: { omitOrientation?: boolean; badIfdOffset?: boolean } = {}): Uint8Array {
+  const be = order === "MM";
+  const w16 = (n: number) => (be ? u16(n) : Uint8Array.of(n & 0xff, (n >> 8) & 0xff));
+  const w32 = (n: number) => (be ? u32(n) : u32le(n));
+  const entries: Uint8Array[] = [];
+  if (!extra.omitOrientation) entries.push(concat(w16(0x0112), w16(3), w32(1), w16(orientation), w16(0)));
+  entries.push(concat(w16(0x8825), w16(4), w32(1), w32(8 + 2 + (entries.length + 1) * 12 + 4))); // GPS IFD pointer
+  const gpsIfdAt = 8 + 2 + entries.length * 12 + 4;
+  const dataAt = gpsIfdAt + 2 + 12 + 4;
+  const gpsEntry = concat(w16(0x0002), w16(2), w32(marker.length + 1), w32(dataAt));
+  return concat(
+    ascii(order),
+    w16(42),
+    w32(extra.badIfdOffset ? 0x00ffffff : 8),
+    w16(entries.length),
+    ...entries,
+    w32(0),
+    w16(1),
+    gpsEntry,
+    w32(0),
+    marker,
+    Uint8Array.of(0),
+  );
+}
+/** A JPEG whose Exif holds an orientation tag and a GPS sub-IFD. */
+export function jpegWithOrientation(
+  orientation: number,
+  order: ExifOrder = "MM",
+  extra: { omitOrientation?: boolean; badIfdOffset?: boolean; secondExifOrientation?: number } = {},
+): Uint8Array {
+  return concat(
+    Uint8Array.of(0xff, 0xd8),
+    jpegSegment(0xe0, ascii("JFIF\0\x01\x01\0\0\x01\0\x01\0\0")),
+    jpegSegment(0xe1, concat(ascii("Exif\0\0"), tiffWithOrientation(orientation, order, extra))),
+    ...(extra.secondExifOrientation === undefined
+      ? []
+      : [jpegSegment(0xe1, concat(ascii("Exif\0\0"), tiffWithOrientation(extra.secondExifOrientation, order)))]),
+    jpegSegment(0xdb, new Uint8Array(65).fill(3)),
+    jpegSegment(0xc0, Uint8Array.of(8, 0, 4, 0, 4, 1, 1, 0x11, 0)),
+    jpegSegment(0xda, Uint8Array.of(1, 1, 0, 0, 63, 0)),
+    JPEG_SCAN,
+    Uint8Array.of(0xff, 0xd9),
+  );
+}
+
+/** Every Exif APP1 segment in a JPEG: its orientation (or null) and how many IFD0 entries it has. */
+export function exifSegmentsOf(b: Uint8Array): Array<{ at: number; length: number; orientation: number | null; entries: number }> {
+  const found: Array<{ at: number; length: number; orientation: number | null; entries: number }> = [];
+  let i = 2;
+  while (i + 4 <= b.length && b[i] === 0xff && b[i + 1] !== 0xda && b[i + 1] !== 0xd9) {
+    const length = (b[i + 2]! << 8) | b[i + 3]!;
+    if (b[i + 1] === 0xe1 && String.fromCharCode(...b.subarray(i + 4, i + 10)) === "Exif\0\0") {
+      const t = i + 10;
+      const be = b[t] === 0x4d;
+      const r16 = (k: number) => (be ? (b[k]! << 8) | b[k + 1]! : b[k]! | (b[k + 1]! << 8));
+      const r32 = (k: number) => (be ? ((b[k]! << 24) | (b[k + 1]! << 16) | (b[k + 2]! << 8) | b[k + 3]!) >>> 0 : (b[k]! | (b[k + 1]! << 8) | (b[k + 2]! << 16) | (b[k + 3]! << 24)) >>> 0);
+      const ifd = t + r32(t + 4);
+      const entries = r16(ifd);
+      let orientation: number | null = null;
+      for (let k = 0; k < entries; k++) if (r16(ifd + 2 + k * 12) === 0x0112) orientation = r16(ifd + 2 + k * 12 + 8);
+      found.push({ at: i, length: length + 2, orientation, entries });
+    }
+    i += 2 + length;
+  }
+  return found;
+}
+
 // ---- PNG ----
 const pngChunk = (type: string, data: Uint8Array) => concat(u32(data.length), ascii(type), data, u32(0xdeadbeef)); // CRC not checked
 export const PNG_IDAT = Uint8Array.of(1, 2, 3, 4, 5);
