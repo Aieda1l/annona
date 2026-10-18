@@ -129,24 +129,26 @@ const circle = (s, x, y, d, color, name) => s.addShape(pres.ShapeType.ellipse, {
   const scene = (num, title, accent, rows, note) => {
     const sl = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Live demo" });
     sl.addText(`Scene ${num}: ${title}`, { placeholder: "title" });
+    const pitch = rows.length > 5 ? 0.64 : 0.78;
+    const rh = pitch - 0.1;
     rows.forEach(([who, what], i) => {
-      const y = 1.5 + i * 0.78;
-      card(sl, 0.6, y, 8.8, 0.66, `scene-${num}-row-${i + 1}`);
-      circle(sl, 0.75, y + 0.13, 0.4, accent, `scene-${num}-num-bg-${i + 1}`);
-      txt(sl, String(i + 1), { x: 0.75, y: y + 0.13, w: 0.4, h: 0.4, fontSize: 14, bold: true, color: C.background1, align: "center", valign: "middle" });
-      txt(sl, who, { x: 1.35, y: y + 0.08, w: 1.9, h: 0.5, fontSize: 14, bold: true, color: C.text2, valign: "middle" });
-      txt(sl, what, { x: 3.3, y: y + 0.08, w: 5.95, h: 0.5, fontSize: 14, color: C.text1, valign: "middle" });
+      const y = 1.4 + i * pitch;
+      card(sl, 0.6, y, 8.8, rh, `scene-${num}-row-${i + 1}`);
+      circle(sl, 0.75, y + (rh - 0.4) / 2, 0.4, accent, `scene-${num}-num-bg-${i + 1}`);
+      txt(sl, String(i + 1), { x: 0.75, y: y + (rh - 0.4) / 2, w: 0.4, h: 0.4, fontSize: 14, bold: true, color: C.background1, align: "center", valign: "middle" });
+      txt(sl, who, { x: 1.35, y, w: 1.7, h: rh, fontSize: 14, bold: true, color: C.text2, valign: "middle" });
+      txt(sl, what, { x: 3.1, y, w: 6.15, h: rh, fontSize: 14, color: C.text1, valign: "middle" });
     });
     sl.addNotes(note);
     return sl;
   };
   scene(1, "Success", HEX.leaf, [
-    ["Donor phone", "Texts a photo of a refrigerated sandwich and wrap platter"],
+    ["Donor phone", "Texts a photo of a refrigerated sandwich platter"],
     ["Annona", "Replies with an AI guess and a checklist link"],
-    ["Donor", "Corrects servings to 24, declares all nine allergens, attests handling"],
+    ["Donor", "Sets servings to 24, declares allergens and handling"],
     ["Gate", "Returns eligible under the prototype policy"],
-    ["Courier A", "Gets a time-limited offer, replies YES with the code"],
-    ["Dashboard", "Claimed. Operator marks simulated pickup and delivery"],
+    ["Courier A", "Gets a timed offer, replies YES with the code"],
+    ["Dashboard", "Claimed; pickup and delivery are simulated"],
   ], "Rainier Catering (synthetic) -> Eastlake Community Pantry (synthetic). Point out the AI estimate of 18-30 servings versus the donor's 24. Fallback: same photo through web upload. Handoff steps are simulated and labeled. 90 seconds.");
   scene(2, "No response, late reply", HEX.apricot, [
     ["Courier A", "Ignores a 60-second accelerated offer"],
