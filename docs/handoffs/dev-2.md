@@ -129,3 +129,38 @@ REVIEW FOLLOW-UPS (captain's list from #21, Dev 3's review of #29):
 - Deliberate trade-off (Dev 3 item 8): `recordInboundMessage` keeps the payload of any seeded identity, whatever its status, until `recordIgnoredInbound` scrubs it, so the simulated phone can show a JOIN from an `awaiting_join` identity. Changing it to joined-only would hide that line; the window is one request.
 - Not done, follow-ups: stronger fuzz assertions (claim by the wrong courier, claim at the cutoff, opted-out courier holding an offer), more cutoff-boundary and STOP-then-replay tests, a deterministic test of the 23505 race fallback, DB CHECKs tying `sent_at`/`responded_at` to offer status, a unique index on `(provider, lower(handle))`, parsing jsonb on read instead of casting, rejecting (not silently replacing) malformed delivery-event fields, and HEIC support (Dev 1 will flip the intake and `storeDonationImage` sides together).
 
+---
+
+Slice 2(c) read models, handoff, operator actions, demo reset, HTTP handlers; slice 2(d) verification links
+
+LANE / BRANCH / COMMIT: Dev 2 / feat/dispatch-slice2c (2(c)), feat/dispatch-slice2d (2(d), stacked on 2(c)) / see PR heads
+
+DELIVERED (exported from `@/core`; every function takes the optional trailing `deps` and uses only the injected Clock):
+- **2(c) status:** `setLastTick(at)` (monotonic: a late tick never moves the time back; a non-UTC value throws), `getSystemStatus()` (`last_tick_at` or null, the real store driver, the active `policy_version` or `"unavailable"`).
+- **2(c) dashboard:** `getDashboardSnapshot(actor)`: operator only; one read-only REPEATABLE READ transaction; `counts_by_status` has every status (zeros included) over ALL donations; `donations` = the 100 most recently updated, operator cards; `identities` = every messaging identity with JOIN status and only `handle_masked`; `modes` read from the providers (same mapping as the captain's health handler).
+- **2(c) handoff:** `recordHandoff`: `simulated: true` only (the HTTP body cannot set it); `collected` by the claiming courier or an operator (S-09: before the effective cutoff, donor still approved); `delivered` by the assigned recipient or an operator (S-10: before `discard_by`). A courier or recipient gets the reduced (donor-style) card, because the contract has no courier/recipient projection.
+- **2(c) operator actions:** `operatorAction`: `reject` (S-12, note required), `return_to_donor` (S-13, never once collected), `cancel` (S-11: live offers `canceled`, an active assignment gets `close_reason = donation_canceled`, links revoked; note required for claimed/collected), `retry_matching` (only from `unmatched`; gate re-run now: eligible is S-14, otherwise S-18 stores the new decision). The note is free text, so it never enters the audit trail; only `note_length` does (there is no notes column).
+- **2(c) demo reset:** `resetDemo({ keep_identities: true })`: demo mode only. Deletes links, offers, donations and their photos; keeps messaging identities, the inbound and provider-status ledgers (an old provider message replayed after a reset is still a duplicate, so an old `YES K7M3` can never claim a new offer that reuses the code), outbound messages and the audit trail; then re-seeds profiles, availability windows and the policy relative to now. Audit `demo.reset` records the operator as `system` (the function takes no actor; the handler checks the operator).
+- **2(c) HTTP handlers** (`src/core/http/*`, each also exports a `create*Handler({ getActor, deps })` factory for tests): donation, dashboard, operator-actions (strict `{ action, note }`), handoff (strict `{ step }`), images (owning donor or operator; stored mime, `nosniff`, `default-src 'none'; sandbox`, `private, no-store`), demo reset (no body or `{}`). No session = 403 before anything is read; a non-operator on operator routes = 403 before the body is parsed.
+- **2(d) links:** `issueVerificationLink` (draft/needs_review, not collected, before the cutoff, donor joined (else `CONFLICT` with `details.reason = donor_not_joined`); 32 CSPRNG bytes base64url; SHA-256 only stored; `expires_at = min(now + 30 min, stored cutoff)`; previous live link revoked), `getVerificationLinkView` / `getVerificationLinkImage` (never consume), and the link path of `submitVerification` (consume first in the same transaction, scoped to the given `donation_id`; ANY later failure rolls the consumption back; `needs_review` returns a fresh `resubmit_token`, except when the cutoff has already passed). Every refusal is `NOT_AUTHORIZED` with the one contract message; `link.rejected` audits the reason (`malformed`, `unknown`, `consumed`, `revoked`, `expired`, `donation_closed`, `donation_mismatch`) with the link id only, never the token or its hash.
+
+EVIDENCE (commands run locally on feat/dispatch-slice2d; PGlite only, nothing real):
+- `pnpm typecheck` 0 errors; `pnpm lint` 0 errors (1 existing warning in a Dev 4 test); `pnpm build` ok; `pnpm db:generate`: no schema changes (no migration in 2(c)/2(d)).
+- `pnpm test`: 82 files, 2,279 passed, 32 skipped (gated Postgres tests). New: `tests/core/service-slice2c.test.ts` (33), `service-http.test.ts` (11, T-CO-29), `service-links.test.ts` (16, T-CO-30).
+- Mutation check: disabling the link-consumption rollback makes the "failed submit leaves the link live" test fail.
+- Process note: for 2(c)/2(d) the tests were written right after each function, not strictly before it.
+- NOT RUN / UNVERIFIED: T-CO-17 on real Postgres (first-claim-wins still NOT shown race-safe, D-033); the handlers through a real Next.js request with the captain's signed cookie (tests inject the actor); the dashboard's cost on the Supabase pooler (one card = 4 queries; 100 cards every 2 s).
+
+CONTRACT CHANGES OR REQUESTS (captain):
+- Health: `src/server/health.ts` can now call `getSystemStatus()` for `last_tick_at` and `policy_version` (captain-owned follow-up, OWNERSHIP section 7).
+- Please confirm: courier/recipient handoff responses use the reduced card; reset keeps outbound messages (simulated-phone threads keep old lines; Dev 3 could filter by time); the operator note is not stored anywhere.
+- Unchanged: `docs/requests/dev2-donor-offer-projection.md` is still open.
+
+BLOCKERS + SAFETY RISKS:
+- T-CO-17 still needs a disposable Postgres; do not claim race safety anywhere.
+- Every refused link view writes one `link.rejected` row; Dev 1's `/api/verify/*` routes should rate-limit.
+
+INTEGRATION STEPS: Dev 4 swaps the mocked `fetch` for the real routes (dashboard, operator-actions, handoff, images, demo reset). Dev 3: `setLastTick` after each tick; `issueVerificationLink` in the photo flow. Dev 1: `getVerificationLinkView`, `getVerificationLinkImage` and the link path of `submitVerification` are live.
+
+NEXT SMALLEST ACTION: run T-CO-17 against a disposable Postgres (`TEST_DATABASE_URL`), then the Postgres half of T-CO-23.
+
