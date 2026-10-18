@@ -1,7 +1,7 @@
 # PROJECT_STATE.md — captain's checkpoint
 
 > **Owner:** integration captain (Dev 4) only. Lanes report through `docs/handoffs/dev-N.md` and PR descriptions, never by editing this file (OWNERSHIP §9).
-> **As of:** 2026-10-17 17:25 PDT (updated by the captain after the CP0a/CP0b work and the first integration round; earlier history: written 2026-10-15 pre-event, revised 2026-10-16 for D-029, D-031..D-035). Observed facts are labeled with how they were observed; anything not run is UNVERIFIED.
+> **As of:** 2026-10-17 17:55 PDT (updated by the captain after the CP0a/CP0b work and the first integration round; earlier history: written 2026-10-15 pre-event, revised 2026-10-16 for D-029, D-031..D-035). Observed facts are labeled with how they were observed; anything not run is UNVERIFIED.
 > **Status:** Code exists and is merged on `main` (lanes 1 to 4 slice PRs, contracts, UI kit, env schema). **Nothing has been verified end to end:** the read models behind `/api/dashboard`, the donor checklist component, real Gemini and real Photon are not wired or proven. Every claim below is labeled.
 
 ## 1. Checkpoint summary
@@ -9,7 +9,7 @@
 | Item | Value |
 |---|---|
 | Phase | Event: build window (code allowed since Sat Oct 17, 12:00 PM PDT per the organizers' early start; CLAUDE.md note). |
-| Last known passing build | `main` at **1c32f75** (after #29), measured 2026-10-17 17:20 PDT in the captain worktree with `main` merged into this branch: `pnpm lint`, `pnpm typecheck`, `pnpm build` exit 0; `pnpm test` exit 0 with **1911 passed, 30 skipped (gated real-Postgres tests), 1 todo** (72 files, 1 skipped). PGlite and fakes only; nothing real. |
+| Last known passing build | `main` at **d7c49a0**, measured 2026-10-17 17:50 PDT in the captain worktree: `pnpm lint`, `pnpm typecheck`, `pnpm build` exit 0; `pnpm test` exit 0 with **2273 passed, 32 skipped (gated real-Postgres tests), 0 todo reported** (83 test files passed, 2 files skipped). PGlite and fakes only; nothing real. |
 | Baseline | **Done.** Annotated tag `baseline` (object 2d7215e) points to **BASELINE_SHA `f750162953dbe37b89111071976c8fd247e96f57`** (commit 2026-10-17 12:12 PDT, contracts v0.4). Repo https://github.com/Aieda1l/annona is **public** (verified with `gh repo view`). |
 | Contracts version | See the `docs/CONTRACTS.md` header (the only place the number is stated, D-034). v0.5 (spec, PR #9, fd2ffe7) and its types (PR #10, f50a0ce) are merged on `main`. |
 | Decisions | D-036, D-038 and D-039 ACCEPTED by the captain 2026-10-17. PR #9 (contracts v0.5) is merged with Dev 3's approval; D-039 was narrowed the same day and its earlier-word blocklist dropped (spec PR #26; code change requested on #16). D-037 PROPOSED. Earlier decisions as in `docs/DECISIONS.md`. |
@@ -32,7 +32,7 @@
 
 **Current (observed 2026-10-17 with `git`, `gh`):**
 - Default branch `main`; remote `origin` = https://github.com/Aieda1l/annona, **public**. Tag `baseline` (annotated) at `f750162`.
-- Squash-merged PRs so far are listed in section 9. Open PRs at the time of writing: #29 (Dev 2, slice 2(a)+(b) core; needs retarget to main) and #30 (Dev 1, Gemini adapter, which answers issue #27). Captain review of #30 is in progress.
+- Squash-merged PRs so far are listed in section 9 (the source of truth for what is merged; this bullet does not list open PRs, because they change faster than this file). Open at the time of writing: #31 (this file), #32, #35, #38. Issue #27 is answered by #30.
 - `next dev` writes an untracked `AGENTS.md` at the repo root; it must not be committed (CLAUDE.md).
 
 **Historical (observed 2026-10-15, before kickoff):**
@@ -135,11 +135,11 @@
 | IB-5 | PGlite inside `next dev` untested (ARCHITECTURE §16) | Dev 2 spike SP-6; fallback is a personal Supabase project | Dev 2 |
 | IB-6 | #29 (slice 2(a)+(b): intake, dispatch, claim, STOP) is merged. The read-model routes (`GET /api/dashboard`, `GET /api/donations/:id`, operator actions, handoff) were still 501 stubs when last checked; confirm after Dev 2's slice 2(c). The dashboard, detail page and donor status page cannot show live data until then. | Dev 2's read-model PR (slice 2(c)) | Dev 2 |
 | IB-7 | `LinkVerification` (the `/v` checklist) is a placeholder; scene 1 by message cannot run. | Dev 1 builds it against `/api/verify/*` once Dev 2 and Dev 3 wire the links | Dev 1 |
-| IB-8 | RESOLVED 2026-10-17: Dev 3 reviewed #21 and gave the explicit OK on the three gate-rule changes (OWNERSHIP section 6); #21 merged (ce37893). Their MEDIUM follow-ups (missing .data parent folder; seed handle normalization) are with Dev 2 for the next PR, (#16 and #19 are merged; see the log for how). | Dev 3 reviews #21 and updates #16 | Dev 3 |
+| IB-8 | RESOLVED 2026-10-17: Dev 3 reviewed #21 and gave the explicit OK on the three gate-rule changes (OWNERSHIP section 6); #21 merged (ce37893). Their MEDIUM follow-ups (missing .data parent folder; seed handle normalization) are with Dev 2 for the next PR, (#16 and #19 are merged; see the log for how). | (done) | Dev 3 |
 | IB-9 | Deployment (Vercel) and the Devpost project shell need a human: interactive logins, billing check, the Devpost form. | A human does them; the Devpost text is drafted in PR #24 | captain + team |
 | IB-10 | The real Photon gateway and the real Gemini adapter have no verified evidence, so the Photon and Gemini tracks cannot be claimed yet. | T-MS-13 / T-E2E-04 and T-IN-10 recorded | Dev 3, Dev 1 |
-| IB-11 | VEYZL project cannot be created until a real Gemini call is on `main`. #30 (Dev 1's adapter) is in review; the captain's re-review at 3c0960a found no blocker for merge in fake mode. | #30 merges (after #32); then the captain creates the project | Dev 1 + captain |
-| IB-12 | Before any real Gemini key in a shared environment: gate `fixture_id` to fake/demo mode, add a magic-byte check (confirm core's `storeDonationImage` does it on `main`), add an idempotency key on the upload and `fixture_id` paths. Messaging photos keep EXIF GPS; core needs the HEIC `ftyp` check; Dev 3's `photo.ts` rejects non-`image/*` content types. | Dev 1 (intake), Dev 2 (core), Dev 3 (`photo.ts`) | Dev 1, Dev 2, Dev 3 |
+| IB-11 | VEYZL project creation was refused ("no strong signals for dataset, API, or hybrid AI") although #30 is on `main` (real call at `src/lib/ai/gemini.ts:173`, SDK in `package.json`). The analysis cited only `src/server/*` and `src/components/*`. Cause on VEYZL's side unverified. | Retry the repo connection; ask VEYZL support what the scan reads; drop the track at Sun 3 AM (D-022) if no audit exists | captain |
+| IB-12 | Before any real Gemini key in a shared environment: `fixture_id` gate, magic-byte check and upload dedupe are in #38 (approved, not yet merged); core already checks magic bytes in `storeDonationImage`. Still open: EXIF GPS kept on messaging photos; HEIC `ftyp` check in core (Dev 2); `photo.ts` rejects non-`image/*` content types (Dev 3); the 10 s dedupe cache can return a stale card after verify or reset; `ANNONA_DEMO_MODE=1` needed on the host for fixture drafts with a real provider; `GEMINI_API_KEY` not yet set on the deploy host. | #38 merges; Dev 1, Dev 2, Dev 3 | Dev 1, Dev 2, Dev 3, captain |
 | IB-13 | Dev 3's core-addition requests (`docs/requests/messaging-core-idempotency-lookup.md`) have no decision yet. | Captain decides with Dev 2 | captain + Dev 2 |
 
 ## 6. Human decisions and questions (open)
@@ -214,6 +214,11 @@
 | 25 | #28 read internal secret and tick interval through getEnv (Dev 3) | Dev 3 | b5face5 | author-reported pass | n/a | Dev 2 approved |
 | 26 | #21 PR 1b follow-up: review fixes + hardening (Dev 2) | captain | ce37893 | captain, head and head merged with main: lint/typecheck/build 0, 1585 passed, 26 skipped, 1 todo (62 files); net-diff secret scan clean | PGlite only | Dev 3 review (APPROVE with comments, explicit gate OK); Dev 3's non-blocking follow-ups posted on the PR for Dev 2 |
 | 27 | #29 slice 2(a)+(b) core: intake, dispatch, claim, STOP (Dev 2) | Dev 3 (APPROVED on e14cd30, 2026-10-17 17:00) | 1c32f75 | captain, after the merge only: lint/typecheck/build 0, 1911 passed, 30 skipped, 1 todo (72 files) | PGlite only | **Merged by Dev 2 at 17:12 before the captain gate ran.** Dev 3 gave the explicit OK on the final head, which OWNERSHIP section 6 requires. Claims are tested on PGlite only; no race-safety claim until T-CO-17 passes on real Postgres (D-033) |
+| 28 | #30 Gemini adapter, prompt versions, eval runner (Dev 1) | none recorded | 3c0960a (merge afce959) | captain on a trial merge at 3c0960a: typecheck/lint 0, 1897 passed, 28 skipped; ECC re-review: no blocker in fake mode | fake provider; a real Gemini smoke test is recorded by Dev 1 (T-IN-10) and is not re-run by the captain | **Merged by Dev 1 at 17:19 with only a captain comment (no approval).** D-040 applied: web-sourced eval photos removed from the tree, but they remain in the PR's commits and GitHub's PR refs |
+| 29 | #34 intake hardening (Dev 1) | Cyrus (APPROVED on 0c20a57) | 5648e68 | captain trial merge: typecheck/lint 0, 1603 passed | stubs only for canvas/ImageBitmap | Medium follow-up: the file input is re-enabled after the `onDraft` error |
+| 30 | #36 real-core intake tests (Dev 1) | none recorded (Dev 2 requested) | 5137640 | captain trial merge: typecheck/lint 0, 1923 passed, 12 of 12 real-core | real core on PGlite, fake vision | **Merged with only a captain comment.** Three medium test-strength follow-ups posted |
+| 31 | #33 HEIC accepted from messaging (Dev 1) | Cyrus (APPROVED on d3f2132) | bebd7a2 | earlier captain run: 1590 passed | none | Merged at 7c72633, a later head than the approval; the later commits only merged `main`. Core still refuses HEIC until the `intake-heic-core-allowlist` request is done |
+| 32 | #37 messaging core adapter and barrel wiring (Dev 3) | Dev 2 (37537bf), Cyrus (72bb3a4) | d7c49a0 | captain trial merge: typecheck/lint/build 0, 2273 passed, 32 skipped | PGlite core, fake Photon | Findings 1 to 4 (no real-core YES/NO/STOP test; vacuous tick test; unparseable identity ignores STOP silently; post-commit throw reply) are for Dev 3 before T-MS-13/T-MS-19 |
 
 ## 10. Environment and accounts
 
