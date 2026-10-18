@@ -307,6 +307,35 @@ describe("retry: one retry on retryable provider failures", () => {
   });
 });
 
+// Issue #61: a prod call took ~6 s from iad1, so a 7 s cut-off lost slow-but-fine answers. One attempt may now use
+// 9 s, and the retry gets only what is left of the 14 s total (never a fresh 9 s).
+describe("default timing (9 s per attempt, 14 s total)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("an answer after 8 s is accepted without a retry", async () => {
+    const { provider, generateContent } = setup(() => new Promise((res) => setTimeout(() => res(ok()), 8000)));
+    const pending = analyze(provider);
+    await vi.advanceTimersByTimeAsync(8000);
+    expect((await pending).ok).toBe(true);
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("a stalled first attempt is cut at 9 s and the retry gets the remaining 5 s", async () => {
+    const { provider, generateContent } = setup(() => new Promise(() => {}));
+    let done = false;
+    const pending = analyze(provider).then((r) => ((done = true), r));
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(generateContent).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const r = await pending;
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.details?.reason).toBe("timeout.timeout");
+  });
+});
+
 describe("prompt version", () => {
   const textOf = (generateContent: ReturnType<typeof setup>["generateContent"]) =>
     (generateContent.mock.calls[0]![0] as { contents: { parts: { text?: string }[] }[] }).contents[0]!.parts[1]!.text!;
@@ -438,10 +467,10 @@ describe("escalation to a stronger model when the first answer is not confident"
     afterEach(() => vi.useRealTimers());
 
     it("skips escalation when less than 3 s of the 14 s budget remains", async () => {
-      // first attempt stalls for the full 7 s, retry answers after 5 s: 12 s used, 2 s left
+      // first attempt stalls until cut at 9 s, the retry answers after 3 s: 12 s used, 2 s left
       const { provider, generateContent } = setup(async () => lowConfidence(), { escalation_model: BIG });
       generateContent.mockImplementationOnce(() => new Promise(() => {}));
-      generateContent.mockImplementationOnce(() => new Promise((res) => setTimeout(() => res(lowConfidence()), 5000)));
+      generateContent.mockImplementationOnce(() => new Promise((res) => setTimeout(() => res(lowConfidence()), 3000)));
       const pending = analyze(provider);
       await vi.advanceTimersByTimeAsync(12_000);
       const r = await pending;
@@ -506,5 +535,53 @@ describe("bad model output -> AI_OUTPUT_INVALID", () => {
     const r = await analyze(provider);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe("AI_OUTPUT_INVALID");
+  });
+});
+
+// Issue #61: the stored failure needs a coarse cause so a deployed failure can be diagnosed. The trail covers every
+// attempt, because a stall followed by a fast 429 and a plain stall look the same from the outside.
+describe("failure reason trail (details.reason)", () => {
+  const httpErr = (status: number) => Object.assign(new Error("boom AIza-not-a-real-key"), { status });
+  const reasonOf = (r: Awaited<ReturnType<typeof analyze>>) => (r.ok ? undefined : r.error.details?.reason);
+
+  it.each([
+    [429, "http_429.http_429"],
+    [503, "http_503.http_503"],
+  ])("HTTP %i on both attempts", async (status, trail) => {
+    const { provider } = setup(async () => Promise.reject(httpErr(status)));
+    expect(reasonOf(await analyze(provider))).toBe(trail);
+  });
+
+  it("a non-retryable 403 stops after one attempt", async () => {
+    const { provider } = setup(async () => Promise.reject(httpErr(403)));
+    expect(reasonOf(await analyze(provider))).toBe("http_403");
+  });
+
+  it("a network error has no status", async () => {
+    const { provider } = setup(async () => Promise.reject(new TypeError("fetch failed")));
+    expect(reasonOf(await analyze(provider))).toBe("network.network");
+  });
+
+  it("a safety block is 'blocked', without the provider's block text", async () => {
+    const { provider } = setup(async () => ok({ candidates: [{ finishReason: "SAFETY" }] }));
+    expect(reasonOf(await analyze(provider))).toBe("blocked");
+  });
+
+  it("a stall then a fast 429 keeps both causes", async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const { provider } = setup(() => (++n === 1 ? new Promise(() => {}) : Promise.reject(httpErr(429))), { timeout_ms: 7000 });
+      const pending = analyze(provider);
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(reasonOf(await pending)).toBe("timeout.http_429");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never carries error text", async () => {
+    const { provider } = setup(async () => Promise.reject(httpErr(500)));
+    expect(JSON.stringify(await analyze(provider))).not.toMatch(/AIza|boom/);
   });
 });

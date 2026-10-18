@@ -59,6 +59,15 @@ function revalidate(suggestion: VisionSuggestion, providerMode: VisionProvider["
   return ok(parsed.data);
 }
 
+/**
+ * The code stored in `ai.suggestion_failed`: `PROVIDER_UNAVAILABLE:timeout.http_429`. The coarse reason rides in the
+ * code string (core accepts [A-Za-z0-9_.:-]{1,64}) so no contract or core change is needed; anything else is dropped.
+ */
+function failureCode(error: { code: string; details?: Record<string, unknown> }): string {
+  const reason = error.details?.reason;
+  return typeof reason === "string" && /^[a-z0-9_.]{1,40}$/.test(reason) ? `${error.code}:${reason}` : error.code;
+}
+
 /** Race vision against the timeout. Throws, timeouts and late answers all become PROVIDER_UNAVAILABLE. */
 async function analyze(
   vision: VisionProvider,
@@ -68,12 +77,12 @@ async function analyze(
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<Result<VisionSuggestion>>((resolve) => {
     timer = setTimeout(
-      () => resolve(err("PROVIDER_UNAVAILABLE", "Vision call timed out", { retryable: true })),
+      () => resolve(err("PROVIDER_UNAVAILABLE", "Vision call timed out", { retryable: true, details: { reason: "service_timeout" } })),
       timeoutMs,
     );
   });
   const call = (async () => vision.analyzeFoodImage({ image }))().catch(() =>
-    err<VisionSuggestion>("PROVIDER_UNAVAILABLE", "Vision provider failed", { retryable: true }),
+    err<VisionSuggestion>("PROVIDER_UNAVAILABLE", "Vision provider failed", { retryable: true, details: { reason: "provider_threw" } }),
   );
   try {
     const result = await Promise.race([call, timeout]);
@@ -133,7 +142,7 @@ export function createIntakeService(config: {
     return core.attachAiResult(
       {
         donation_id: draft.data.id,
-        result: analysis.ok ? { ok: true, suggestion: analysis.data } : { ok: false, error_code: analysis.error.code },
+        result: analysis.ok ? { ok: true, suggestion: analysis.data } : { ok: false, error_code: failureCode(analysis.error) },
       },
       deps,
     );
