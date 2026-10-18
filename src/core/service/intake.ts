@@ -17,8 +17,9 @@ import { canTransition } from "../state";
 import { parseUtc } from "../time";
 import { writeAudit } from "./audit";
 import { buildCard } from "./cards";
+import { LINK_REFUSED, OPEN_STATUSES, auditLinkRefusal, consumeLinkTx, consumeRefusal, isTokenShaped, issueLinkTx } from "./links";
 import { donorFromRow, isUuid, policyFromRow, iso } from "./map";
-import { runtime } from "./runtime";
+import { retryOnConflict, runtime } from "./runtime";
 
 // Slice 2(a): intake-facing core (CONTRACTS section 9.3, S-01, S-02, S-03 session path). Dev 1 calls these and never
 // writes donation rows directly. Time comes only from the injected Clock.
@@ -151,6 +152,15 @@ export async function attachAiResult(
 
 const MAX_EDITED_FIELDS = 40;
 
+type SubmitResult = Result<{ card: DonationCard; resubmit_token: string | null }>;
+
+/** Thrown inside the link-path transaction to roll the link consumption back together with everything else. */
+class RollbackWith extends Error {
+  constructor(readonly result: SubmitResult) {
+    super("submitVerification rolled back");
+  }
+}
+
 export async function submitVerification(
   input: {
     auth: { actor: Actor } | { link_token: string };
@@ -159,91 +169,144 @@ export async function submitVerification(
     edited_from_ai: string[];
   },
   deps?: Deps,
-): Promise<Result<{ card: DonationCard; resubmit_token: string | null }>> {
-  if (!input?.auth || !("actor" in input.auth)) {
-    // The link path consumes a verification link in the same transaction; it ships with slice 2(d).
-    return err("NOT_IMPLEMENTED", "Verification by link is not implemented yet.");
-  }
-  const actor = input.auth.actor;
-  if (!isUuid(input.donation_id)) return err("NOT_FOUND", "Donation not found.");
+): Promise<SubmitResult> {
+  const auth = input?.auth as { actor?: Actor; link_token?: unknown } | undefined;
+  const viaLink = !!auth && typeof auth === "object" && "link_token" in auth;
+  if (!auth || typeof auth !== "object" || (!viaLink && !("actor" in auth))) return err("NOT_AUTHORIZED", "Only the donor who owns this donation can verify it.");
+  const refused = (): SubmitResult => err("NOT_AUTHORIZED", LINK_REFUSED);
 
   const { db, clock } = await runtime(deps);
-  return db.transaction(async (tx): Promise<Result<{ card: DonationCard; resubmit_token: string | null }>> => {
-    const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("no key update");
-    if (!row) return err("NOT_FOUND", "Donation not found.");
-    if (actor?.role !== "donor" || actor.id === null || actor.id !== row.donor_id) {
-      return err("NOT_AUTHORIZED", "Only the donor who owns this donation can verify it.");
-    }
+  if (viaLink && (!isTokenShaped(auth.link_token) || !isUuid(input.donation_id))) {
+    await auditLinkRefusal(db, clock.now(), "malformed");
+    return refused();
+  }
+  if (!isUuid(input.donation_id)) return err("NOT_FOUND", "Donation not found.");
 
-    const now = clock.now();
-    // The server stamps the attestation time; whatever the client sent is ignored (CONTRACTS section 3.4).
-    const raw = input.facts as unknown as { attestation?: unknown };
-    const candidate =
-      raw && typeof raw === "object" && raw.attestation && typeof raw.attestation === "object"
-        ? { ...raw, attestation: { ...(raw.attestation as object), attested_at: iso(now) } }
-        : raw;
-    const parsed = VerifiedFacts.safeParse(candidate);
-    if (!parsed.success) {
-      return err("VALIDATION_FAILED", "Some answers are missing or invalid.", {
-        details: { fields: parsed.error.issues.map((i) => i.path.join(".")).slice(0, 20) },
+  const attempt = () =>
+    db.transaction(async (tx): Promise<SubmitResult> => {
+      const now = clock.now();
+
+      // Lock order: the donation row first, then the link row. Every other core path (issueVerificationLink, the
+      // revocations on S-08, STOP and cancel, expireDue) takes the donation lock before it touches a link, so taking
+      // the link lock first here could deadlock with them on a real Postgres.
+      const [row] = await tx.select().from(donations).where(eq(donations.id, input.donation_id)).for("no key update");
+
+      // Link path (CONTRACTS section 8.4 rule 4): consume in this transaction, for exactly this donation. Any later
+      // failure throws RollbackWith, which undoes the consumption too, so a failed submit leaves the link live.
+      let link: Awaited<ReturnType<typeof consumeLinkTx>> = null;
+      if (viaLink) {
+        // A missing donation and a closed one look like any other bad link; the reason goes only to the audit event.
+        if (!row) return refused();
+        if (!OPEN_STATUSES.has(row.status) || row.collected_at !== null) {
+          const why = await consumeRefusal(tx, auth.link_token as string, input.donation_id, now);
+          await auditLinkRefusal(tx, now, why.reason === "unknown" ? "donation_closed" : why.reason, why.link);
+          return refused();
+        }
+        link = await consumeLinkTx(tx, auth.link_token as string, input.donation_id, now);
+        if (!link) {
+          const why = await consumeRefusal(tx, auth.link_token as string, input.donation_id, now);
+          await auditLinkRefusal(tx, now, why.reason, why.link);
+          return refused();
+        }
+      }
+      const fail = (result: SubmitResult): SubmitResult => {
+        if (!link) return result;
+        // Past the link check the bearer only hears about their own answers: a state or version problem is a bad link.
+        const code = result.ok ? null : result.error.code;
+        throw new RollbackWith(code === "INVALID_TRANSITION" || code === "CONFLICT" ? refused() : result);
+      };
+      const actor: Actor = link ? { role: "donor", id: link.donor_id } : auth.actor!;
+
+      // A donor who is not the owner cannot tell a missing donation from someone else's.
+      if (!row) return fail(err("NOT_AUTHORIZED", "Only the donor who owns this donation can verify it."));
+      const owner = link ? link.donor_id === row.donor_id : actor?.role === "donor" && actor.id !== null && actor.id === row.donor_id;
+      if (!owner) return fail(link ? refused() : err("NOT_AUTHORIZED", "Only the donor who owns this donation can verify it."));
+
+      // The server stamps the attestation time; whatever the client sent is ignored (CONTRACTS section 3.4).
+      const raw = input.facts as unknown as { attestation?: unknown };
+      const candidate =
+        raw && typeof raw === "object" && raw.attestation && typeof raw.attestation === "object"
+          ? { ...raw, attestation: { ...(raw.attestation as object), attested_at: iso(now) } }
+          : raw;
+      const parsed = VerifiedFacts.safeParse(candidate);
+      if (!parsed.success) {
+        return fail(
+          err("VALIDATION_FAILED", "Some answers are missing or invalid.", {
+            details: { fields: parsed.error.issues.map((i) => i.path.join(".")).slice(0, 20) },
+          }),
+        );
+      }
+      const facts = parsed.data;
+      const edited = Array.isArray(input.edited_from_ai) ? input.edited_from_ai : [];
+      if (edited.length > MAX_EDITED_FIELDS || edited.some((f) => typeof f !== "string" || f.length === 0 || f.length > 60)) {
+        return fail(err("VALIDATION_FAILED", "edited_from_ai must be a short list of field names."));
+      }
+
+      const [donor] = await tx.select().from(donors).where(eq(donors.id, row.donor_id));
+      const [policyRow] = await tx.select().from(policy_config).where(eq(policy_config.active, true));
+      if (!donor || !policyRow) return fail(err("INTERNAL", "The donor profile or the active policy is missing."));
+
+      let decision;
+      try {
+        decision = evaluateEligibility({ facts, donor: donorFromRow(donor), policy: policyFromRow(policyRow), now });
+      } catch {
+        // A broken policy or clock stops the gate; nothing is stored and the donation is not advanced.
+        return fail(err("INTERNAL", "The eligibility check could not run."));
+      }
+
+      const transition = canTransition({
+        from: row.status as DonationCard["status"],
+        to: decision.outcome,
+        trigger: "submitVerification",
+        ctx: { now, effective_cutoff_at: null, collected_at: row.collected_at ? iso(row.collected_at) : null, authorized_owner: true, gate_outcome: decision.outcome },
       });
-    }
-    const facts = parsed.data;
-    const edited = Array.isArray(input.edited_from_ai) ? input.edited_from_ai : [];
-    if (edited.length > MAX_EDITED_FIELDS || edited.some((f) => typeof f !== "string" || f.length === 0 || f.length > 60)) {
-      return err("VALIDATION_FAILED", "edited_from_ai must be a short list of field names.");
-    }
+      if (!transition.ok) return fail(err("INVALID_TRANSITION", transition.message));
 
-    const [donor] = await tx.select().from(donors).where(eq(donors.id, row.donor_id));
-    const [policyRow] = await tx.select().from(policy_config).where(eq(policy_config.active, true));
-    if (!donor || !policyRow) return err("INTERNAL", "The donor profile or the active policy is missing.");
+      const cutoffMs = Math.min(parseUtc(facts.donor_pickup_by), facts.discard_by === null ? Number.POSITIVE_INFINITY : parseUtc(facts.discard_by));
+      const [updated] = await tx
+        .update(donations)
+        .set({
+          status: decision.outcome,
+          version: row.version + 1,
+          verified_facts: facts,
+          edited_from_ai: edited,
+          latest_decision: decision,
+          effective_cutoff_at: Number.isFinite(cutoffMs) ? new Date(cutoffMs) : null,
+          updated_at: now,
+        })
+        .where(and(eq(donations.id, row.id), inArray(donations.status, ["draft", "needs_review"]), isNull(donations.collected_at), eq(donations.version, row.version)))
+        .returning();
+      if (!updated) return fail(err("CONFLICT", "The donation changed while you were saving; please reload.", { retryable: true }));
 
-    let decision;
-    try {
-      decision = evaluateEligibility({ facts, donor: donorFromRow(donor), policy: policyFromRow(policyRow), now });
-    } catch {
-      // A broken policy or clock stops the gate; nothing is stored and the donation is not advanced.
-      return err("INTERNAL", "The eligibility check could not run.");
-    }
+      // S-03: every other live link for the donation is revoked (a consumed link is no longer live).
+      await tx
+        .update(verification_links)
+        .set({ revoked_at: now })
+        .where(and(eq(verification_links.donation_id, row.id), isNull(verification_links.consumed_at), isNull(verification_links.revoked_at)));
 
-    const transition = canTransition({
-      from: row.status as DonationCard["status"],
-      to: decision.outcome,
-      trigger: "submitVerification",
-      ctx: { now, effective_cutoff_at: null, collected_at: row.collected_at ? iso(row.collected_at) : null, authorized_owner: true, gate_outcome: decision.outcome },
+      if (link) await writeAudit(tx, { at: now, type: "link.consumed", actor, donation_id: row.id, data: { link_id: link.id } });
+      await writeAudit(tx, { at: now, type: "donor.verification_submitted", actor, donation_id: row.id, data: { edited_field_count: edited.length, via: link ? "link" : "session" } });
+      await writeAudit(tx, {
+        at: now,
+        type: "eligibility.evaluated",
+        actor: { role: "system", id: null },
+        donation_id: row.id,
+        data: { outcome: decision.outcome, reason_codes: decision.reasons.map((r) => r.code), policy_version: decision.policy_version },
+      });
+
+      // Rule 7: a link submission that needs review gets a fresh link for the same page, unless the cutoff has already
+      // passed (such a link could never be used; the donation expires instead).
+      let resubmit_token: string | null = null;
+      if (link && decision.outcome === "needs_review" && (updated.effective_cutoff_at === null || updated.effective_cutoff_at.getTime() > now.getTime())) {
+        resubmit_token = (await issueLinkTx(tx, updated, now)).token;
+      }
+      return ok({ card: await buildCard(tx, updated, "donor"), resubmit_token });
     });
-    if (!transition.ok) return err("INVALID_TRANSITION", transition.message);
 
-    const cutoffMs = Math.min(parseUtc(facts.donor_pickup_by), facts.discard_by === null ? Number.POSITIVE_INFINITY : parseUtc(facts.discard_by));
-    const [updated] = await tx
-      .update(donations)
-      .set({
-        status: decision.outcome,
-        version: row.version + 1,
-        verified_facts: facts,
-        edited_from_ai: edited,
-        latest_decision: decision,
-        effective_cutoff_at: Number.isFinite(cutoffMs) ? new Date(cutoffMs) : null,
-        updated_at: now,
-      })
-      .where(and(eq(donations.id, row.id), inArray(donations.status, ["draft", "needs_review"]), isNull(donations.collected_at), eq(donations.version, row.version)))
-      .returning();
-    if (!updated) return err("CONFLICT", "The donation changed while you were saving; please reload.", { retryable: true });
-
-    // S-03: every other live link for the donation is revoked.
-    await tx
-      .update(verification_links)
-      .set({ revoked_at: now })
-      .where(and(eq(verification_links.donation_id, row.id), isNull(verification_links.consumed_at), isNull(verification_links.revoked_at)));
-
-    await writeAudit(tx, { at: now, type: "donor.verification_submitted", actor, donation_id: row.id, data: { edited_field_count: edited.length } });
-    await writeAudit(tx, {
-      at: now,
-      type: "eligibility.evaluated",
-      actor: { role: "system", id: null },
-      donation_id: row.id,
-      data: { outcome: decision.outcome, reason_codes: decision.reasons.map((r) => r.code), policy_version: decision.policy_version },
-    });
-    return ok({ card: await buildCard(tx, updated, "donor"), resubmit_token: null });
-  });
+  try {
+    return await retryOnConflict(attempt);
+  } catch (e) {
+    if (e instanceof RollbackWith) return e.result;
+    throw e;
+  }
 }

@@ -278,8 +278,8 @@ describe("submitVerification, session path (S-03)", () => {
     expect(r).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
     expect(await rowOf(d.id)).toMatchObject({ status: "draft", version: 1, verified_facts: null });
   });
-  it("an unknown donation is not found", async () => {
-    expect(await submit(randomUUID())).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+  it("an unknown donation looks the same as someone else's (no id probing)", async () => {
+    expect(await submit(randomUUID())).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
   });
   it("incomplete or invalid facts are refused with the field names, and the donation is untouched", async () => {
     const d = await draft();
@@ -326,10 +326,10 @@ describe("submitVerification, session path (S-03)", () => {
     expect(rows.find((x) => x.id === live.id)!.revoked_at?.toISOString()).toBe(T0.toISOString());
     expect(rows.find((x) => x.id === consumed.id)!.revoked_at).toBeNull();
   });
-  it("the link path is not built yet and says so (slice 2(d)); nothing is written", async () => {
+  it("a link token that is not a real link is refused and nothing is written (the link path is in service-links)", async () => {
     const d = await draft();
     const r = await submitVerification({ auth: { link_token: "x" }, donation_id: d.id, facts: factsAt(), edited_from_ai: [] }, w.deps());
-    expect(r).toMatchObject({ ok: false, error: { code: "NOT_IMPLEMENTED" } });
+    expect(r).toMatchObject({ ok: false, error: { code: "NOT_AUTHORIZED" } });
     expect((await rowOf(d.id)).status).toBe("draft");
   });
   it("the audit trail never holds the donor's free text or pickup instructions", async () => {
